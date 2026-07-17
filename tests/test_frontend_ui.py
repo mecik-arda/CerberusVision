@@ -1,0 +1,112 @@
+from pathlib import Path
+from html.parser import HTMLParser
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+INDEX_HTML = (PROJECT_ROOT / "static" / "index.html").read_text(encoding="utf-8")
+APP_JS = (PROJECT_ROOT / "static" / "app.js").read_text(encoding="utf-8")
+
+
+class _ButtonCollector(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.buttons = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "button":
+            self.buttons.append(dict(attrs))
+
+
+def test_turkish_is_the_default_interface_language():
+    assert '<html lang="tr"' in INDEX_HTML
+    assert "Belge Yükle" in INDEX_HTML
+    assert "Sevkiyat Bilgileri" in INDEX_HTML
+    assert "Verileri Onayla" in INDEX_HTML
+    assert "let currentLanguage = Object.hasOwn(TRANSLATIONS, savedLanguage) ? savedLanguage : 'tr';" in APP_JS
+
+
+def test_english_is_available_as_an_optional_persistent_language():
+    assert 'data-language="tr"' in INDEX_HTML
+    assert 'data-language="en"' in INDEX_HTML
+    assert "'upload.title': 'Upload Document'" in APP_JS
+    assert "localStorage.setItem('cerberus-language', currentLanguage)" in APP_JS
+    assert "document.documentElement.lang = currentLanguage" in APP_JS
+
+
+def test_dark_theme_is_class_based_and_persistent():
+    assert "darkMode: 'class'" in INDEX_HTML
+    assert 'id="themeToggle"' in INDEX_HTML
+    assert "localStorage.getItem('cerberus-theme')" in INDEX_HTML
+    assert "localStorage.setItem('cerberus-theme', theme)" in APP_JS
+    assert "dark:bg-slate-950" in INDEX_HTML
+    assert "prefers-color-scheme: dark" in APP_JS
+
+
+def test_runtime_messages_and_generated_rows_use_translations():
+    assert "t('audit.suspiciousCount'" in APP_JS
+    assert "t('form.empty')" in APP_JS
+    assert "t('items.none')" in APP_JS
+    assert "translateServerMessage(summary)" in APP_JS
+    assert "refreshSuspiciousFieldTitles()" in APP_JS
+    assert "xmlOutput.removeAttribute('data-i18n')" in APP_JS
+
+
+def test_every_static_button_has_an_explicit_behavior_contract():
+    interactive_button_ids = {
+        "globalSearchBtn",
+        "notificationsBtn",
+        "themeToggle",
+        "profileBtn",
+        "pdfCopyBtn",
+        "pdfZoomBtn",
+        "pdfFullscreenBtn",
+        "prevPageBtn",
+        "nextPageBtn",
+        "copyXmlBtn",
+        "runCloudReviewBtn",
+        "saveDraftBtn",
+        "approveDataBtn",
+    }
+    for button_id in interactive_button_ids:
+        assert f'id="{button_id}"' in INDEX_HTML
+        assert f"{button_id}.addEventListener('click'" in APP_JS
+
+    collector = _ButtonCollector()
+    collector.feed(INDEX_HTML)
+    for button in collector.buttons:
+        assert button.get("type") == "button"
+        if "data-language" not in button:
+            assert button.get("id") in interactive_button_ids
+
+    assert "document.querySelectorAll('[data-language]')" in APP_JS
+    assert "fileInput.addEventListener('change'" in APP_JS
+    assert "globalSearchInput.addEventListener('input'" in APP_JS
+    assert "document.querySelectorAll('[data-field]')" in APP_JS
+
+
+def test_header_search_notifications_and_profile_are_functional():
+    assert 'id="globalSearchPanel"' in INDEX_HTML
+    assert 'id="notificationsPanel"' in INDEX_HTML
+    assert 'id="profilePanel"' in INDEX_HTML
+    assert "renderSearchResults" in APP_JS
+    assert "publishNotification" in APP_JS
+    assert "updateProfileSummary" in APP_JS
+    assert "aria-expanded" in INDEX_HTML
+
+
+def test_pdf_toolbar_supports_copy_zoom_fullscreen_and_pages():
+    assert "estimatePdfPageCount" in APP_JS
+    assert "copyPdfLink" in APP_JS
+    assert "cyclePdfZoom" in APP_JS
+    assert "togglePdfFullscreen" in APP_JS
+    assert "goToPdfPage" in APP_JS
+    assert "renderPageThumbnails" in APP_JS
+    assert "document.addEventListener('fullscreenchange'" in APP_JS
+
+
+def test_result_actions_are_disabled_until_processing_data_exists():
+    assert 'id="copyXmlBtn" type="button" disabled' in INDEX_HTML
+    assert 'id="saveDraftBtn" type="button" disabled' in INDEX_HTML
+    assert 'id="approveDataBtn" type="button" disabled' in INDEX_HTML
+    assert "updateResultActionAvailability" in APP_JS
+    assert "copyXmlBtn.disabled = false" in APP_JS

@@ -23,6 +23,9 @@ venv/
 env/
 ENV/
 .venv/
+.openvino_cache/
+.pytest_cache/
+.pytest-tmp*/
 
 .idea/
 .vscode/
@@ -43,5 +46,6 @@ prompt.md
 konsimentotalimatornek3s.pdf
 konsimentotalimatornek3.pdf.xml
 Konsimento_Talimati_Staj_Projesi_Guncel.docx
+veriler/
 
 .env

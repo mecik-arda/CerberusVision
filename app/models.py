@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Optional, List
-from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional, List
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
 
@@ -208,6 +208,7 @@ class ProcessingStatus(str, Enum):
     PENDING = "PENDING"
     OCR_PROCESSING = "OCR_PROCESSING"
     LLM_ANALYZING = "LLM_ANALYZING"
+    CLOUD_REVIEW = "CLOUD_REVIEW"
     XML_VALIDATING = "XML_VALIDATING"
     COMPLETED = "COMPLETED"
     DRAFT = "DRAFT"
@@ -222,11 +223,46 @@ class FieldValidation(BaseModel):
     is_missing: bool = False
 
 
+class AuditFinding(BaseModel):
+    field_path: str
+    code: str
+    message: str
+    severity: str
+    risk_points: int = Field(ge=0, le=100)
+
+
+class LocalAuditAssessment(BaseModel):
+    risk_score: float = Field(ge=0.0, le=100.0)
+    confidence_score: float = Field(ge=0.0, le=100.0)
+    requires_cloud_review: bool = False
+    findings: List[AuditFinding] = Field(default_factory=list)
+
+
+class CloudAuditResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    score: float = Field(ge=0.0, le=100.0)
+    summary: str = Field(min_length=1, max_length=400)
+    suspicious_fields: List[str] = Field(default_factory=list, max_length=10)
+
+
 class ProcessingResult(BaseModel):
     status: ProcessingStatus
     xml_content: Optional[str] = None
     raw_ocr_text: Optional[str] = None
     raw_llm_json: Optional[str] = None
+    structured_data: Optional[Dict[str, Any]] = None
+    audit_confidence_score: Optional[float] = None
+    audit_summary: Optional[str] = None
+    cloud_review_used: bool = False
+    cloud_review_available: bool = False
+    local_risk_score: Optional[float] = None
+    local_warnings: List[AuditFinding] = Field(default_factory=list)
+    suspicious_fields: List[str] = Field(default_factory=list)
     validation_errors: List[str] = Field(default_factory=list)
     missing_fields: List[FieldValidation] = Field(default_factory=list)
     message: Optional[str] = None
+
+
+class SaveInstructionRequest(BaseModel):
+    shipping_instruction: ShippingInstruction

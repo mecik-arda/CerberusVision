@@ -1,216 +1,352 @@
-# CerberusVision
+# [CerberusVision](https://github.com/mecik-arda/CerberusVision)
 
-Konşimento talimatı (Shipping Instruction) PDF belgelerini OCR ile okuyan, lokal LLM ile yapısal JSON verisine dönüştüren ve DCSA standartlarına dayalı XML çıktısı üreten uçtan uca otomasyon sistemidir.
+> Bu proje, Soft İş Çözümleri bünyesinde hazırlanmış bir staj projesidir.
+>
+> **Oluşturulma Tarihi:** 14.07.2026
 
-## Mimari Genel Bakış
+CerberusVision, konşimento talimatı (Shipping Instruction) PDF belgelerini yerel
+OCR ve yerel Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
+uygulamasıdır. Ana çalışma ortamı WSL2/Ubuntu'dur; DeepSeek yalnızca isteğe bağlı,
+kısa ve salt-okunur bir risk hakemi olarak kullanılır.
 
+```text
+PDF → Spatial OCR → Yerel Qwen → DCSA XML/XSD → Yerel risk kontrolleri
+                                                   ↓ gerekirse
+                                      Kısa DeepSeek skor/yorumu
 ```
-PDF → Spatial OCR (PaddleOCR) → Lokal LLM (Qwen-2.5-14B / OpenVINO GenAI) → JSON → XML (DCSA Subset) → XSD Doğrulama → Arayüz
+
+DeepSeek belge verisini düzeltmez, alan doldurmaz ve ikinci bir Shipping
+Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üretilir.
+
+## Doğrulanmış çalışma ortamı
+
+- WSL2 dağıtımı: `Ubuntu` (Ubuntu 26.04 LTS)
+- Kaynak proje: `C:\Users\ardam\Desktop\Yazılım_Siber\CerberusVision`
+- WSL çalışma kopyası: `/home/ardam/projects/CerberusVision`
+- Python: `3.12.13` (`uv` tarafından yönetilir)
+- OpenVINO / OpenVINO GenAI: `2025.4`
+- GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
+- Test sonucu: `97 passed`
+
+Kod Windows çalışma alanında düzenlenir, uygulama Linux dosya sistemi içindeki WSL
+kopyasından çalıştırılır. Bu düzen, `/mnt/c` üzerinden doğrudan çalıştırmaya göre
+dosya erişimi ve Python paket davranışını daha öngörülebilir tutar.
+
+## Arayüz dili ve tema
+
+Web arayüzü varsayılan olarak Türkçe açılır. Üst menüdeki `TR / EN`
+seçicisinden İngilizceye geçilebilir. Dil tercihi tarayıcıda saklanır ve sonraki
+açılışlarda korunur; yükleme, işlem durumu, denetim, doğrulama ve dinamik tablo
+mesajları da seçilen dile uyarlanır.
+
+Ay simgeli tema düğmesi açık ve koyu tema arasında geçiş yapar. İlk açılışta
+işletim sistemi tercihi kullanılır; kullanıcı bir tema seçtiğinde bu tercih kalıcı
+hale gelir.
+
+Üst menüdeki arama düğmesi form alanlarını ve ana bölümleri bulup ilgili
+kontrole odaklanır. Bildirim paneli son işlem durumunu, profil paneli ise etkin dil,
+tema ve oturum kimliğini gösterir. PDF araç çubuğu; oturumluk belge bağlantısı
+kopyalama, `%100 / %125 / %150 / %200` yakınlaştırma, tam ekran, sayfa sayımı,
+sayfa düğmeleri ve önceki/sonraki gezinme işlevlerini sunar. Sonuç eylemleri,
+gerekli veri oluşana kadar açıkça devre dışı tutulur.
+
+## İngilizce belge keşif aracı
+
+`scripts/find_shipping_documents.py`, Shipping Instruction ve Bill of Lading
+örneklerini hedefli İngilizce sorgularla arar. Resmî Brave Search API ana sağlayıcıdır;
+mevcut müşteriler için Google Custom Search JSON API de desteklenir. Google sonuç
+sayfalarının HTML'i kazınmaz. Varsayılan sorgular PDF, PNG ve JPG belgelerde
+`shipping instruction`, `bill of lading`, liman, konteyner, navlun, brüt ağırlık ve
+HS code terimlerine odaklanır.
+
+[Google'ın resmî duyurusuna](https://developers.google.com/custom-search/v1/overview)
+göre Custom Search JSON API yeni müşterilere kapalıdır ve mevcut müşteriler için
+1 Ocak 2027'de sonlandırılacaktır. Bu nedenle yeni kurulumlarda
+[Brave Search API](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
+önerilir; Google sağlayıcısı geçiş dönemi uyumluluğu için korunur.
+
+Yerel hat dosya imzasını, boyutu, okunabilirliği, belge geometrisini, anahtar kelime
+kapsamını ve ilk İngilizce sinyalini denetler. DeepSeek yalnızca iki karar verir:
+belgenin Shipping Instruction/Bill of Lading konusuyla ilgili olup olmadığı ve
+İngilizce olup olmadığı. Kalite skoru vermez; metni düzeltmez, alan çıkarmaz,
+tamamlamaz veya yeni veri üretmez. Her iki DeepSeek kararı da olumlu olmayan belge
+`accepted` dizinine alınmaz.
+
+WSL içindeki `.env` için önerilen ayar:
+
+```dotenv
+DOCUMENT_SEARCH_PROVIDER=brave
+BRAVE_SEARCH_API_KEY=
+DEEPSEEK_API_KEY=
+DOCUMENT_SEARCH_OUTPUT_DIR=/home/ardam/projects/CerberusVision/veriler/discovered
 ```
 
-### Temel Bileşenler
+Google Custom Search JSON API erişimi bulunan mevcut hesaplar için:
 
-| Bileşen | Teknoloji | Açıklama |
-|---------|-----------|----------|
-| Frontend | Vanilla JS + HTML + Tailwind CSS (CDN) | Split-screen arayüz, drag-drop, SSE canlı durum |
-| Backend | FastAPI | Asenkron API, statik dosya sunumu, SSE streaming |
-| OCR | PaddleOCR | Bounding box tabanlı uzamsal metin çıkarımı |
-| LLM | Qwen-2.5-14B-Instruct (INT4/OpenVINO) | Guided Decoding ile JSON üretimi |
-| XML | lxml + XSD | DCSA v2 subset şema doğrulaması |
-| Benchmark | DeepSeek API (OpenAI SDK) | Lokal model vs referans kıyaslama |
+```dotenv
+DOCUMENT_SEARCH_PROVIDER=google
+GOOGLE_SEARCH_API_KEY=
+GOOGLE_SEARCH_ENGINE_ID=
+```
 
-## Kurulum
-
-### 1. Python Sanal Ortam
+Kullanım:
 
 ```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Linux/macOS
-source venv/bin/activate
+cd ~/projects/CerberusVision
+./.venv/bin/python scripts/find_shipping_documents.py --print-queries
+./.venv/bin/python scripts/find_shipping_documents.py --max-results 20
+./.venv/bin/python scripts/find_shipping_documents.py --local-only --max-results 20
+./.venv/bin/python scripts/find_shipping_documents.py \
+  --query 'filetype:pdf "bill of lading" "port of loading" "port of discharge"'
 ```
 
-### 2. Bağımlılıklar
+Normal çalışmada kabul edilen dosyalar `veriler/discovered/accepted`, denetim izi
+`veriler/discovered/manifest.jsonl` altına yazılır. `--local-only` DeepSeek'i hiç
+çağırmaz ve yerel filtreden geçenleri `pending_review` altında bekletir; bu dosyalar
+kabul edilmiş veri sayılmaz. Kaynak adresi ve SHA-256 özeti manifestte tutulur,
+aynı içerik yeniden indirilmez. Üçüncü taraf belgelerin kullanım/lisans hakkı arama
+sonucuyla birlikte verilmiş sayılmaz; veri kümesine almadan önce kaynak koşulları
+kontrol edilmelidir.
+
+## Model profilleri
+
+| Profil | Model | Aygıt | Kullanım |
+|---|---|---|---|
+| `gpu` (varsayılan) | Qwen2.5-7B-Instruct INT4 OpenVINO | Arc 140V GPU | Hızlı günlük işleme |
+| `quality` / `14b` | Qwen2.5-14B-Instruct INT4 OpenVINO | CPU | Opsiyonel daha büyük yerel model |
+
+Profiller aynı anda yüklenmez. 7B GPU profili ana modeldir; 14B modeli silinmeden
+opsiyonel CPU profili olarak tutulur.
+
+Arc 140V üzerinde 14B model dosyası yaklaşık 7.9 GiB'dir. WSL/OpenVINO GPU
+derlemesinde bu ağırlıklar USM grafik bellek havuzunu doldurduğu için ek çalışma
+tamponu ayrılamamıştır. WSL RAM'i 24 GiB'ye yükseltildiğinde dahi süreç yaklaşık
+9.54 GiB RSS'de GPU USM tahsis hatası vermiştir; dolayısıyla sorun normal WSL RAM
+tükenmesi değildir. Aynı model CPU'da, 4.2 GiB büyüklüğündeki 7B profil ise GPU'da
+başarıyla çalışır.
+
+Örnek PDF ile yapılan gerçek denetimde 7B GPU hattı yaklaşık 74–81 saniyede,
+14B CPU hattı yaklaşık 10 dakikada tamamlanmıştır. Son sıkılaştırılmış 7B sonucu;
+konteyner, brüt/net ağırlık, hacim, liman ve taraf şehirlerini 14B sonucu ile aynı
+kritik değerlere eşleştirmiştir. Model çıktıları yine de insan onayından geçmelidir.
+
+## İlk WSL2 kurulumu
+
+### 1. WSL bellek profilini uygula
+
+Projedeki [`.wslconfig.example`](.wslconfig.example) dosyası 32 GiB RAM'li bu
+makine için WSL'ye 24 GiB RAM ve 8 GiB swap ayırır. Ayar tüm WSL2 dağıtımlarını
+etkiler.
+
+PowerShell:
+
+```powershell
+Copy-Item .wslconfig.example $env:USERPROFILE\.wslconfig
+wsl --shutdown
+```
+
+Bu dosyanın biçimi ve varsayılanlar için Microsoft'un
+[WSL gelişmiş ayarlar belgesine](https://learn.microsoft.com/windows/wsl/wsl-config)
+bakılabilir.
+
+### 2. Projeyi Linux dosya sistemine senkronla
+
+Ubuntu terminali:
 
 ```bash
-pip install -r requirements.txt
+bash '/mnt/c/Users/ardam/Desktop/Yazılım_Siber/CerberusVision/scripts/wsl_sync.sh'
+cd ~/projects/CerberusVision
 ```
 
-### 3. Qwen Modeli İndirme
+Senkronizasyon `.git`, `.venv`, `.env`, model, log, upload, `veriler` ve önbellekleri
+kopyalamaz. Hedefteki `.env`, `.venv`, `models/`, `logs/`, `uploads/` ve keşfedilen
+veri kümesi korunur. Kaynak kod için esas kopya Windows çalışma alanıdır; WSL
+kopyasında yapılan kaynak değişiklikleri bir sonraki senkronizasyonda üzerine
+yazılabilir.
 
-Sistem, Qwen-2.5-14B-Instruct modelinin OpenVINO INT4 formatını kullanır. Modeli indirmek için:
+### 3. Python ve bağımlılıkları kur
 
 ```bash
-# Hugging Face'den OpenVINO formatında indirin
-# https://huggingface.co/Qwen/Qwen2.5-14B-Instruct
-
-# OpenVINO'ya dönüştürün veya hazır INT4 sürümünü kullanın
-# Varsayılan konum: ./models/Qwen-2.5-14B-Instruct-INT4
-
-# Alternatif olarak ortam değişkeni ile yol belirtebilirsiniz:
-set QWEN_MODEL_PATH=C:\path\to\your\model
+cd ~/projects/CerberusVision
+./scripts/wsl_setup.sh
 ```
 
-### 4. DeepSeek API Key (Benchmark için - opsiyonel)
+Betik kullanıcı hesabına sabitlenmiş `uv 0.11.28` ve yönetilen Python 3.12 kurar;
+sistem Python'una ve `apt` paketlerine dokunmaz. Tekrar çalıştırılabilir ve mevcut
+`.venv` ortamını koruyarak bağımlılıkları günceller.
+
+### 4. Varsayılan GPU modelini indir
 
 ```bash
-# Windows
-set DEEPSEEK_API_KEY=your_api_key_here
-
-# Linux/macOS
-export DEEPSEEK_API_KEY=your_api_key_here
+./scripts/wsl_model_setup.sh
 ```
+
+Varsayılan depo
+[`OpenVINO/Qwen2.5-7B-Instruct-int4-ov`](https://huggingface.co/OpenVINO/Qwen2.5-7B-Instruct-int4-ov)
+ve hedef `models/Qwen-2.5-7B-Instruct-INT4` dizinidir.
+
+Opsiyonel 14B CPU modelini kurmak için:
+
+```bash
+QWEN_MODEL_ID='OpenVINO/Qwen2.5-14B-Instruct-int4-ov' \
+QWEN_MODEL_PATH="$PWD/models/Qwen-2.5-14B-Instruct-INT4" \
+./scripts/wsl_model_setup.sh
+```
+
+Hazır OpenVINO 14B modelinin kaynağı:
+[`OpenVINO/Qwen2.5-14B-Instruct-int4-ov`](https://huggingface.co/OpenVINO/Qwen2.5-14B-Instruct-int4-ov).
+
+### 5. Model profilini seç
+
+```bash
+./scripts/wsl_profile.sh gpu      # 7B + GPU (varsayılan)
+./scripts/wsl_profile.sh quality  # 14B + CPU
+./scripts/wsl_profile.sh show     # etkin yolu ve aygıtı göster
+```
+
+Profil değişikliğinden sonra çalışan sunucuyu yeniden başlatın.
 
 ## Çalıştırma
 
-### Web Uygulaması
+```bash
+cd ~/projects/CerberusVision
+./scripts/wsl_run.sh
+```
+
+Tarayıcı: `http://localhost:8000`
+
+Sunucu `.env` dosyasını yükler ve varsayılan olarak `0.0.0.0:8000` üzerinde
+çalışır. Portu geçici değiştirmek için:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+CERBERUS_PORT=8080 ./scripts/wsl_run.sh
 ```
 
-Tarayıcıda açın: `http://localhost:8000`
-
-### Benchmark (api_compare.py)
+## Doğrulama komutları
 
 ```bash
-# OCR metni ile kıyaslama
-python scripts/api_compare.py --ocr-text logs/session_id/ocr_layout_text.txt
+# Otomatik testler
+./.venv/bin/python -m pytest -q
 
-# PDF ile kıyaslama (OCR önce çalışır)
-python scripts/api_compare.py --pdf uploads/sample.pdf --output benchmark_report.json
+# Paket ve OpenVINO aygıt kontrolü
+./.venv/bin/python scripts/wsl_smoke.py --require-model
+
+# Modeli gerçekten yükle ve kısa token üret
+./.venv/bin/python scripts/wsl_smoke.py --require-model --probe-model
+
+# Gerçek PDF OCR denetimi
+./.venv/bin/python scripts/wsl_smoke.py --pdf konsimentotalimatornek3s.pdf
+
+# FastAPI readiness ve tam PDF/SSE işlem hattı
+./scripts/wsl_api_smoke.sh --require-ready --pdf konsimentotalimatornek3s.pdf
+
+# GPU özellikleri ve bellek sınırları
+./.venv/bin/python scripts/wsl_gpu_info.py
 ```
 
-### Testler
+`/health`, model yolu ve seçili OpenVINO aygıtı hazırsa HTTP 200; eksikse ayrıntılı
+kontrol raporuyla HTTP 503 döndürür.
+
+## DeepSeek kısa risk denetimi
+
+Varsayılan mod `risk`, eşik `30`'dur. Önce ücretsiz yerel kontroller çalışır.
+DeepSeek'e tam OCR veya tam JSON gönderilmez; yalnızca bulgular, ilgili kritik
+değerler ve en fazla 2500 karakterlik seçilmiş OCR satırları gönderilir.
+
+`.env`:
+
+```dotenv
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_REVIEW_MODE=risk
+DEEPSEEK_RISK_THRESHOLD=30
+DEEPSEEK_MAX_OCR_EXCERPT_CHARS=2500
+```
+
+Modlar:
+
+- `off`: Bulut denetimi tamamen kapalıdır.
+- `manual`: Yalnızca kullanıcı endpoint/CLI seçeneğiyle çalışır.
+- `risk`: Yerel risk eşik veya üstündeyse otomatik çalışır.
+- `always`: Her belgede kısa denetim çalışır.
+
+DeepSeek hatası yerel JSON/XML üretimini durdurmaz. Kullanıcı formu değiştirdiğinde
+eski bulut skoru geçersizleştirilir ve yeni veri otomatik olarak buluta gönderilmez.
+
+Audit CLI:
 
 ```bash
-pytest tests/ -v
+# Yerel model + yerel risk politikası
+./.venv/bin/python scripts/api_compare.py \
+  --ocr-text logs/SESSION_ID/ocr_layout_text.txt
+
+# Açıkça tek seferlik kısa bulut yorumu iste
+./.venv/bin/python scripts/api_compare.py \
+  --pdf uploads/sample.pdf --cloud-review --output audit_report.json
 ```
 
-## Sistem Mimarisi Detayları
+## Ortam değişkenleri
 
-### Faz 1: Web Arayüzü
+| Değişken | WSL varsayılanı | Açıklama |
+|---|---|---|
+| `QWEN_MODEL_PATH` | `.../Qwen-2.5-7B-Instruct-INT4` | Etkin OpenVINO model dizini |
+| `OPENVINO_DEVICE` | `GPU` | `GPU` veya `CPU` |
+| `OPENVINO_CACHE_DIR` | `.openvino_cache` | Derlenmiş OpenVINO önbelleği |
+| `OPENVINO_KV_CACHE_PRECISION` | `u8` | Daha düşük KV-cache bellek kullanımı |
+| `SSE_TIMEOUT_SECONDS` | `1800` | Uzun yerel çıkarım için SSE bekleme süresi |
+| `DEEPSEEK_API_KEY` | boş | Opsiyonel kısa bulut denetimi |
+| `DEEPSEEK_REVIEW_MODE` | `risk` | `off`, `manual`, `risk`, `always` |
+| `DEEPSEEK_RISK_THRESHOLD` | `30` | Otomatik kısa denetim eşiği |
+| `DEEPSEEK_MAX_OCR_EXCERPT_CHARS` | `2500` | Seçilmiş OCR metni üst sınırı |
+| `DOCUMENT_SEARCH_PROVIDER` | `auto` | `brave`, mevcut hesaplar için `google` veya otomatik seçim |
+| `BRAVE_SEARCH_API_KEY` | boş | Brave Search API anahtarı |
+| `GOOGLE_SEARCH_API_KEY` | boş | Mevcut Google Custom Search JSON API anahtarı |
+| `GOOGLE_SEARCH_ENGINE_ID` | boş | Google Programmable Search Engine kimliği |
+| `DOCUMENT_SEARCH_OUTPUT_DIR` | `veriler/discovered` | Kabul, bekleme ve manifest çıktı kökü |
+| `DOCUMENT_SEARCH_MAX_RESULTS` | `20` | Bir çalıştırmada incelenecek azami aday |
 
-- **Split Screen:** Sol tarafta PDF önizleme (`<iframe>`), sağ tarafta XML çıktısı ve interaktif form
-- **SSE (Server-Sent Events):** Canlı işlem durumu akışı ("OCR İşleniyor...", "LLM Analizi...", "XML Doğrulanıyor")
-- **Draft Mekanizması:** Eksik zorunlu alanlar kırmızı renkte (`bg-red-50`, `border-red-300`) "(Required)" etiketiyle gösterilir
-- **Tasarım:** Light mode, glassmorphism paneller, teal aksan renkleri
-
-### Faz 2: Spatial OCR (Layout Preservation)
-
-PaddleOCR'ın bounding box koordinatları kullanılarak uzamsal düzen korunur:
-
-1. **Y-Eksenine Göre Gruplama:** Yakın Y koordinatlarındaki metin blokları aynı satır olarak gruplanır (`y_threshold = 15.0`)
-2. **X-Eksenine Göre Sıralama:** Aynı satırdaki metinler X koordinatına göre sıralanır
-3. **Orantılı Boşluk:** Metin blokları arasındaki fiziksel mesafeye orantılı olarak boşluk karakteri eklenir (`space_factor = 0.15`)
-
-Bu algoritma, konteyner numaraları ile ağırlık/hacim gibi yan yana sütun verilerinin bağlamının korunmasını sağlar.
-
-### Faz 3: LLM Entegrasyonu (Guided Decoding)
-
-- **openvino-genai SDK:** Native Intel altyapısı, LangChain/LlamaIndex bağımlılığı yok
-- **Guided Decoding (JSON Mode):** Model token üretirken sadece JSON şemasına uyan karakterler üretilir
-- **Pydantic Schema:** `ShippingInstruction` modelinden otomatik JSON schema türetilir
-- **Sıcaklık:** 0.1 (deterministik çıktı)
-
-### Faz 4: XML Dönüşümü ve XSD Doğrulaması
-
-- **DCSA v2 Subset:** Orijinal DCSA şemasının sadeleştirilmiş alt kümesi
-- **lxml ile Namespace Desteği:** `http://dcsa.org/schemas/si/v2`
-- **Graceful Degradation:** Zorunlu alan eksikse işlem durmaz; belge "DRAFT" statüsüne alınır
-- **Mandatory Field Kontrolü:** 21 zorunlu alan otomatik kontrol edilir
-
-### Faz 5: Audit Trail
-
-Her işlem oturumu `logs/` klasörüne kaydedilir:
-
-```
-logs/
-└── 20260115_140530_123456/
-    ├── ocr_layout_text.txt       # OCR'ın ürettiği uzamsal metin
-    ├── ocr_boxes.json            # Bounding box koordinatları
-    ├── llm_raw_output.json       # LLM'in ham JSON çıktısı
-    ├── shipping_instruction_output.xml  # DCSA XML çıktısı
-    ├── validation_report.json    # XSD doğrulama raporu
-    └── processing_summary.json   # İşlem özeti
-```
-
-### Faz 6: Benchmark
-
-`scripts/api_compare.py` şu adımları izler:
-
-1. OCR metnini alır (dosyadan veya PDF'ten)
-2. Lokal Qwen modeli ile JSON çıkarımı yapar
-3. DeepSeek API ile referans JSON çıkarımı yapar
-4. İki sonucu alan bazında karşılaştırır (match/mismatch sayısı)
-5. Sonuçları `logs/` altına JSON rapor olarak kaydeder
-
-## Ortam Değişkenleri
-
-| Değişken | Varsayılan | Açıklama |
-|----------|-----------|----------|
-| `QWEN_MODEL_PATH` | `./models/Qwen-2.5-14B-Instruct-INT4` | OpenVINO model dizini |
-| `OPENVINO_DEVICE` | `GPU` | OpenVINO cihazı (GPU/CPU/NPU) |
-| `DEEPSEEK_API_KEY` | - | DeepSeek API anahtarı (benchmark için) |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek API base URL |
-
-## API Endpoints
+## API
 
 | Method | Path | Açıklama |
-|--------|------|----------|
-| `POST` | `/api/upload` | PDF yükle, session ID döndür |
-| `POST` | `/api/upload-and-stream` | PDF yükle ve SSE stream başlat |
-| `GET` | `/api/stream/{session_id}` | SSE durum akışı |
-| `GET` | `/api/status/{session_id}` | İşlem durumu sorgula |
-| `GET` | `/health` | Sağlık kontrolü |
+|---|---|---|
+| `POST` | `/api/upload` | En fazla 50 MB PDF yükler ve session ID döndürür |
+| `POST` | `/api/upload-and-stream` | PDF yükler ve SSE durum akışını başlatır |
+| `GET` | `/api/stream/{session_id}` | SSE işlem durumları |
+| `GET` | `/api/status/{session_id}` | Son işlem durumu |
+| `PUT` | `/api/sessions/{session_id}/draft` | Düzenlenmiş taslağı ve XML'i kaydeder |
+| `POST` | `/api/sessions/{session_id}/approve` | Zorunlu alan/XSD kontrolü sonrası onaylar |
+| `POST` | `/api/sessions/{session_id}/cloud-review` | Tek seferlik kısa DeepSeek yorumu |
+| `GET` | `/health` | Bağımlılık, model ve OpenVINO readiness raporu |
 
-## Proje Yapısı
+## Audit kayıtları
 
+Her işlem `logs/<session_id>/` altında OCR metni/kutuları, yerel model çıktısı,
+XML, XSD doğrulama raporu, yerel/bulut risk raporu ve işlem özetini saklar.
+`logs/`, `uploads/`, `models/`, `.env` ve OpenVINO önbelleği Git'e eklenmez.
+
+## Proje yapısı
+
+```text
+app/
+  llm/                 Yerel Qwen, yerel risk ve kısa DeepSeek hakemi
+  llm/document_relevance.py  Keşif için yalnızca konu ve İngilizce filtresi
+  ocr/                 PaddleOCR ve uzamsal satır gruplama
+  routes/              Upload, SSE, taslak, onay ve cloud-review API'leri
+  search/              Resmî arama API'leri, güvenli indirme ve yerel ön eleme
+  xml/                 DCSA XML dönüştürme ve XSD doğrulama
+scripts/
+  find_shipping_documents.py  İngilizce örnek belge keşif CLI'ı
+  wsl_sync.sh          Windows kaynağını WSL home'a senkronlar
+  wsl_setup.sh         uv, Python ve bağımlılık kurulumu
+  wsl_model_setup.sh   OpenVINO modelini indirir
+  wsl_profile.sh       7B GPU / 14B CPU profilini seçer
+  wsl_run.sh           FastAPI sunucusunu başlatır
+  wsl_smoke.py         Bağımlılık, OCR ve model probu
+  wsl_api_smoke.sh     Readiness ve tam HTTP/SSE denetimi
+  wsl_gpu_info.py      OpenVINO GPU özellik raporu
+tests/                 97 otomatik regresyon testi
 ```
-CerberusVision/
-├── app/
-│   ├── main.py                 # FastAPI uygulaması
-│   ├── config.py               # Konfigürasyon
-│   ├── models.py               # Pydantic modelleri (JSON schema)
-│   ├── ocr/
-│   │   ├── spatial_ocr.py      # PaddleOCR entegrasyonu
-│   │   └── line_grouper.py     # Uzamsal düzen koruma algoritması
-│   ├── llm/
-│   │   └── inference.py        # OpenVINO GenAI guided decoding
-│   ├── xml/
-│   │   ├── converter.py        # JSON → DCSA XML
-│   │   ├── validator.py        # XSD doğrulama + graceful degradation
-│   │   └── schemas/
-│   │       └── shipping_instruction.xsd
-│   ├── routes/
-│   │   └── processing.py       # Upload + SSE endpoints
-│   └── utils/
-│       └── audit_logger.py     # Audit trail logging
-├── static/
-│   ├── index.html              # Split-screen UI
-│   └── app.js                  # Frontend logic
-├── scripts/
-│   └── api_compare.py          # DeepSeek benchmark
-├── tests/
-│   ├── test_line_grouper.py    # Spatial OCR tests
-│   ├── test_xml_converter.py   # XML conversion tests
-│   ├── test_validator.py       # XSD validation tests
-│   └── test_guided_decoding.py # JSON schema tests
-├── logs/                       # Audit trail (gitignore)
-├── uploads/                    # Temp PDF storage (gitignore)
-├── requirements.txt
-├── README.md
-├── LICENSE
-└── .gitignore
-```
-
-## Donanım Gereksinimleri
-
-**Not:** Bu proje, yapay zeka çıkarımlarında OpenVINO altyapısını kullandığı için özellikle yüksek performanslı Intel işlemciler (CPU) ve Intel ekran kartları (GPU) ile tam uyumlu çalışacak şekilde tasarlanmış ve optimize edilmiştir. Modelin yüklenmesi için depolama alanında yaklaşık 10 GB boşluk önerilir.
 
 ## Lisans
 
-MIT License - detaylar için `LICENSE` dosyasına bakın.
+MIT License. Ayrıntılar için `LICENSE` dosyasına bakın.

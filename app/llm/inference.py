@@ -1,7 +1,8 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+import re
+from typing import Optional, Dict, Any, Tuple
 from app.config import settings
 from app.models import ShippingInstruction
 
@@ -23,7 +24,17 @@ _system_prompt = (
     "equipment_list (equipment_reference, iso_equipment_code, is_shipper_owned, cargo_gross_weight, "
     "verified_gross_mass, seals, tare_weight), cargo_items (package_quantity, package_kind_code, "
     "description_of_goods, shipping_marks, commodity_code, weight, volume, equipment_references, "
-    "dangerous_goods_list), document_references, customs_information, remarks."
+    "dangerous_goods_list), document_references, customs_information, remarks. "
+    "Apply these mapping rules strictly: free-text port and place names belong in location_name; only populate "
+    "un_location_code when the source contains a valid five-character UN/LOCODE. POL means port of loading and "
+    "POD means port of discharge. Values marked KG/KGM are weights; values marked M3/CBM are volumes. Gross "
+    "weight belongs in equipment cargo_gross_weight and net cargo weight belongs in cargo_items.weight. Parse "
+    "European-formatted quantities such as 26.080,00 as 26080.00 and 28,16 as 28.16. Extract city and country "
+    "from party addresses when explicitly present. Equipment/container references normally contain four letters "
+    "followed by seven digits; preserve them in equipment_reference and link matching cargo equipment references. "
+    "Only populate place_of_issue when the document explicitly labels a place of issue; V.DAIRESI, VERGI DAIRESI, "
+    "and TAX OFFICE are tax-office labels and must never become place_of_issue. A contact name must be a person's "
+    "name; a telephone label or phone number belongs only in phone_number."
 )
 
 
@@ -37,9 +48,21 @@ def get_llm_pipeline():
     if not model_path.exists():
         raise FileNotFoundError(
             f"Model not found at {model_path}. "
-            f"Download Qwen-2.5-14B-Instruct-INT4 and set QWEN_MODEL_PATH environment variable."
+            "Run scripts/wsl_model_setup.sh or set QWEN_MODEL_PATH to an OpenVINO model."
         )
-    _llm_pipeline = openvino_genai.LLMPipeline(str(model_path), device=settings.model.device)
+    pipeline_config = {
+        "CACHE_DIR": settings.model.cache_dir,
+        "CACHE_MODE": "OPTIMIZE_SIZE",
+        "PERFORMANCE_HINT": "LATENCY",
+    }
+    weights_path = model_path / "openvino_model.bin"
+    if weights_path.exists():
+        pipeline_config["WEIGHTS_PATH"] = str(weights_path)
+    if settings.model.kv_cache_precision:
+        pipeline_config["KV_CACHE_PRECISION"] = settings.model.kv_cache_precision
+    _llm_pipeline = openvino_genai.LLMPipeline(
+        str(model_path), settings.model.device, pipeline_config
+    )
     return _llm_pipeline
 
 
@@ -73,18 +96,29 @@ def _build_generation_config():
 
     config = openvino_genai.GenerationConfig()
     config.max_new_tokens = settings.model.max_new_tokens
-    config.temperature = 0.1
-    config.top_p = 0.9
-    config.do_sample = True
-    schema = get_json_schema()
-    try:
-        config.structured_generation = json.dumps(schema)
-    except (AttributeError, TypeError):
-        try:
-            config.guided_decoding = json.dumps(schema)
-        except (AttributeError, TypeError):
-            config.json_schema = json.dumps(schema)
+    config.do_sample = False
+    _configure_structured_output(
+        config,
+        openvino_genai,
+        json.dumps(get_json_schema()),
+    )
     return config
+
+
+def _configure_structured_output(config, openvino_genai, schema_json: str) -> Optional[str]:
+    """Use the newest supported OpenVINO JSON constraint without breaking older builds."""
+    structured_config_type = getattr(openvino_genai, "StructuredOutputConfig", None)
+    if structured_config_type is not None and hasattr(config, "structured_output_config"):
+        structured_config = structured_config_type()
+        structured_config.json_schema = schema_json
+        config.structured_output_config = structured_config
+        return "structured_output_config"
+
+    for attribute in ("structured_generation", "guided_decoding", "json_schema"):
+        if hasattr(config, attribute):
+            setattr(config, attribute, schema_json)
+            return attribute
+    return None
 
 
 def parse_llm_output(raw_output: str) -> ShippingInstruction:
@@ -101,11 +135,18 @@ def _extract_json(text: str) -> str:
     return text[start:end+1]
 
 
-def run_inference_with_fallback(ocr_text: str) -> ShippingInstruction:
+def _repair_json(text: str) -> str:
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    text = re.sub(r"([{,])\s*'([^']*)'\s*:", r'\1"\2":', text)
+    return text
+
+
+def run_inference_with_fallback(ocr_text: str) -> Tuple[ShippingInstruction, str]:
     raw_output = run_guided_inference(ocr_text)
     try:
         return parse_llm_output(raw_output), raw_output
     except Exception:
         cleaned = _extract_json(raw_output)
+        cleaned = _repair_json(cleaned)
         data = json.loads(cleaned)
         return ShippingInstruction.model_validate(data), raw_output

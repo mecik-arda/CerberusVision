@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Any, Optional, List, Tuple
 from app.config import settings
 
 
@@ -16,11 +16,11 @@ def get_session_dir(session_id: str) -> Path:
     return session_dir
 
 
-def log_ocr_result(session_id: str, layout_text: str, boxes_data: Optional[dict] = None) -> Path:
+def log_ocr_result(session_id: str, layout_text: str, boxes_data: Optional[Any] = None) -> Path:
     session_dir = get_session_dir(session_id)
     ocr_path = session_dir / "ocr_layout_text.txt"
     ocr_path.write_text(layout_text, encoding="utf-8")
-    if boxes_data:
+    if boxes_data is not None:
         boxes_path = session_dir / "ocr_boxes.json"
         boxes_path.write_text(json.dumps(boxes_data, indent=2, ensure_ascii=False), encoding="utf-8")
     return ocr_path
@@ -69,6 +69,7 @@ def log_processing_summary(
     llm_path: Optional[str] = None,
     xml_path: Optional[str] = None,
     validation_path: Optional[str] = None,
+    cloud_review_path: Optional[str] = None,
 ) -> Path:
     session_dir = get_session_dir(session_id)
     summary = {
@@ -81,6 +82,7 @@ def log_processing_summary(
             "llm_raw_json": llm_path,
             "xml_output": xml_path,
             "validation_report": validation_path,
+            "cloud_review_report": cloud_review_path,
         },
     }
     summary_path = session_dir / "processing_summary.json"
@@ -88,20 +90,69 @@ def log_processing_summary(
     return summary_path
 
 
-def log_benchmark_report(
+def log_cloud_review_report(
     session_id: str,
-    local_result: dict,
-    deepseek_result: dict,
-    comparison: dict,
+    local_assessment: dict,
+    cloud_review_used: bool,
+    review: Optional[dict] = None,
+    sent_payload: Optional[dict] = None,
+    raw_output: Optional[str] = None,
+    error: Optional[str] = None,
+    label: str = "initial",
 ) -> Path:
     session_dir = get_session_dir(session_id)
     report = {
         "timestamp": datetime.now().isoformat(),
         "session_id": session_id,
-        "local_qwen_result": local_result,
-        "deepseek_result": deepseek_result,
-        "comparison": comparison,
+        "review_mode": settings.deepseek.review_mode,
+        "risk_threshold": settings.deepseek.risk_threshold,
+        "cloud_review_used": cloud_review_used,
+        "local_assessment": local_assessment,
+        "cloud_review": review,
+        "sent_payload": sent_payload,
+        "cloud_raw_output": raw_output,
+        "error": error,
     }
-    report_path = session_dir / "benchmark_report.json"
-    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    safe_label = label if label in {"initial", "manual", "draft", "approved"} else "initial"
+    report_path = session_dir / f"{safe_label}_cloud_review_report.json"
+    report_path.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     return report_path
+
+
+def log_user_revision(
+    session_id: str,
+    action: str,
+    instruction_data: dict,
+    xml_content: str,
+    is_valid: bool,
+    errors: List[str],
+    missing_fields: List[dict],
+) -> Tuple[Path, Path, Path]:
+    session_dir = get_session_dir(session_id)
+    safe_action = "approved" if action == "approved" else "draft"
+    json_path = session_dir / f"{safe_action}_instruction.json"
+    xml_path = session_dir / f"{safe_action}_shipping_instruction.xml"
+    validation_path = session_dir / f"{safe_action}_validation_report.json"
+    json_path.write_text(
+        json.dumps(instruction_data, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    xml_path.write_text(xml_content, encoding="utf-8")
+    validation_path.write_text(
+        json.dumps(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "session_id": session_id,
+                "action": safe_action,
+                "xsd_valid": is_valid,
+                "xsd_errors": errors,
+                "missing_mandatory_fields": missing_fields,
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return json_path, xml_path, validation_path

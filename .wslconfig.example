@@ -1,0 +1,4 @@
+# Copy to %UserProfile%\.wslconfig. Settings apply to every WSL2 distribution.
+[wsl2]
+memory=24GB
+swap=8GB

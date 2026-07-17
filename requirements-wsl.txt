@@ -1,0 +1,4 @@
+# WSL2 / Ubuntu profile. Python 3.12 is required by scripts/wsl_setup.sh.
+-r requirements.txt
+setuptools==83.0.0
+huggingface-hub==1.23.0

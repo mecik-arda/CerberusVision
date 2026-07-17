@@ -68,10 +68,3 @@ def process_pdf_with_spatial_ocr(
         all_pages_boxes.append(boxes)
     combined_text = "\n\n--- PAGE BREAK ---\n\n".join(all_pages_text)
     return combined_text, all_pages_boxes
-
-
-def process_pdf_with_spatial_ocr_pymupdf(
-    pdf_path: Path,
-    lang: str = None,
-) -> Tuple[str, List[List[TextBox]]]:
-    return process_pdf_with_spatial_ocr(pdf_path, lang, dpi=200)

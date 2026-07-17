@@ -2,7 +2,12 @@ from __future__ import annotations
 from typing import List, Tuple, Optional
 from lxml import etree
 from app.config import settings
-from app.models import ShippingInstruction, FieldValidation, ProcessingStatus
+from app.models import (
+    ShippingInstruction,
+    FieldValidation,
+    PartyRoleCode,
+    ProcessingStatus,
+)
 
 
 MANDATORY_FIELDS = [
@@ -12,14 +17,6 @@ MANDATORY_FIELDS = [
     ("carrier_booking_reference", "Carrier Booking Reference"),
     ("issue_date", "Issue Date"),
     ("place_of_issue.location_name", "Place of Issue"),
-    ("parties[0].party_name", "Shipper Name"),
-    ("parties[0].address.street", "Shipper Address"),
-    ("parties[0].address.city", "Shipper City"),
-    ("parties[0].address.country_code", "Shipper Country"),
-    ("parties[1].party_name", "Consignee Name"),
-    ("parties[1].address.street", "Consignee Address"),
-    ("parties[1].address.city", "Consignee City"),
-    ("parties[1].address.country_code", "Consignee Country"),
     ("transport_plans[0].port_of_loading.location_name", "Port of Loading"),
     ("transport_plans[0].port_of_discharge.location_name", "Port of Discharge"),
     ("equipment_list[0].equipment_reference", "Equipment Reference"),
@@ -28,6 +25,19 @@ MANDATORY_FIELDS = [
     ("cargo_items[0].description_of_goods", "Description of Goods"),
     ("cargo_items[0].weight.weight_value", "Cargo Weight"),
 ]
+
+PARTY_MANDATORY_FIELDS = {
+    PartyRoleCode.SHIPPER: (
+        "Shipper",
+        [("party_name", "Name"), ("address.street", "Address"),
+         ("address.city", "City"), ("address.country_code", "Country")],
+    ),
+    PartyRoleCode.CONSIGNEE: (
+        "Consignee",
+        [("party_name", "Name"), ("address.street", "Address"),
+         ("address.city", "City"), ("address.country_code", "Country")],
+    ),
+}
 
 
 def load_xsd_schema() -> etree.XMLSchema:
@@ -93,6 +103,28 @@ def check_mandatory_fields(si: ShippingInstruction) -> List[FieldValidation]:
                     is_missing=True,
                 )
             )
+    for role, (role_label, fields) in PARTY_MANDATORY_FIELDS.items():
+        party_index = next(
+            (index for index, party in enumerate(si.parties) if party.party_role_code == role),
+            None,
+        )
+        for relative_path, field_label in fields:
+            path = (
+                f"parties[{party_index}].{relative_path}"
+                if party_index is not None
+                else f"parties[role={role.value}].{relative_path}"
+            )
+            value = _get_nested_value(si.parties[party_index], relative_path) if party_index is not None else None
+            if value is None or (isinstance(value, str) and value.strip() == ""):
+                missing.append(
+                    FieldValidation(
+                        field_path=path,
+                        field_label=f"{role_label} {field_label}",
+                        value=None,
+                        is_required=True,
+                        is_missing=True,
+                    )
+                )
     return missing
 
 

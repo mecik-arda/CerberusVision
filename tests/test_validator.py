@@ -125,6 +125,19 @@ class TestCheckMandatoryFields:
             assert field.is_missing is True
             assert field.value is None
 
+    def test_party_order_is_resolved_by_role(self):
+        si = create_complete_si()
+        si.parties.reverse()
+        missing = check_mandatory_fields(si)
+        assert missing == []
+
+    def test_missing_shipper_is_not_masked_by_consignee(self):
+        si = create_complete_si()
+        si.parties = [si.parties[1]]
+        missing_labels = [field.field_label for field in check_mandatory_fields(si)]
+        assert "Shipper Name" in missing_labels
+        assert "Shipper Address" in missing_labels
+
 
 class TestValidateAndGrade:
     def test_complete_si_returns_completed(self):

@@ -1,7 +1,12 @@
 import json
 import pytest
 from app.models import ShippingInstruction
-from app.llm.inference import _extract_json, parse_llm_output, get_json_schema
+from app.llm.inference import (
+    _configure_structured_output,
+    _extract_json,
+    get_json_schema,
+    parse_llm_output,
+)
 
 
 VALID_LLM_OUTPUT = {
@@ -165,3 +170,24 @@ class TestJsonSchema:
         dumped = si.model_dump(mode="json")
         json.dumps(dumped)
         assert dumped["shipping_instruction_reference"] == "SI-2026-001"
+
+    def test_openvino_structured_output_config_is_used_when_available(self):
+        class StructuredOutputConfig:
+            json_schema = ""
+
+        class Module:
+            pass
+
+        class Config:
+            structured_output_config = None
+
+        Module.StructuredOutputConfig = StructuredOutputConfig
+        config = Config()
+        selected = _configure_structured_output(config, Module, '{"type":"object"}')
+
+        assert selected == "structured_output_config"
+        assert config.structured_output_config.json_schema == '{"type":"object"}'
+
+    def test_unsupported_openvino_version_falls_back_without_error(self):
+        selected = _configure_structured_output(object(), object(), '{"type":"object"}')
+        assert selected is None
