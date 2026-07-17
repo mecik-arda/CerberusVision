@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Any, Dict, Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Dict, Optional, List, Literal
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from enum import Enum
 
 
@@ -261,8 +261,19 @@ class ProcessingResult(BaseModel):
     suspicious_fields: List[str] = Field(default_factory=list)
     validation_errors: List[str] = Field(default_factory=list)
     missing_fields: List[FieldValidation] = Field(default_factory=list)
+    document_language: Optional[Literal["tr", "en"]] = None
+    output_language: Optional[Literal["tr", "en"]] = None
     message: Optional[str] = None
 
 
 class SaveInstructionRequest(BaseModel):
     shipping_instruction: ShippingInstruction
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    deepseek_api_key: Optional[SecretStr] = Field(default=None, max_length=512)
+    clear_deepseek_api_key: bool = False
+    deepseek_review_mode: Optional[Literal["off", "manual", "risk", "always"]] = None
+    deepseek_risk_threshold: Optional[int] = Field(default=None, ge=0, le=100)

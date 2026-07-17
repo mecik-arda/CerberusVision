@@ -1,12 +1,11 @@
 from __future__ import annotations
 import asyncio
 import json
-import shutil
 from dataclasses import asdict
 from pathlib import Path
 from time import monotonic
 from typing import AsyncGenerator
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse, JSONResponse
 from app.config import settings
 from app.security import enforce_upload_rate_limit, require_api_key
@@ -14,8 +13,19 @@ from app.models import (
     DocumentStatusCode,
     ProcessingStatus,
     ProcessingResult,
+    RuntimeSettingsUpdate,
     SaveInstructionRequest,
     ShippingInstruction,
+)
+from app.document_ingestion import (
+    DocumentValidationError,
+    IMAGE_EXTENSIONS,
+    SUPPORTED_DOCUMENT_EXTENSIONS,
+    TEXT_DOCUMENT_EXTENSIONS,
+    UploadSizeLimitError,
+    copy_and_validate_upload,
+    extract_text_document,
+    validate_supported_filename,
 )
 from app.utils.audit_logger import (
     create_session_id,
@@ -27,8 +37,12 @@ from app.utils.audit_logger import (
     log_cloud_review_report,
     log_user_revision,
 )
+from app.utils.model_discovery import discover_local_models
 
-from app.ocr.spatial_ocr import process_pdf_with_spatial_ocr
+from app.ocr.spatial_ocr import (
+    process_image_with_spatial_ocr,
+    process_pdf_with_spatial_ocr,
+)
 from app.llm.inference import run_inference_with_fallback
 from app.llm.cloud_inference import run_deepseek_review
 from app.llm.local_audit import assess_local_result, should_run_automatic_cloud_review
@@ -58,24 +72,67 @@ _active_pipeline_lock = asyncio.Lock()
 
 _PROCESSING_STORE_MAX_SIZE = 100
 _MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+_SUPPORTED_LANGUAGES = {"tr", "en"}
 
 
-class UploadTooLargeError(ValueError):
-    pass
+UploadTooLargeError = UploadSizeLimitError
 
 
-class _SizeLimitedReader:
-    def __init__(self, raw_file, max_size: int):
-        self.raw_file = raw_file
-        self.max_size = max_size
-        self.total = 0
+def _validate_processing_languages(
+    document_language: str,
+    output_language: str,
+) -> tuple[str, str]:
+    normalized_document_language = document_language.strip().lower()
+    normalized_output_language = output_language.strip().lower()
+    if normalized_document_language not in _SUPPORTED_LANGUAGES:
+        raise ValueError("Document language must be 'tr' or 'en'.")
+    if normalized_output_language not in _SUPPORTED_LANGUAGES:
+        raise ValueError("Output language must be 'tr' or 'en'.")
+    return normalized_document_language, normalized_output_language
 
-    def read(self, size: int = -1) -> bytes:
-        chunk = self.raw_file.read(size)
-        self.total += len(chunk)
-        if self.total > self.max_size:
-            raise UploadTooLargeError
-        return chunk
+
+def _runtime_settings_payload() -> dict:
+    model_path = Path(settings.model.model_path)
+    devices: list[str] = []
+    try:
+        from openvino import Core
+
+        devices = list(Core().available_devices)
+    except Exception:
+        devices = []
+    requested_device = settings.model.device.split(".", 1)[0].upper()
+    device_ready = any(
+        device.split(".", 1)[0].upper() == requested_device for device in devices
+    )
+    return {
+        "local_model": {
+            "name": model_path.name,
+            "path": str(model_path),
+            "device": settings.model.device,
+            "available_devices": devices,
+            "ready": model_path.exists() and device_ready,
+            "max_new_tokens": settings.model.max_new_tokens,
+            "kv_cache_precision": settings.model.kv_cache_precision,
+        },
+        "deepseek": {
+            "model": settings.deepseek.model_name,
+            "configured": bool(settings.deepseek.api_key),
+            "review_mode": settings.deepseek.review_mode,
+            "risk_threshold": settings.deepseek.risk_threshold,
+        },
+        "server": {
+            "api_key_required": bool(settings.server.api_key),
+        },
+        "languages": {
+            "document": sorted(_SUPPORTED_LANGUAGES),
+            "output": sorted(_SUPPORTED_LANGUAGES),
+        },
+        "supported_formats": sorted(SUPPORTED_DOCUMENT_EXTENSIONS),
+        "installed_models": discover_local_models(
+            settings.base_dir,
+            settings.model.model_path,
+        ),
+    }
 
 
 def _emit_status(session_id: str, status: ProcessingStatus, message: str, data: dict = None) -> str:
@@ -129,23 +186,23 @@ async def _release_pipeline_slot(session_id: str) -> None:
 
 
 def _copy_upload_to_path(file: UploadFile, pdf_path: Path) -> None:
-    source = file.file
-    source.seek(0)
-    if source.read(5) != b"%PDF-":
-        raise ValueError("The uploaded file is not a valid PDF.")
-    source.seek(0)
-    limited_reader = _SizeLimitedReader(source, _MAX_UPLOAD_SIZE)
-    try:
-        with pdf_path.open("wb") as destination:
-            shutil.copyfileobj(limited_reader, destination, length=1024 * 1024)
-    except Exception:
-        pdf_path.unlink(missing_ok=True)
-        raise
+    if validate_supported_filename(file.filename) != ".pdf":
+        raise DocumentValidationError("The uploaded file is not a valid PDF.")
+    copy_and_validate_upload(file, pdf_path, _MAX_UPLOAD_SIZE)
 
 
 async def _save_uploaded_pdf(file: UploadFile, pdf_path: Path) -> None:
     await _run_blocking(_copy_upload_to_path, file, pdf_path)
 
+
+
+async def _save_uploaded_document(file: UploadFile, document_path: Path) -> str:
+    return await _run_blocking(
+        copy_and_validate_upload,
+        file,
+        document_path,
+        _MAX_UPLOAD_SIZE,
+    )
 
 def _local_review_data(assessment, summary: str) -> dict:
     return {
@@ -214,29 +271,70 @@ async def process_pdf_pipeline(
     session_id: str,
     filename: str,
     status_queue: asyncio.Queue,
+    document_language: str = "en",
+    output_language: str = "en",
 ):
-    async with _get_session_lock(session_id):
-        await _process_pdf_pipeline_locked(
-            pdf_path,
-            session_id,
-            filename,
-            status_queue,
-        )
+    await process_document_pipeline(
+        pdf_path,
+        session_id,
+        filename,
+        status_queue,
+        document_language,
+        output_language,
+    )
 
 
-async def _process_pdf_pipeline_locked(
-    pdf_path: Path,
+async def process_document_pipeline(
+    document_path: Path,
     session_id: str,
     filename: str,
     status_queue: asyncio.Queue,
+    document_language: str = "en",
+    output_language: str = "en",
+):
+    async with _get_session_lock(session_id):
+        await _process_document_pipeline_locked(
+            document_path,
+            session_id,
+            filename,
+            status_queue,
+            document_language,
+            output_language,
+        )
+
+
+async def _process_document_pipeline_locked(
+    document_path: Path,
+    session_id: str,
+    filename: str,
+    status_queue: asyncio.Queue,
+    document_language: str,
+    output_language: str,
 ):
     try:
         status_queue.put_nowait(_emit_status(
-            session_id, ProcessingStatus.OCR_PROCESSING, "OCR Isleniyor...",
+            session_id, ProcessingStatus.OCR_PROCESSING, "Belge icerigi isleniyor...",
         ))
 
         async with inference_semaphore:
-            ocr_text, boxes = await _run_blocking(process_pdf_with_spatial_ocr, pdf_path)
+            extension = validate_supported_filename(filename)
+            if extension == ".pdf":
+                ocr_text, boxes = await _run_blocking(
+                    process_pdf_with_spatial_ocr, document_path, document_language
+                )
+            elif extension in IMAGE_EXTENSIONS:
+                ocr_text, boxes = await _run_blocking(
+                    process_image_with_spatial_ocr, document_path, document_language
+                )
+            elif extension in TEXT_DOCUMENT_EXTENSIONS:
+                ocr_text = await _run_blocking(
+                    extract_text_document, document_path, extension
+                )
+                boxes = []
+            else:
+                raise DocumentValidationError("Unsupported document type.")
+        if not ocr_text.strip():
+            raise DocumentValidationError("No readable text was found in the document.")
         boxes_data = [[asdict(box) for box in page_boxes] for page_boxes in boxes]
         ocr_path = log_ocr_result(session_id, ocr_text, boxes_data)
 
@@ -246,7 +344,12 @@ async def _process_pdf_pipeline_locked(
         ))
 
         async with inference_semaphore:
-            si_model, raw_llm_json = await _run_blocking(run_inference_with_fallback, ocr_text)
+            si_model, raw_llm_json = await _run_blocking(
+                run_inference_with_fallback,
+                ocr_text,
+                document_language,
+                output_language,
+            )
         llm_path = log_llm_result(session_id, raw_llm_json)
         _session_models[session_id] = si_model
 
@@ -336,6 +439,8 @@ async def _process_pdf_pipeline_locked(
             "structured_data": si_model.model_dump(mode="json"),
             "validation_errors": errors,
             "missing_fields": [f.model_dump() for f in missing_fields],
+            "document_language": document_language,
+            "output_language": output_language,
             **review_data,
         }
 
@@ -356,7 +461,7 @@ async def _process_pdf_pipeline_locked(
         ))
 
     finally:
-        pdf_path.unlink(missing_ok=True)
+        document_path.unlink(missing_ok=True)
         status_queue.put_nowait(None)
         _mark_stream_queue_complete(session_id)
         await _release_pipeline_slot(session_id)
@@ -463,16 +568,48 @@ async def _event_generator(session_id: str) -> AsyncGenerator[str, None]:
         _drop_stream_queue(session_id)
 
 
+@router.get("/runtime-settings")
+async def get_runtime_settings():
+    return JSONResponse(content=_runtime_settings_payload())
+
+
+@router.put("/runtime-settings")
+async def update_runtime_settings(request: RuntimeSettingsUpdate):
+    if request.clear_deepseek_api_key:
+        settings.deepseek.api_key = None
+    elif request.deepseek_api_key is not None:
+        api_key = request.deepseek_api_key.get_secret_value().strip()
+        if not api_key:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "DeepSeek API key cannot be empty."},
+            )
+        settings.deepseek.api_key = api_key
+    if request.deepseek_review_mode is not None:
+        settings.deepseek.review_mode = request.deepseek_review_mode
+    if request.deepseek_risk_threshold is not None:
+        settings.deepseek.risk_threshold = request.deepseek_risk_threshold
+    return JSONResponse(content=_runtime_settings_payload())
+
+
 @router.post("/upload")
 async def upload_pdf(
     file: UploadFile = File(...),
+    document_language: str = Form("en"),
+    output_language: str = Form("en"),
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Only PDF files are accepted."},
+    try:
+        validate_supported_filename(file.filename)
+    except DocumentValidationError as error:
+        return JSONResponse(status_code=400, content={"error": str(error)})
+    try:
+        document_language, output_language = _validate_processing_languages(
+            document_language,
+            output_language,
         )
+    except ValueError as error:
+        return JSONResponse(status_code=400, content={"error": str(error)})
 
     session_id = create_session_id()
     if not await _reserve_pipeline_slot(session_id):
@@ -482,9 +619,9 @@ async def upload_pdf(
             headers={"Retry-After": "30"},
         )
     safe_filename = Path(file.filename).name
-    pdf_path = settings.uploads_dir / f"{session_id}_{safe_filename}"
+    document_path = settings.uploads_dir / f"{session_id}_{safe_filename}"
     try:
-        await _save_uploaded_pdf(file, pdf_path)
+        await _save_uploaded_document(file, document_path)
     except UploadTooLargeError:
         await _release_pipeline_slot(session_id)
         return JSONResponse(
@@ -501,16 +638,18 @@ async def upload_pdf(
     try:
         status_queue = _get_or_create_queue(session_id)
     except RuntimeError as error:
-        pdf_path.unlink(missing_ok=True)
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         return JSONResponse(status_code=503, content={"error": str(error)})
 
     asyncio.create_task(
-        process_pdf_pipeline(
-            pdf_path,
+        process_document_pipeline(
+            document_path,
             session_id,
             file.filename,
             status_queue,
+            document_language,
+            output_language,
         )
     )
 
@@ -738,13 +877,21 @@ async def _run_manual_cloud_review_locked(session_id: str):
 @router.post("/upload-and-stream")
 async def upload_and_stream(
     file: UploadFile = File(...),
+    document_language: str = Form("en"),
+    output_language: str = Form("en"),
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Only PDF files are accepted."},
+    try:
+        validate_supported_filename(file.filename)
+    except DocumentValidationError as error:
+        return JSONResponse(status_code=400, content={"error": str(error)})
+    try:
+        document_language, output_language = _validate_processing_languages(
+            document_language,
+            output_language,
         )
+    except ValueError as error:
+        return JSONResponse(status_code=400, content={"error": str(error)})
 
     session_id = create_session_id()
     if not await _reserve_pipeline_slot(session_id):
@@ -754,9 +901,9 @@ async def upload_and_stream(
             headers={"Retry-After": "30"},
         )
     safe_filename = Path(file.filename).name
-    pdf_path = settings.uploads_dir / f"{session_id}_{safe_filename}"
+    document_path = settings.uploads_dir / f"{session_id}_{safe_filename}"
     try:
-        await _save_uploaded_pdf(file, pdf_path)
+        await _save_uploaded_document(file, document_path)
     except UploadTooLargeError:
         await _release_pipeline_slot(session_id)
         return JSONResponse(
@@ -773,16 +920,18 @@ async def upload_and_stream(
     try:
         queue = _get_or_create_queue(session_id)
     except RuntimeError as error:
-        pdf_path.unlink(missing_ok=True)
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         return JSONResponse(status_code=503, content={"error": str(error)})
 
     asyncio.create_task(
-        process_pdf_pipeline(
-            pdf_path,
+        process_document_pipeline(
+            document_path,
             session_id,
             file.filename,
             queue,
+            document_language,
+            output_language,
         )
     )
 

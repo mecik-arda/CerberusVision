@@ -1,35 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE="${1:-/mnt/c/Users/ardam/Desktop/Yazılım_Siber/CerberusVision}"
-TARGET="${2:-$HOME/projects/CerberusVision}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [[ ! -d "$SOURCE" ]]; then
-  echo "Source project not found: $SOURCE" >&2
+if ! grep -qi microsoft /proc/sys/kernel/osrelease; then
+  echo "CerberusVision must be managed inside WSL2." >&2
   exit 1
 fi
 
-case "$TARGET" in
+case "$ROOT" in
   "$HOME"/*) ;;
   *)
-    echo "Refusing to sync outside the WSL home directory: $TARGET" >&2
+    echo "Project must live inside the WSL home directory: $ROOT" >&2
     exit 1
     ;;
 esac
 
-mkdir -p "$TARGET"
-rsync -a --delete \
-  --exclude='.git/' \
-  --exclude='.venv/' \
-  --exclude='.env' \
-  --exclude='.pytest_cache/' \
-  --exclude='.pytest-tmp*/' \
-  --exclude='__pycache__/' \
-  --exclude='logs/' \
-  --exclude='uploads/' \
-  --exclude='models/' \
-  --exclude='veriler/' \
-  "$SOURCE/" "$TARGET/"
+if [[ ! -d "$ROOT/.git" ]]; then
+  echo "Git metadata is missing from $ROOT." >&2
+  exit 1
+fi
 
-chmod +x "$TARGET"/scripts/wsl_*.sh
-echo "Synced project to $TARGET"
+chmod +x "$ROOT"/scripts/wsl_*.sh
+echo "CerberusVision is WSL-native: $ROOT"
+echo "No Windows-to-WSL synchronization is required."

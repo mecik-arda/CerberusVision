@@ -6,6 +6,7 @@ from app.llm.inference import (
     _extract_json,
     _parse_json_with_fallback,
     get_json_schema,
+    build_prompt,
     parse_llm_output,
 )
 
@@ -197,3 +198,12 @@ class TestJsonSchema:
     def test_unsupported_openvino_version_falls_back_without_error(self):
         selected = _configure_structured_output(object(), object(), '{"type":"object"}')
         assert selected is None
+
+
+def test_prompt_applies_document_and_output_languages_without_translating_identifiers():
+    prompt = build_prompt("V.NO: 3881946820", "tr", "en")
+    assert "document language is Turkish" in prompt
+    assert "requested XML content language is English" in prompt
+    assert "Never translate proper names" in prompt
+    assert "V.NO" in prompt
+    assert "party_id" in prompt

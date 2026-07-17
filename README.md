@@ -4,14 +4,17 @@
 >
 > **Oluşturulma Tarihi:** 17.07.2026
 
-CerberusVision, konşimento talimatı (Shipping Instruction) PDF belgelerini yerel
-OCR ve yerel Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
-uygulamasıdır. Ana çalışma ortamı WSL2/Ubuntu'dur; DeepSeek yalnızca isteğe bağlı,
-kısa ve salt-okunur bir risk hakemi olarak kullanılır.
+CerberusVision, konşimento talimatı (Shipping Instruction) belgelerini yerel
+çıkarım hattı ve Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
+uygulamasıdır. PDF, DOCX, XML, PNG ve JPEG desteklenir; arayüz tek seçimde en
+fazla 10 belgeyi GPU dostu sıralı kuyrukla işler. Ana ve tek çalışma ortamı
+WSL2/Ubuntu'dur; DeepSeek yalnızca isteğe bağlı, kısa ve salt-okunur bir risk
+hakemi olarak kullanılır.
 
 ```mermaid
 graph LR
-    A[📄 PDF] --> B[👁️ Spatial OCR]
+    A[📄 PDF / PNG / JPEG] --> B[👁️ Spatial OCR]
+    T[📝 DOCX / XML] --> C
     B --> C[🧠 Yerel Qwen]
     C --> D[⚙️ DCSA XML / XSD]
     D --> E[🛡️ Yerel Risk Kontrolleri]
@@ -31,16 +34,15 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 ## Doğrulanmış çalışma ortamı
 
 - WSL2 dağıtımı: `Ubuntu` (Ubuntu 26.04 LTS)
-- Kaynak proje: `C:\Users\ardam\Desktop\Yazılım_Siber\CerberusVision`
-- WSL çalışma kopyası: `/home/ardam/projects/CerberusVision`
+- Tek kaynak ve çalışma dizini: `/home/ardam/projects/CerberusVision`
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
-- Test sonucu: `118 passed`
+- Test sonucu: `135 passed` (Ubuntu WSL2)
 
-Kod Windows çalışma alanında düzenlenir, uygulama Linux dosya sistemi içindeki WSL
-kopyasından çalıştırılır. Bu düzen, `/mnt/c` üzerinden doğrudan çalıştırmaya göre
-dosya erişimi ve Python paket davranışını daha öngörülebilir tutar.
+Kod düzenleme, Git işlemleri, testler ve sunucu doğrudan WSL ext4 dosya sistemi
+içinde yürütülür. Windows tarafında ikinci bir kaynak kopya veya senkronizasyon
+adımı kullanılmaz.
 
 ## Arayüz dili ve tema
 
@@ -49,9 +51,23 @@ seçicisinden İngilizceye geçilebilir. Dil tercihi tarayıcıda saklanır ve s
 açılışlarda korunur; yükleme, işlem durumu, denetim, doğrulama ve dinamik tablo
 mesajları da seçilen dile uyarlanır.
 
+Belge yüklenmeden önce belge dili ve XML içerik dili ayrı ayrı `Türkçe` veya
+`İngilizce` seçilir. Belge dili PaddleOCR profilini ve Qwen'in kaynak etiketleri
+yorumlama biçimini belirler. XML içerik dili yalnızca açıklama ve not gibi
+çevrilebilir değerleri yönlendirir; şirket adları, adresler, limanlar, kimlikler,
+kodlar ve sayılar değiştirilmez. DCSA XML eleman adları XSD uyumluluğu için her
+zaman standart biçiminde kalır.
+
 Ay simgeli tema düğmesi açık ve koyu tema arasında geçiş yapar. İlk açılışta
 işletim sistemi tercihi kullanılır; kullanıcı bir tema seçtiğinde bu tercih kalıcı
 hale gelir.
+
+Yükleme alanı PDF, DOCX, XML, PNG ve JPEG dosyalarını çoklu seçime veya
+sürükle-bırak işlemine kabul eder. Dosya uzantısına ek olarak PDF/PNG/JPEG imzası,
+DOCX paket yapısı ve güvenli XML ayrıştırması sunucuda doğrulanır. PDF ve görseller
+OCR'a, DOCX/XML metni doğrudan yerel modele gider. Kuyruk belgeleri sırayla
+işlediği için tek GPU üzerinde eşzamanlı model yükü oluşturmaz; her dosyanın durumu
+arayüzde ayrı gösterilir.
 
 Üst menüdeki arama düğmesi form alanlarını ve ana bölümleri bulup ilgili
 kontrole odaklanır. Bildirim paneli son işlem durumunu, profil paneli ise etkin dil,
@@ -59,6 +75,15 @@ tema ve oturum kimliğini gösterir. PDF araç çubuğu; oturumluk belge bağlan
 kopyalama, `%100 / %125 / %150 / %200` yakınlaştırma, tam ekran, sayfa sayımı,
 sayfa düğmeleri ve önceki/sonraki gezinme işlevlerini sunar. Sonuç eylemleri,
 gerekli veri oluşana kadar açıkça devre dışı tutulur.
+
+Arama simgesinin yanındaki ayarlar paneli etkin yerel model, OpenVINO aygıtı,
+azami çıktı token sayısı ve KV-cache bilgisini gösterir. Panel; proje `models/`
+dizini, `~/models`, Hugging Face önbelleği ve Ollama manifestlerinde bulunan WSL
+modellerini listeler ve etkin modeli işaretler. Cerberus sunucu API anahtarı yalnızca
+tarayıcı sekmesinin `sessionStorage` alanında, DeepSeek anahtarı ise yalnızca çalışan
+FastAPI sürecinin belleğinde tutulur. DeepSeek denetim modu ve risk eşiği aynı
+panelden çalışma zamanında değiştirilebilir; anahtar hiçbir API yanıtında geri
+döndürülmez.
 
 Tailwind sınıfları geliştirme sırasında derlenip `static/app.css` içinde tutulur.
 Arayüz çalışma zamanında Tailwind CDN veya Google Fonts bağlantısı kurmaz. CSS'i
@@ -164,20 +189,20 @@ Bu dosyanın biçimi ve varsayılanlar için Microsoft'un
 [WSL gelişmiş ayarlar belgesine](https://learn.microsoft.com/windows/wsl/wsl-config)
 bakılabilir.
 
-### 2. Projeyi Linux dosya sistemine senkronla
+### 2. Projeyi WSL dosya sistemine klonla
 
 Ubuntu terminali:
 
 ```bash
-bash '/mnt/c/Users/ardam/Desktop/Yazılım_Siber/CerberusVision/scripts/wsl_sync.sh'
+mkdir -p ~/projects
+git clone https://github.com/mecik-arda/CerberusVision.git ~/projects/CerberusVision
 cd ~/projects/CerberusVision
 ```
 
-Senkronizasyon `.git`, `.venv`, `.env`, model, log, upload, `veriler` ve önbellekleri
-kopyalamaz. Hedefteki `.env`, `.venv`, `models/`, `logs/`, `uploads/` ve keşfedilen
-veri kümesi korunur. Kaynak kod için esas kopya Windows çalışma alanıdır; WSL
-kopyasında yapılan kaynak değişiklikleri bir sonraki senkronizasyonda üzerine
-yazılabilir.
+Mevcut kurulum zaten `/home/ardam/projects/CerberusVision` altındaysa yeniden
+klonlama gerekmez. `./scripts/wsl_sync.sh` artık Windows'tan dosya kopyalamaz;
+yalnızca geçerli dizinin WSL2 içinde, Linux home altında ve Git geçmişiyle birlikte
+çalıştığını doğrular.
 
 ### 3. Python ve bağımlılıkları kur
 
@@ -347,14 +372,23 @@ Audit CLI:
 
 | Method | Path | Açıklama |
 |---|---|---|
-| `POST` | `/api/upload` | En fazla 50 MB PDF yükler ve session ID döndürür |
-| `POST` | `/api/upload-and-stream` | PDF yükler ve SSE durum akışını başlatır |
+| `POST` | `/api/upload` | En fazla 50 MB PDF/DOCX/XML/PNG/JPEG yükler ve session ID döndürür |
+| `POST` | `/api/upload-and-stream` | Desteklenen belgeyi yükler ve SSE durum akışını başlatır |
+| `GET` | `/api/runtime-settings` | Model, aygıt, WSL model keşfi ve güvenli yapılandırma durumunu döndürür |
+| `PUT` | `/api/runtime-settings` | DeepSeek anahtarı, denetim modu ve risk eşiğini süreç belleğinde günceller |
 | `GET` | `/api/stream/{session_id}` | SSE işlem durumları |
 | `GET` | `/api/status/{session_id}` | Son işlem durumu |
 | `PUT` | `/api/sessions/{session_id}/draft` | Düzenlenmiş taslağı ve XML'i kaydeder |
 | `POST` | `/api/sessions/{session_id}/approve` | Zorunlu alan/XSD kontrolü sonrası onaylar |
 | `POST` | `/api/sessions/{session_id}/cloud-review` | Tek seferlik kısa DeepSeek yorumu |
 | `GET` | `/health` | Bağımlılık, model ve OpenVINO readiness raporu |
+
+`/api/upload` ve `/api/upload-and-stream` multipart istekleri `file` yanında
+`document_language=tr|en` ve `output_language=tr|en` alanlarını kabul eder. API
+istemcileri bu alanları göndermezse geriye uyumluluk için `en` kullanılır.
+Arayüz çoklu seçimleri bu endpoint'e sıralı istekler olarak gönderir; böylece her
+belge bağımsız session, audit izi ve XML sonucuna sahip olur ve yerel GPU çıkarımı
+aynı anda birden çok belgeyle zorlanmaz.
 
 ## Audit kayıtları
 
@@ -368,16 +402,18 @@ OpenVINO önbelleği Git'e eklenmez.
 
 ```text
 app/
+  document_ingestion.py  Format/imza doğrulama ve DOCX/XML metin çıkarımı
   security.py           Opsiyonel API anahtarı ve kayan pencere yükleme limiti
   llm/                 Yerel Qwen, yerel risk ve kısa DeepSeek hakemi
   llm/document_relevance.py  Keşif için yalnızca konu ve İngilizce filtresi
   ocr/                 PaddleOCR ve uzamsal satır gruplama
+  utils/model_discovery.py  WSL içindeki bilinen yerel model depolarını tarar
   routes/              Upload, SSE, taslak, onay ve cloud-review API'leri
   search/              Resmî arama API'leri, güvenli indirme ve yerel ön eleme
   xml/                 DCSA XML dönüştürme ve XSD doğrulama
 scripts/
   find_shipping_documents.py  İngilizce örnek belge keşif CLI'ı
-  wsl_sync.sh          Windows kaynağını WSL home'a senkronlar
+  wsl_sync.sh          WSL-native kaynak/Git çalışma dizimini doğrular
   wsl_setup.sh         uv, Python ve bağımlılık kurulumu
   wsl_model_setup.sh   OpenVINO modelini indirir
   wsl_profile.sh       7B GPU / 14B CPU profilini seçer
@@ -387,7 +423,7 @@ scripts/
   wsl_gpu_info.py      OpenVINO GPU özellik raporu
 static/
   app.css              Yerel, minify edilmiş Tailwind çıktısı
-tests/                 118 otomatik regresyon testi
+tests/                 135 otomatik regresyon testi
 ```
 
 ## Lisans

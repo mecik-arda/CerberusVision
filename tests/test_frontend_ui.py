@@ -47,8 +47,20 @@ def test_dark_theme_is_class_based_and_persistent():
 def test_frontend_assets_are_local_and_precompiled():
     assert "cdn.tailwindcss.com" not in INDEX_HTML
     assert "fonts.googleapis.com" not in INDEX_HTML
-    assert '<link rel="stylesheet" href="/static/app.css">' in INDEX_HTML
+    assert '<link rel="stylesheet" href="/static/app.css?v=15">' in INDEX_HTML
+    assert '<script src="/static/app.js?v=15"></script>' in INDEX_HTML
     assert len(APP_CSS) > 10000
+
+
+def test_multifile_multiformat_queue_is_available():
+    assert 'accept=".pdf,.docx,.xml,.png,.jpg,.jpeg" multiple' in INDEX_HTML
+    assert 'id="fileQueue"' in INDEX_HTML
+    assert "const MAX_BATCH_FILES = 10" in APP_JS
+    assert "async function handleFiles(fileList)" in APP_JS
+    assert "for (const job of documentQueue)" in APP_JS
+    assert "await processQueuedFile(job, controller, requestId)" in APP_JS
+    assert "handleFiles(e.dataTransfer.files)" in APP_JS
+    assert "handleFiles(e.target.files)" in APP_JS
 
 
 def test_runtime_messages_and_generated_rows_use_translations():
@@ -63,6 +75,9 @@ def test_runtime_messages_and_generated_rows_use_translations():
 def test_every_static_button_has_an_explicit_behavior_contract():
     interactive_button_ids = {
         "globalSearchBtn",
+        "settingsBtn",
+        "settingsRefreshBtn",
+        "settingsSaveBtn",
         "notificationsBtn",
         "themeToggle",
         "profileBtn",
@@ -97,10 +112,25 @@ def test_header_search_notifications_and_profile_are_functional():
     assert 'id="globalSearchPanel"' in INDEX_HTML
     assert 'id="notificationsPanel"' in INDEX_HTML
     assert 'id="profilePanel"' in INDEX_HTML
+    assert 'id="settingsPanel"' in INDEX_HTML
     assert "renderSearchResults" in APP_JS
     assert "publishNotification" in APP_JS
     assert "updateProfileSummary" in APP_JS
     assert "aria-expanded" in INDEX_HTML
+
+
+def test_processing_languages_and_runtime_model_settings_are_functional():
+    assert 'id="documentLanguage"' in INDEX_HTML
+    assert 'id="outputLanguage"' in INDEX_HTML
+    assert "formData.append('document_language', documentLanguage.value)" in APP_JS
+    assert "formData.append('output_language', outputLanguage.value)" in APP_JS
+    assert "cerberus-document-language" in APP_JS
+    assert "cerberus-output-language" in APP_JS
+    assert 'id="deepSeekApiKeyInput"' in INDEX_HTML
+    assert 'id="serverApiKeyInput"' in INDEX_HTML
+    assert 'id="detectedModelsList"' in INDEX_HTML
+    assert "'/api/runtime-settings'" in APP_JS
+    assert "renderDetectedModels" in APP_JS
 
 
 def test_pdf_toolbar_supports_copy_zoom_fullscreen_and_pages():

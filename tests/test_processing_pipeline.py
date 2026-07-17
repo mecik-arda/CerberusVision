@@ -50,7 +50,7 @@ async def test_pipeline_runs_short_cloud_review_and_keeps_local_as_source(tmp_pa
     monkeypatch.setattr(
         processing,
         "process_pdf_with_spatial_ocr",
-        lambda path: (
+        lambda path, language: (
             "OCR text",
             [[TextBox(text="SI-1", x_min=0, y_min=0, x_max=10, y_max=10)]],
         ),
@@ -58,7 +58,10 @@ async def test_pipeline_runs_short_cloud_review_and_keeps_local_as_source(tmp_pa
     monkeypatch.setattr(
         processing,
         "run_inference_with_fallback",
-        lambda text: (local, "```json\n{broken-wrapper}\n```"),
+        lambda text, document_language, output_language: (
+            local,
+            "```json\n{broken-wrapper}\n```",
+        ),
     )
     monkeypatch.setattr(settings.deepseek, "review_mode", "risk")
     monkeypatch.setattr(processing, "run_deepseek_review", lambda instruction, assessment, text: (
@@ -105,8 +108,16 @@ async def test_pipeline_skips_cloud_review_when_local_risk_is_low(tmp_path, monk
     monkeypatch.setattr(settings, "logs_dir", tmp_path / "logs")
     monkeypatch.setattr(settings.deepseek, "api_key", "test-key")
     monkeypatch.setattr(settings.deepseek, "review_mode", "risk")
-    monkeypatch.setattr(processing, "process_pdf_with_spatial_ocr", lambda path: ("OCR " * 40, []))
-    monkeypatch.setattr(processing, "run_inference_with_fallback", lambda text: (local, local.model_dump_json()))
+    monkeypatch.setattr(
+        processing,
+        "process_pdf_with_spatial_ocr",
+        lambda path, language: ("OCR " * 40, []),
+    )
+    monkeypatch.setattr(
+        processing,
+        "run_inference_with_fallback",
+        lambda text, document_language, output_language: (local, local.model_dump_json()),
+    )
     monkeypatch.setattr(
         processing,
         "run_deepseek_review",
@@ -127,9 +138,42 @@ async def test_pipeline_skips_cloud_review_when_local_risk_is_low(tmp_path, monk
     assert final_data["local_risk_score"] == 0
     assert final_data["audit_confidence_score"] == 100
     assert "DeepSeek cagrilmadi" in final_data["audit_summary"]
+    assert final_data["document_language"] == "en"
+    assert final_data["output_language"] == "en"
 
     processing._processing_store.pop("low-risk-test", None)
     processing._session_models.pop("low-risk-test", None)
+
+
+def test_processing_language_validation_accepts_only_supported_values():
+    assert processing._validate_processing_languages(" TR ", "en") == ("tr", "en")
+    with pytest.raises(ValueError, match="Document language"):
+        processing._validate_processing_languages("de", "en")
+    with pytest.raises(ValueError, match="Output language"):
+        processing._validate_processing_languages("tr", "de")
+
+
+@pytest.mark.asyncio
+async def test_runtime_settings_update_never_returns_api_key(monkeypatch):
+    monkeypatch.setattr(settings.deepseek, "api_key", None)
+    monkeypatch.setattr(settings.deepseek, "review_mode", "risk")
+    monkeypatch.setattr(settings.deepseek, "risk_threshold", 30)
+    monkeypatch.setattr(processing, "discover_local_models", lambda *args: [])
+
+    response = await processing.update_runtime_settings(
+        processing.RuntimeSettingsUpdate(
+            deepseek_api_key="secret-key",
+            deepseek_review_mode="manual",
+            deepseek_risk_threshold=45,
+        )
+    )
+    data = json.loads(response.body)
+
+    assert response.status_code == 200
+    assert data["deepseek"]["configured"] is True
+    assert data["deepseek"]["review_mode"] == "manual"
+    assert data["deepseek"]["risk_threshold"] == 45
+    assert "api_key" not in data["deepseek"]
 
 
 @pytest.mark.asyncio

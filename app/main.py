@@ -30,7 +30,13 @@ def _get_openvino_devices() -> tuple[str, ...]:
 @app.get("/")
 async def root():
     index_path = settings.static_dir / "index.html"
-    return FileResponse(str(index_path))
+    return FileResponse(
+        str(index_path),
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/health")

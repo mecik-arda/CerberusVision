@@ -37,6 +37,14 @@ def test_api_router_enforces_configured_key(monkeypatch):
     assert response.status_code == 404
 
 
+def test_root_html_disables_browser_cache():
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+
+
 @pytest.mark.asyncio
 async def test_upload_rate_limiter_uses_sliding_window():
     limiter = SlidingWindowRateLimiter()

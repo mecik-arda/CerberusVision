@@ -1,22 +1,20 @@
 from __future__ import annotations
 from pathlib import Path
+from functools import lru_cache
 from typing import List, Optional, Tuple
 from app.config import settings
 from app.ocr.line_grouper import process_ocr_results_to_layout_text, TextBox
 
 
-_ocr_engine = None
+@lru_cache(maxsize=2)
+def _get_cached_ocr_engine(lang: str):
+    from paddleocr import PaddleOCR
+
+    return PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
 
 
 def get_ocr_engine(lang: str = None):
-    global _ocr_engine
-    if _ocr_engine is not None:
-        return _ocr_engine
-    from paddleocr import PaddleOCR
-
-    use_lang = lang or settings.ocr_lang
-    _ocr_engine = PaddleOCR(use_angle_cls=True, lang=use_lang, show_log=False)
-    return _ocr_engine
+    return _get_cached_ocr_engine(lang or settings.ocr_lang)
 
 
 def render_pdf_pages_to_images(
@@ -35,8 +33,8 @@ def render_pdf_pages_to_images(
     return images
 
 
-def run_ocr_on_image(image_bytes: bytes) -> List:
-    ocr = get_ocr_engine()
+def run_ocr_on_image(image_bytes: bytes, lang: str = None) -> List:
+    ocr = get_ocr_engine(lang)
     import os
     import tempfile
 
@@ -61,9 +59,18 @@ def process_pdf_with_spatial_ocr(
     all_pages_text: List[str] = []
     all_pages_boxes: List[List[TextBox]] = []
     for img_bytes in images:
-        raw_ocr = run_ocr_on_image(img_bytes)
+        raw_ocr = run_ocr_on_image(img_bytes, lang)
         layout_text, boxes = process_ocr_results_to_layout_text(raw_ocr)
         all_pages_text.append(layout_text)
         all_pages_boxes.append(boxes)
     combined_text = "\n\n--- PAGE BREAK ---\n\n".join(all_pages_text)
     return combined_text, all_pages_boxes
+
+
+def process_image_with_spatial_ocr(
+    image_path: Path,
+    lang: str = None,
+) -> Tuple[str, List[List[TextBox]]]:
+    raw_ocr = run_ocr_on_image(image_path.read_bytes(), lang)
+    layout_text, boxes = process_ocr_results_to_layout_text(raw_ocr)
+    return layout_text, [boxes]

@@ -1,10 +1,10 @@
 # CerberusVision — Hata Düzeltme Kaydı
 
-**Denetim Tarihi:** 17.07.2026  
-**Denetim Saati:** WSL2 entegrasyonu ve gerçek model denetimi dahil (Europe/Istanbul, UTC+3)  
-**Denetim Yöntemi:** V1-V13 uçtan uca kod, WSL2, gerçek OCR/model/API, arayüz etkileşimleri, güvenli belge keşfi, güvenlik/yaşam döngüsü sertleştirmesi, risk ve regresyon doğrulaması  
-**Toplam Düzeltilen Hata Sayısı:** 107 (V1-V6: 32 + V7: 18 + V8: 10 + V9: 16 + V10: 4 + V11: 4 + V12: 5 + V13: 18)  
-**Test Sonucu:** 118/118 PASSED  
+**Denetim Tarihi:** 17.07.2026
+**Denetim Saati:** WSL2 entegrasyonu ve gerçek model denetimi dahil (Europe/Istanbul, UTC+3)
+**Denetim Yöntemi:** V1-V15 uçtan uca kod, WSL2, gerçek OCR/model/API, arayüz etkileşimleri, güvenli belge keşfi, güvenlik/yaşam döngüsü sertleştirmesi, çok dilli ve çok formatlı işlem, çalışma zamanı model ayarları doğrulaması
+**Toplam Düzeltilen Hata Sayısı:** 123 (V1-V6: 32 + V7: 18 + V8: 10 + V9: 16 + V10: 4 + V11: 4 + V12: 5 + V13: 18 + V14: 8 + V15: 8)
+**Test Sonucu:** 135/135 PASSED (Ubuntu WSL2)
 
 ---
 
@@ -12,56 +12,56 @@
 
 ### 1. Deadlock — `/upload-and-stream` Endpoint (KRİTİK)
 
-**Tarih/Saat:** 16.07.2026 16:44  
-**Dosya:** `app/routes/processing.py`  
-**Satır:** 142-148 (eski), 226-232 (eski)  
+**Tarih/Saat:** 16.07.2026 16:44
+**Dosya:** `app/routes/processing.py`
+**Satır:** 142-148 (eski), 226-232 (eski)
 
-**Problem:**  
+**Problem:**
 `/upload-and-stream` endpoint'inde `BackgroundTasks` kullanılıyordu. Starlette/FastAPI'de `BackgroundTasks`, response tamamen tamamlandıktan sonra çalışır. Ancak `StreamingResponse` döndüğü için response, generator tükenene kadar tamamlanmaz. Generator `queue.get()` ile beklerken, `process_pdf_pipeline` background task olarak hiç başlayamıyordu. Sonuç: **Deadlock** — istemci 300 saniye timeout'a kadar kilitlenirdi.
 
-**Çözüm:**  
+**Çözüm:**
 `background_tasks.add_task()` yerine `asyncio.create_task()` kullanıldı. Bu sayede pipeline görevi hemen event loop'ta çalışmaya başlar ve SSE stream ile paralel ilerler.
 
 ---
 
 ### 2. Queue Mismatch — `/upload` Endpoint (KRİTİK)
 
-**Tarih/Saat:** 16.07.2026 16:44  
-**Dosya:** `app/routes/processing.py`  
-**Satır:** 140-148 (eski)  
+**Tarih/Saat:** 16.07.2026 16:44
+**Dosya:** `app/routes/processing.py`
+**Satır:** 140-148 (eski)
 
-**Problem:**  
+**Problem:**
 `/upload` endpoint'i yerel bir `status_queue` oluşturup background task'a veriyordu, ancak bu queue'yu `_stream_queues` sözlüğüne kaydetmiyordu. `/api/stream/{session_id}` endpoint'i `_get_or_create_queue(session_id)` çağırdığında **farklı, boş bir queue** oluşturuyordu. Background task bir queue'ya yazarken, SSE stream başka bir queue'dan okuyordu — veri hiç iletilmiyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Her iki endpoint de artık `_get_or_create_queue(session_id)` kullanıyor. Queue tek bir yerde (`_stream_queues` sözlüğü) merkezi olarak yönetiliyor.
 
 ---
 
 ### 3. Blocking Sync Çağrılar Async Context'te (KRİTİK)
 
-**Tarih/Saat:** 16.07.2026 16:44  
-**Dosya:** `app/routes/processing.py`  
-**Satır:** 55, 64, 72, 76 (eski)  
+**Tarih/Saat:** 16.07.2026 16:44
+**Dosya:** `app/routes/processing.py`
+**Satır:** 55, 64, 72, 76 (eski)
 
-**Problem:**  
+**Problem:**
 `process_pdf_pipeline` asenkron bir fonksiyon olmasına rağmen içindeki OCR (`process_pdf_with_spatial_ocr`), LLM (`run_inference_with_fallback`) ve XML (`shipping_instruction_to_xml`, `validate_and_grade`) çağrıları senkron fonksiyonlardı. Bu sync çağrılar event loop'u blokluyordu. SSE stream'den gelen diğer istekler bu süre boyunca beklemek zorunda kalıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 `_run_blocking()` helper fonksiyonu eklendi. Bu fonksiyon `loop.run_in_executor(None, ...)` kullanarak sync çağrıları thread pool'da çalıştırır. Tüm sync çağrılar artık `await _run_blocking(func, *args)` pattern'i ile çağrılıyor.
 
 ---
 
 ### 4. OpenVINO GenAI GenerationConfig Özellik Adı (KRİTİK)
 
-**Tarih/Saat:** 16.07.2026 16:43  
-**Dosya:** `app/llm/inference.py`  
-**Satır:** 80 (eski)  
+**Tarih/Saat:** 16.07.2026 16:43
+**Dosya:** `app/llm/inference.py`
+**Satır:** 80 (eski)
 
-**Problem:**  
+**Problem:**
 `config.structured_generation = json.dumps(schema)` — openvino-genai 2024.6.0 `GenerationConfig` sınıfında `structured_generation` özelliği bulunmayabilir. Sürüm farklılıklarına göre bu özellik adı değişebiliyor. Eğer yanlış özellik adı kullanılırsa guided decoding çalışmaz ve model serbest format üretebilir.
 
-**Çözüm:**  
+**Çözüm:**
 Fallback zinciri eklendi:
 1. `config.structured_generation` (dene)
 2. `config.guided_decoding` (fallback)
@@ -73,56 +73,56 @@ Her biri `try/except (AttributeError, TypeError)` ile korunuyor.
 
 ### 5. Enum Değer Typo
 
-**Tarih/Saat:** 16.07.2026 16:43  
-**Dosya:** `app/models.py`  
-**Satır:** 8 (eski)  
+**Tarih/Saat:** 16.07.2026 16:43
+**Dosya:** `app/models.py`
+**Satır:** 8 (eski)
 
-**Problem:**  
+**Problem:**
 `DocumentStatusCode.FINAL = "FNl"` — son karakter küçük `l` (L) yerine büyük `I`'ye benziyordu. DCSA standardında kod `"FNL"` olmalıydı.
 
-**Çözüm:**  
+**Çözüm:**
 `FINAL = "FNL"` olarak düzeltildi.
 
 ---
 
 ### 6. STATIC_DIR Dizin Oluşturma Eksik
 
-**Tarih/Saat:** 16.07.2026 16:43  
-**Dosya:** `app/config.py`  
-**Satır:** 13-14 (eski)  
+**Tarih/Saat:** 16.07.2026 16:43
+**Dosya:** `app/config.py`
+**Satır:** 13-14 (eski)
 
-**Problem:**  
+**Problem:**
 `LOGS_DIR` ve `UPLOADS_DIR` için `.mkdir(parents=True, exist_ok=True)` çağrılıyordu, ancak `STATIC_DIR` için çağrılmıyordu. Fresh deployment'ta (örneğin Docker) `static/` dizini yoksa `StaticFiles(directory=...)` `RuntimeError` fırlatırdı.
 
-**Çözüm:**  
+**Çözüm:**
 `STATIC_DIR.mkdir(parents=True, exist_ok=True)` satırı eklendi.
 
 ---
 
 ### 7. Kullanılmayan Parametre
 
-**Tarih/Saat:** 16.07.2026 16:43  
-**Dosya:** `app/llm/inference.py`  
-**Satır:** 71 (eski)  
+**Tarih/Saat:** 16.07.2026 16:43
+**Dosya:** `app/llm/inference.py`
+**Satır:** 71 (eski)
 
-**Problem:**  
+**Problem:**
 `_build_generation_config(prompt: str)` fonksiyonu `prompt` parametresi alıyordu ama içinde hiç kullanılmıyordu. Dead parameter — kod kalitesi sorunu.
 
-**Çözüm:**  
+**Çözüm:**
 Parametre kaldırıldı: `_build_generation_config()`.
 
 ---
 
 ### 8. str() Dönüşümü Eksik — OpenVINO GenAI Çıktısı
 
-**Tarih/Saat:** 16.07.2026 16:43  
-**Dosya:** `app/llm/inference.py`  
-**Satır:** 67-68 (eski)  
+**Tarih/Saat:** 16.07.2026 16:43
+**Dosya:** `app/llm/inference.py`
+**Satır:** 67-68 (eski)
 
-**Problem:**  
+**Problem:**
 `pipe.generate(prompt, config)` openvino-genai 2024.6.0'da `DecodedResults` nesnesi döndürebiliyor. Bu nesne `str` değil, ancak downstream kod (`.find()`, `json.loads()`) string bekliyor. İmplicit `__str__` dönüşümü güvenli değil — ekstra formatting içerebilir.
 
-**Çözüm:**  
+**Çözüm:**
 `return str(result)` ile explicit dönüşüm eklendi.
 
 ---
@@ -164,174 +164,174 @@ Parametre kaldırıldı: `_build_generation_config()`.
 | 31 | store_kwargs filtresi sabit liste ile kırılgan | DÜŞÜK | processing.py | Düzeltildi |
 | 32 | popolateFormFields objelerde [object Object] riski | DÜŞÜK | app.js | Düzeltildi |
 
-**Doğrulama (Kod Denetleyicisi V6):** 56/56 test PASSED, statik analiz ve güvenlik taramaları PASSED.  
+**Doğrulama (Kod Denetleyicisi V6):** 56/56 test PASSED, statik analiz ve güvenlik taramaları PASSED.
 
 ---
 
 ### 23. _processing_store Sınırsız Bellek Sızıntısı (YÜKSEK)
 
-**Tarih/Saat:** 16.07.2026 20:26  
-**Dosya:** `app/routes/processing.py`  
-**Satır:** 28, 43  
+**Tarih/Saat:** 16.07.2026 20:26
+**Dosya:** `app/routes/processing.py`
+**Satır:** 28, 43
 
-**Problem:**  
+**Problem:**
 `_processing_store` modül seviyesinde bir `dict[str, ProcessingResult]` olup her `_emit_status` çağrısında yazılıyordu ancak hiç temizlenmiyordu. Her işlem oturumu sonsuza kadar bellekte kalıyordu. TTL, maksimum boyut veya stream tamamlanınca temizleme yoktu (`_stream_queues`'un aksine). Sürekli kullanımda sınırsız bellek sızıntısı.
 
-**Çözüm:**  
+**Çözüm:**
 `_PROCESSING_STORE_MAX_SIZE = 100` sabiti eklendi. `_emit_status` fonksiyonunda, store boyutu 100'e ulaştığında en eski kayıt (`next(iter())`) siliniyor. Bu basit FIFO eviction ile bellek sızıntısı önlendi.
 
 ---
 
 ### 24. XSD ExportCustomsClearanceLocation minOccurs Eksik (ORTA)
 
-**Tarih/Saat:** 16.07.2026 20:26  
-**Dosya:** `app/xml/schemas/shipping_instruction.xsd`  
-**Satır:** CustomsInformationType tanımı  
+**Tarih/Saat:** 16.07.2026 20:26
+**Dosya:** `app/xml/schemas/shipping_instruction.xsd`
+**Satır:** CustomsInformationType tanımı
 
-**Problem:**  
+**Problem:**
 `ExportCustomsClearanceLocation` elementinin `minOccurs="0"` attribute'u yoktu. Bu, `CustomsInformation` present olduğunda `ExportCustomsClearanceLocation`'ın zorunlu olduğu anlamına geliyordu. Ancak Pydantic modelde `export_customs_clearance_location: Optional[Location] = None` — opsiyonel. Converter None olduğunda bu elementi üretmiyor. XSD doğrulaması başarısız olabilirdi.
 
-**Çözüm:**  
+**Çözüm:**
 `<xs:element name="ExportCustomsClearanceLocation" minOccurs="0">` olarak düzeltildi.
 
 ---
 
 ### 25. index.html pdfFooter Class Çakışması (DÜŞÜK)
 
-**Tarih/Saat:** 16.07.2026 20:26  
-**Dosya:** `static/index.html`  
-**Satır:** pdfFooter element  
+**Tarih/Saat:** 16.07.2026 20:26
+**Dosya:** `static/index.html`
+**Satır:** pdfFooter element
 
-**Problem:**  
+**Problem:**
 `pdfFooter` elementi初始 olarak `class="hidden flex items-center justify-center gap-4 ..."` sınıfına sahipti. Tailwind'de `hidden` (`display: none`) ve `flex` (`display: flex`) aynı elementte conflict yaratıyordu. `app.js`'de `classList.remove('hidden')` ve `classList.add('flex')` yapılıyordu, ancak `flex` zaten HTML'de mevcuttu. Tailwind'in CSS specificity kurallarına göre davranış belirsizdi.
 
-**Çözüm:**  
+**Çözüm:**
 HTML'den `flex` class'ı kaldırıldı. Artık initial state `hidden` (sadece), `app.js` gösterildiğinde `hidden` kaldırıp `flex` ekliyor. Temiz ve deterministic davranış.
 
 ---
 
 ### 20. Dead Code — _create_element Hiç Kullanılmıyor (DÜŞÜK)
 
-**Tarih/Saat:** 16.07.2026 17:39  
-**Dosya:** `app/xml/converter.py`  
-**Satır:** 33-34 (eski)  
+**Tarih/Saat:** 16.07.2026 17:39
+**Dosya:** `app/xml/converter.py`
+**Satır:** 33-34 (eski)
 
-**Problem:**  
+**Problem:**
 `_create_element` fonksiyonu tanımlanmıştı ancak hiçbir yerde çağrılmıyordu. Dead code — kod bakımı ve okunabilirlik sorunu.
 
-**Çözüm:**  
+**Çözüm:**
 Fonksiyon tamamen kaldırıldı.
 
 ---
 
 ### 21. Satır Gruplamada Sort/Anchor Tutarsızlığı (ORTA)
 
-**Tarih/Saat:** 16.07.2026 17:39  
-**Dosya:** `app/ocr/line_grouper.py`  
-**Satır:** 66 (eski)  
+**Tarih/Saat:** 16.07.2026 17:39
+**Dosya:** `app/ocr/line_grouper.py`
+**Satır:** 66 (eski)
 
-**Problem:**  
+**Problem:**
 Box'lar `y_min`'e göre sıralanıyordu, ancak satır anchor'ı `center_y` kullanıyordu. İlk box (en küçük `y_min`) yüksek bir box ise, `center_y`'si `y_min`'den çok uzak olabiliyordu. Sonraki kısa box'lar görsel olarak örtüşse bile anchor'a uzak olduğu için yanlış satıra atılıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Sıralama `y_min` yerine `center_y`'ye göre yapılıyor. Böylece sort ve anchor tutarlı hale geldi.
 
 ---
 
 ### 22. DeepSeek API Timeout Eksik (YÜKSEK)
 
-**Tarih/Saat:** 16.07.2026 17:39  
-**Dosya:** `scripts/api_compare.py`  
-**Satır:** 48-58 (eski)  
+**Tarih/Saat:** 16.07.2026 17:39
+**Dosya:** `scripts/api_compare.py`
+**Satır:** 48-58 (eski)
 
-**Problem:**  
+**Problem:**
 DeepSeek API çağrısında timeout belirtilmemişti. API yanıt vermezse benchmark script'i sonsuza kadar bekleyebilirdi.
 
-**Çözüm:**  
+**Çözüm:**
 Hem `OpenAI` client constructor'ına `timeout=120` hem de `create()` çağrısına `timeout=120` parametresi eklendi.
 
 ---
 
 ### 15. SSE JSON.parse Korumasız — Stream Çökmesi (YÜKSEK)
 
-**Tarih/Saat:** 16.07.2026 17:14  
-**Dosya:** `static/app.js`  
-**Satır:** 113-118 (eski)  
+**Tarih/Saat:** 16.07.2026 17:14
+**Dosya:** `static/app.js`
+**Satır:** 113-118 (eski)
 
-**Problem:**  
+**Problem:**
 SSE event loop'unda `JSON.parse(jsonStr)` çağrısı try/catch içinde değildi. Tek bir bozuk SSE mesajı tüm stream'i çökertiyordu — kullanıcı işlem sırasında hiçbir geri bildirim alamıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 `JSON.parse` çağrısı `try/catch` bloğuna alındı. Hata durumunda `console.error` ile loglanıp devam ediliyor.
 
 ---
 
 ### 16. TIMEOUT Durumu Kullanıcıya Gösterilmiyor (ORTA)
 
-**Tarih/Saat:** 16.07.2026 17:14  
-**Dosya:** `static/app.js`  
-**Satır:** 146-149 (eski)  
+**Tarih/Saat:** 16.07.2026 17:14
+**Dosya:** `static/app.js`
+**Satır:** 146-149 (eski)
 
-**Problem:**  
+**Problem:**
 Backend `TIMEOUT` statüsü gönderdiğinde, `handleSseEvent` sadece spinner'ı gizliyordu. Status badge son işlem statüsünde takılı kalıyordu (örn. "LLM Analyzing"). Kullanıcı timeout olduğunu anlamıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 `TIMEOUT` ayrı bir `if` bloğunda ele alınıyor: spinner gizleniyor, status badge `ERROR`'a güncelleniyor, "Islem zaman asimina ugradi." mesajı gösteriliyor.
 
 ---
 
 ### 17. XSS Açığı — innerHTML ile LLM Verisi (YÜKSEK)
 
-**Tarih/Saat:** 16.07.2026 17:14  
-**Dosya:** `static/app.js`  
-**Satır:** 189-196 (eski)  
+**Tarih/Saat:** 16.07.2026 17:14
+**Dosya:** `static/app.js`
+**Satır:** 189-196 (eski)
 
-**Problem:**  
+**Problem:**
 `populateItemsTable` fonksiyonunda `row.innerHTML` ile LLM'den gelen ham veriler doğrudan HTML'e gömülüyordu. Kötü niyetli veya hatalı OCR/LLM çıktısı `<script>` tag'leri içerebilir ve XSS saldırısına neden olabilir.
 
-**Çözüm:**  
+**Çözüm:**
 `escapeHtml()` helper fonksiyonu eklendi. Tüm LLM verileri `escapeHtml()` ile sanitize edildikten sonra `innerHTML`'e yazılıyor. `div.textContent = text; return div.innerHTML;` pattern'i ile güvenli HTML kaçışı sağlanıyor.
 
 ---
 
 ### 18. Satır Gruplamada Merdiven Kayması (ORTA)
 
-**Tarih/Saat:** 16.07.2026 17:15  
-**Dosya:** `app/ocr/line_grouper.py`  
-**Satır:** 73 (eski)  
+**Tarih/Saat:** 16.07.2026 17:15
+**Dosya:** `app/ocr/line_grouper.py`
+**Satır:** 73 (eski)
 
-**Problem:**  
+**Problem:**
 `group_boxes_into_lines` fonksiyonunda `current_y` her yeni box eklendiğinde satırın ortalama Y'si olarak güncelleniyordu. Bu "running average" yaklaşımı, satırın başındaki box'lar ile sonundaki box'lar arasında Y farkı olduğunda "staircase drift" (merdiven kayması) yaratıyordu. Bir box, satırın başındaki Y'ye yakın ama ortalama Y'ye uzaksa yanlışlıkla yeni satıra atılıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 `current_y` yerine `line_anchor_y` kullanıldı. Anchor, satırın ilk box'ının Y'si olarak sabit kalıyor. Tüm karşılaştırmalar bu anchor'a göre yapılıyor — running average kaldırıldı.
 
 ---
 
 ### 19. Kırılgan Enum Kontrolü — hasattr vs isinstance (DÜŞÜK)
 
-**Tarih/Saat:** 16.07.2026 17:15  
-**Dosya:** `app/xml/converter.py`  
-**Satır:** 44-49 (eski)  
+**Tarih/Saat:** 16.07.2026 17:15
+**Dosya:** `app/xml/converter.py`
+**Satır:** 44-49 (eski)
 
-**Problem:**  
+**Problem:**
 `_add_text_element` fonksiyonu `hasattr(value, "value")` ile enum kontrolü yapıyordu. Bu yaklaşım kırılgan çünkü `hasattr` sadece `.value` niteliği olan herhangi bir nesneyi (dataclass, Pydantic model, vs.) enum gibi işliyor. Yanlış değer üretilebilir.
 
-**Çözüm:**  
+**Çözüm:**
 `hasattr(value, "value")` yerine `isinstance(value, Enum)` kullanıldı. `from enum import Enum` importu eklendi. Bu, sadece gerçek Enum instances'larının `.value` ile işlenmesini garanti eder.
 
 ---
 
 ### 14. Hard Import Dependency on fitz / PyMuPDF (ORTA)
 
-**Tarih/Saat:** 16.07.2026 17:05  
-**Dosya:** `app/ocr/spatial_ocr.py`  
-**Satır:** 4 (eski)  
+**Tarih/Saat:** 16.07.2026 17:05
+**Dosya:** `app/ocr/spatial_ocr.py`
+**Satır:** 4 (eski)
 
-**Problem:**  
+**Problem:**
 `import fitz` (PyMuPDF) modül seviyesinde, dosyanın en üstünde import ediliyordu. Hata #13 düzeltmesi sırasında `processing.py`'deki lazy import'lar top-level'a taşındı, bu da `spatial_ocr.py`'nin import edilmesini zorunlu kıldı. PyMuPDF kurulu değilken `from app.main import app` çalışmıyordu — `ModuleNotFoundError: No module named 'fitz'` hatası alınıyordu. FastAPI uygulaması hiç başlamıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 `import fitz` ifadesi `render_pdf_pages_to_images()` fonksiyonunun içine (lazy import) taşındı. Bu sayede `fitz` sadece PDF render edileceği zaman import edilir. Uygulama PyMuPDF olmadan da başlar, sadece PDF yüklendiğinde hata verir (beklenen davranış).
 
 ---
@@ -448,225 +448,225 @@ Bu sayede `[object Object]` çöp verisi input'lara yazılmaz.
 
 ## V7 — Hibrit Konsensüs ve Üretim Güvenliği Düzeltmeleri
 
-**Tarih:** 17.07.2026  
-**Kapsam:** DeepSeek hakem entegrasyonu, veri bütünlüğü, gerçek kayıt/onay akışı, güvenli dosya yükleme, audit doğruluğu, readiness ve kullanıcı arayüzü  
+**Tarih:** 17.07.2026
+**Kapsam:** DeepSeek hakem entegrasyonu, veri bütünlüğü, gerçek kayıt/onay akışı, güvenli dosya yükleme, audit doğruluğu, readiness ve kullanıcı arayüzü
 
 ### 33. Taraf Doğrulaması Liste Sırasına Bağlıydı (YÜKSEK)
 
-**Dosya:** `app/xml/validator.py`  
-**İlgili Kod:** `PARTY_MANDATORY_FIELDS`, `check_mandatory_fields()`  
+**Dosya:** `app/xml/validator.py`
+**İlgili Kod:** `PARTY_MANDATORY_FIELDS`, `check_mandatory_fields()`
 
-**Problem:**  
+**Problem:**
 Shipper her zaman `parties[0]`, consignee ise `parties[1]` kabul ediliyordu. LLM tarafları farklı sırada ürettiğinde doğru belge taslak sayılabiliyor; rolleri ters fakat alanları dolu bir belge ise semantik olarak hatalı olmasına rağmen tamamlanmış sayılabiliyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Sabit indeks kontrolleri kaldırıldı. Taraflar artık `party_role_code` değerindeki `SHI` ve `CON` rollerine göre bulunuyor. Eksik alan yolları da gerçek taraf indeksine göre üretiliyor.
 
 ---
 
 ### 34. Onarılmış LLM JSON'u Arayüzde Kullanılamıyordu (YÜKSEK)
 
-**Dosyalar:** `app/llm/inference.py`, `app/routes/processing.py`, `static/app.js`  
+**Dosyalar:** `app/llm/inference.py`, `app/routes/processing.py`, `static/app.js`
 
-**Problem:**  
+**Problem:**
 Backend, hatalı model çıktısını onarıp Pydantic modeline çevirebilse bile SSE üzerinden tekrar ham ve bozuk metni gönderiyordu. Frontend `JSON.parse()` çağrısında hata veriyor ve form alanları doldurulamıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Ham model çıktısı yalnızca audit kaydında tutuldu. Frontend'e `si_model.model_dump_json()` ve ayrıca tip güvenli `structured_data` gönderilmeye başlandı. Kullanıcıya gösterilen veri her zaman doğrulanmış lokal Qwen modelidir.
 
 ---
 
 ### 35. Save Draft ve Approve Data Butonları Sahte İşlem Yapıyordu (YÜKSEK)
 
-**Dosyalar:** `app/models.py`, `app/routes/processing.py`, `static/app.js`  
-**Endpointler:** `PUT /api/sessions/{session_id}/draft`, `POST /api/sessions/{session_id}/approve`  
+**Dosyalar:** `app/models.py`, `app/routes/processing.py`, `static/app.js`
+**Endpointler:** `PUT /api/sessions/{session_id}/draft`, `POST /api/sessions/{session_id}/approve`
 
-**Problem:**  
+**Problem:**
 Butonlar sadece ekrandaki mesaj ve rozeti değiştiriyor; düzenlenen veri backend'e gönderilmiyor, XML yenilenmiyor ve sonuç kalıcı olarak kaydedilmiyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Gerçek taslak ve onay endpointleri eklendi. Formdaki düzenlemeler tipleri korunarak toplanıyor, Pydantic ile yeniden doğrulanıyor ve XML yeniden üretiliyor. Onay işlemi zorunlu alan veya XSD hatası varsa HTTP 422 ile reddediliyor; başarılı onayda belge durumu `FNL`, taslakta `DRF` oluyor.
 
 ---
 
 ### 36. Audit Raporundaki `xsd_valid` Değeri Yanlıştı (ORTA)
 
-**Dosya:** `app/routes/processing.py`  
+**Dosya:** `app/routes/processing.py`
 
-**Problem:**  
+**Problem:**
 `xsd_valid`, gerçek XSD sonucu yerine işlemin `COMPLETED` olup olmadığına göre yazılıyordu. XSD geçerli fakat zorunlu alanı eksik bir taslak, raporda yanlışlıkla XSD geçersiz görünüyordu.
 
-**Çözüm:**  
+**Çözüm:**
 XSD sonucu `validate_xml_against_xsd()` fonksiyonundan ayrı bir boolean olarak alınıyor ve audit raporuna doğrudan bu değer yazılıyor. İş durumu ile şema geçerliliği birbirinden ayrıldı.
 
 ---
 
 ### 37. Yüklenen PDF Dosyaları İşlem Sonunda Silinmiyordu (ORTA)
 
-**Dosya:** `app/routes/processing.py`  
+**Dosya:** `app/routes/processing.py`
 
-**Problem:**  
+**Problem:**
 Hassas ticari bilgi içeren PDF'ler `uploads/` dizininde süresiz kalıyor, KVKK/gizlilik ve disk tüketimi riski oluşturuyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Pipeline'ın `finally` bloğunda `pdf_path.unlink(missing_ok=True)` kullanılarak PDF hem başarılı hem hatalı işlemlerden sonra otomatik siliniyor. Kısmi yükleme hatalarında da dosya temizleniyor.
 
 ---
 
 ### 38. 50 MB Yükleme Sınırı RAM Tüketimini Engellemiyordu (YÜKSEK)
 
-**Dosya:** `app/routes/processing.py`  
-**İlgili Kod:** `_SizeLimitedReader`, `_copy_upload_to_path()`  
+**Dosya:** `app/routes/processing.py`
+**İlgili Kod:** `_SizeLimitedReader`, `_copy_upload_to_path()`
 
-**Problem:**  
+**Problem:**
 Dosyanın tamamı önce `await file.read()` ile belleğe alınıyor, boyut kontrolü daha sonra yapılıyordu. Çok büyük istekler reddedilse bile sunucu belleğini tüketebiliyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Yükleme `shutil.copyfileobj()` ve 1 MB parçalarla diske aktarılıyor. `_SizeLimitedReader` toplam byte sayısını aktarım sırasında denetliyor; sınır aşılırsa HTTP 413 dönülüyor ve kısmi dosya siliniyor.
 
 ---
 
 ### 39. PDF Kontrolü Yalnızca Dosya Uzantısına Güveniyordu (ORTA)
 
-**Dosya:** `app/routes/processing.py`  
+**Dosya:** `app/routes/processing.py`
 
-**Problem:**  
+**Problem:**
 Adı `.pdf` ile biten herhangi bir içerik OCR pipeline'ına kabul edilebiliyordu. Bu durum hatalı girdiler ve gereksiz kaynak tüketimi oluşturuyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Uzantı kontrolüne ek olarak dosyanın `%PDF-` imzası doğrulanıyor. Geçersiz içerik diske kalıcı biçimde yazılmadan HTTP 400 ile reddediliyor.
 
 ---
 
 ### 40. OCR Koordinatları Audit Kaydına Yazılmıyordu (DÜŞÜK)
 
-**Dosyalar:** `app/routes/processing.py`, `app/utils/audit_logger.py`  
+**Dosyalar:** `app/routes/processing.py`, `app/utils/audit_logger.py`
 
-**Problem:**  
+**Problem:**
 OCR aşaması `TextBox` koordinatlarını üretiyor ancak `log_ocr_result()` çağrısına aktarmıyordu. README'de belirtilen `ocr_boxes.json` dosyası oluşmuyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Sayfa bazlı `TextBox` nesneleri `asdict()` ile JSON-serileştirilebilir hale getirilip audit logger'a aktarılıyor. Boş koordinat listesinde dahi `ocr_boxes.json` oluşturuluyor.
 
 ---
 
 ### 41. `/health` Yanlış Pozitif Sağlık Sonucu Veriyordu (ORTA)
 
-**Dosya:** `app/main.py`  
+**Dosya:** `app/main.py`
 
-**Problem:**  
+**Problem:**
 Qwen modeli bulunmasa, OCR bağımlılıkları eksik olsa veya istenen OpenVINO cihazı kullanılamasa bile endpoint daima `healthy` dönüyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Readiness kontrolü; PaddleOCR, PyMuPDF, OpenVINO GenAI, model yolu ve istenen OpenVINO cihazını ayrı ayrı raporluyor. Sistem hazır değilse HTTP 503 ve ayrıntılı `checks` nesnesi dönüyor. DeepSeek opsiyonel kabul ediliyor.
 
 ---
 
 ### 42. Gerçek Zamanlı Lokal + Bulut Konsensüs Mekanizması Yoktu (YÜKSEK)
 
-**Dosyalar:** `app/llm/cloud_inference.py`, `app/routes/processing.py`, `app/models.py`  
+**Dosyalar:** `app/llm/cloud_inference.py`, `app/routes/processing.py`, `app/models.py`
 
-**Problem:**  
+**Problem:**
 DeepSeek karşılaştırması yalnızca bağımsız benchmark scriptinde bulunuyor, gerçek PDF işleme akışında kullanıcıya güven ölçümü sunulmuyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Yeni cloud inference modülü eklendi. OCR metni lokal Qwen ve DeepSeek'e paralel gönderiliyor. `calculate_consensus()` alan bazlı `ai_accuracy_score` ve `mismatch_fields` üretiyor. `CONSENSUS_CHECK` işlem durumu ve yeni sonuç alanları Pydantic modele eklendi. Nihai JSON/XML yalnızca lokal Qwen verisinden üretiliyor.
 
 ---
 
 ### 43. Bulut Servisi Hatası Lokal İşlemi Düşürebilirdi (YÜKSEK)
 
-**Dosya:** `app/routes/processing.py`  
+**Dosya:** `app/routes/processing.py`
 
-**Problem:**  
+**Problem:**
 Gerçek zamanlı bulut entegrasyonunda ağ, timeout veya API doğrulama hatasının tüm belge işleme sürecini başarısız kılma riski vardı.
 
-**Çözüm:**  
+**Çözüm:**
 DeepSeek ayrı bir task olarak çalıştırılıyor ve hataları bağımsız yakalanıyor. Bulut hatası `consensus_report.json` içine kaydediliyor; lokal OCR → Qwen → XML akışı kesintisiz devam ediyor. API anahtarı yoksa bulut taskı hiç başlatılmıyor.
 
 ---
 
 ### 44. Konsensüs Hesabı Sığ ve Liste Sırasına Duyarlıydı (ORTA)
 
-**Dosyalar:** `app/llm/cloud_inference.py`, `scripts/api_compare.py`  
+**Dosyalar:** `app/llm/cloud_inference.py`, `scripts/api_compare.py`
 
-**Problem:**  
+**Problem:**
 Eski benchmark yalnızca üst seviye alanları karşılaştırıyordu. Aynı tarafların veya ekipmanların farklı sırada gelmesi tüm koleksiyonu uyuşmaz gösteriyor, iç içe alan farkları doğru raporlanamıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Veriler yaprak alan yollarına kadar düzleştiriliyor. Taraflar rol/kimlik, transport planları sıra numarası, ekipmanlar referans ve doküman referansları tür/numara ile kanonik sıralanıyor. Metin karşılaştırmasında büyük-küçük harf ve fazla boşluk normalize ediliyor.
 
 ---
 
 ### 45. Boş Model Sonuçları Yanıltıcı `%100` Skor Üretebiliyordu (YÜKSEK)
 
-**Dosya:** `app/llm/cloud_inference.py`  
+**Dosya:** `app/llm/cloud_inference.py`
 
-**Problem:**  
+**Problem:**
 Her iki model de karşılaştırılabilir hiçbir alan çıkaramazsa iki boş nesne teknik olarak eşit kabul edilip yüksek güven gösterilebilirdi.
 
-**Çözüm:**  
+**Çözüm:**
 Karşılaştırılabilir alan kümesi boşsa skor artık `0.0` dönüyor. Pydantic varsayılanlarının skoru yapay biçimde yükseltmemesi için `exclude_none=True` ve `exclude_unset=True` kullanılıyor.
 
 ---
 
 ### 46. İşlem Durumu Güncellemeleri Önceki Sonuç Verilerini Siliyordu (ORTA)
 
-**Dosya:** `app/routes/processing.py`  
-**İlgili Kod:** `_emit_status()`  
+**Dosya:** `app/routes/processing.py`
+**İlgili Kod:** `_emit_status()`
 
-**Problem:**  
+**Problem:**
 Her yeni SSE aşaması `_processing_store` içindeki sonucu baştan oluşturuyordu. Örneğin OCR verisi sonraki `XML_VALIDATING` mesajında kaybolabiliyor; dolu store güncellenirken mevcut oturum gereksiz yere FIFO eviction tetikleyebiliyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Yeni durumlar mevcut `ProcessingResult` üzerine birleştiriliyor. FIFO temizliği yalnızca gerçekten yeni bir oturum eklendiğinde yapılıyor ve ilişkili oturum modeli de beraber temizleniyor.
 
 ---
 
 ### 47. Kullanıcı Revizyonları Orijinal Model Audit Çıktısını Eziyordu (YÜKSEK)
 
-**Dosyalar:** `app/routes/processing.py`, `app/utils/audit_logger.py`  
+**Dosyalar:** `app/routes/processing.py`, `app/utils/audit_logger.py`
 
-**Problem:**  
+**Problem:**
 Taslak veya onay sonrasında düzenlenen veri `llm_raw_output.json` üzerine yazılsaydı lokal modelin orijinal cevabı kaybolacak, audit zinciri bozulacaktı.
 
-**Çözüm:**  
+**Çözüm:**
 `log_user_revision()` eklendi. Orijinal OCR/LLM/XML kayıtları korunurken kullanıcı revizyonları `draft_*` ve `approved_*` JSON, XML ve doğrulama raporlarına ayrı ayrı kaydediliyor.
 
 ---
 
 ### 48. Konsensüs Audit Dosyası İşlem Özetinde Görünmüyordu (DÜŞÜK)
 
-**Dosya:** `app/utils/audit_logger.py`  
+**Dosya:** `app/utils/audit_logger.py`
 
-**Problem:**  
+**Problem:**
 `consensus_report.json` üretilse bile `processing_summary.json` içindeki artifact listesinde bulunmadığından oturum audit zinciri eksik kalıyordu.
 
-**Çözüm:**  
+**Çözüm:**
 `log_processing_summary()` fonksiyonuna `consensus_path` eklendi ve başarı/hata durumundaki hakem raporu özet artifact listesine bağlandı.
 
 ---
 
 ### 49. AI Güven Skoru ve Uyuşmazlıklar Arayüzde Gösterilmiyordu (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
+**Dosyalar:** `static/index.html`, `static/app.js`
 
-**Problem:**  
+**Problem:**
 Backend konsensüs verisi üretse bile kullanıcı lokal ve bulut modellerinin ne ölçüde uzlaştığını veya hangi form alanlarında ayrıştığını göremiyordu.
 
-**Çözüm:**  
+**Çözüm:**
 Renk eşikli `AI Confidence` rozeti, `AI Consensus` işlem aşaması ve uyuşmayan form alanları için amber vurgu/tooltip eklendi. Yeni PDF seçildiğinde önceki skor ve vurgular temizleniyor.
 
 ---
 
 ### 50. DeepSeek Karşılaştırma Mantığı İki Ayrı Yerde Dağınıktı (DÜŞÜK)
 
-**Dosyalar:** `app/llm/cloud_inference.py`, `scripts/api_compare.py`  
+**Dosyalar:** `app/llm/cloud_inference.py`, `scripts/api_compare.py`
 
-**Problem:**  
+**Problem:**
 Benchmark ve servis akışı ayrı DeepSeek istemcileri ve farklı karşılaştırma kuralları kullanırsa zamanla skorlar birbirinden sapabilirdi.
 
-**Çözüm:**  
+**Çözüm:**
 API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileştirildi. `api_compare.py` aynı `run_deepseek_inference()` ve `calculate_consensus()` fonksiyonlarını kullanacak şekilde güncellendi.
 
 ---
@@ -694,75 +694,75 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 | 49 | UI güven skoru ve uyuşmazlık göstergesi | ORTA | Eklendi |
 | 50 | Dağınık DeepSeek karşılaştırma mantığı | DÜŞÜK | Düzeltildi |
 
-**Otomatik Testler:** 68/68 PASSED  
-**Ek Kontroller:** Python compile başarılı, JavaScript syntax başarılı, 22/22 DOM bağı doğrulandı, OpenAPI taslak/onay endpointleri doğrulandı.  
+**Otomatik Testler:** 68/68 PASSED
+**Ek Kontroller:** Python compile başarılı, JavaScript syntax başarılı, 22/22 DOM bağı doğrulandı, OpenAPI taslak/onay endpointleri doğrulandı.
 **Not:** Gerçek DeepSeek/Qwen smoke testi; geçerli `DEEPSEEK_API_KEY`, lokal Qwen model dosyaları ve uygun OpenVINO cihazı gerektirir. Otomatik testlerde bulut ve lokal çıkarımlar mock edilerek konsensüs, temiz JSON, audit, PDF temizliği ve kayıt/onay akışı doğrulanmıştır.
 
 ---
 
 ## V8 — Risk Bazlı Minimal DeepSeek Denetimi
 
-**Tarih:** 17.07.2026  
+**Tarih:** 17.07.2026
 **Not:** V7'deki çift tam çıkarım/konsensüs yaklaşımı, maliyet ve veri minimizasyonu hedefi doğrultusunda bu bölümdeki salt okunur kısa denetim mimarisiyle değiştirilmiştir.
 
 ### 51. Her Belgede Tam DeepSeek Çıkarımı Gereksiz Token Tüketiyordu (YÜKSEK)
 
-**Dosyalar:** `app/routes/processing.py`, `app/llm/cloud_inference.py`  
-**Problem:** OCR metni hem Qwen'e hem DeepSeek'e tam JSON üretimi için gönderiliyor, düşük riskli belgelerde dahi bulut maliyeti oluşuyordu.  
+**Dosyalar:** `app/routes/processing.py`, `app/llm/cloud_inference.py`
+**Problem:** OCR metni hem Qwen'e hem DeepSeek'e tam JSON üretimi için gönderiliyor, düşük riskli belgelerde dahi bulut maliyeti oluşuyordu.
 **Çözüm:** Tam DeepSeek çıkarımı kaldırıldı. Önce lokal Qwen, XML/XSD ve deterministik risk kontrolleri tamamlanıyor; DeepSeek yalnızca risk eşiği aşılırsa kısa hakem olarak çağrılıyor.
 
 ### 52. DeepSeek'in Yeni veya Düzeltilmiş Belge Verisi Üretme Riski Vardı (YÜKSEK)
 
-**Dosyalar:** `app/llm/cloud_inference.py`, `app/models.py`  
-**Problem:** Bulut modeli ikinci bir `ShippingInstruction` JSON'u üretiyor ve istemeden alternatif/düzeltilmiş değerler oluşturabiliyordu.  
+**Dosyalar:** `app/llm/cloud_inference.py`, `app/models.py`
+**Problem:** Bulut modeli ikinci bir `ShippingInstruction` JSON'u üretiyor ve istemeden alternatif/düzeltilmiş değerler oluşturabiliyordu.
 **Çözüm:** Bulut yanıt şeması yalnızca `score`, en fazla iki kısa cümlelik `summary` ve `suspicious_fields` ile sınırlandı. Prompt; düzeltme, değiştirme, çıkarım ve yeni veri üretimini açıkça yasaklıyor. Pydantic `extra="forbid"` ile `corrected_values` gibi ek alanlar çalışma zamanında reddediliyor. Maksimum yanıt 256 token'a indirildi.
 
 ### 53. DeepSeek Çağrısı Yerel Risk Seviyesinden Bağımsızdı (YÜKSEK)
 
-**Dosyalar:** `app/llm/local_audit.py`, `app/config.py`  
-**Problem:** Belge yerel kontrollerden temiz geçse bile bulut çağrısı yapılıyordu.  
+**Dosyalar:** `app/llm/local_audit.py`, `app/config.py`
+**Problem:** Belge yerel kontrollerden temiz geçse bile bulut çağrısı yapılıyordu.
 **Çözüm:** `local_risk_score` ve varsayılan 30 puan eşiği eklendi. `DEEPSEEK_REVIEW_MODE` ile `off`, `manual`, `risk` ve `always` modları destekleniyor; varsayılan `risk` modunda eşik altındaki belgeler tamamen lokal kalıyor.
 
 ### 54. Buluta Tam OCR ve Tam JSON Gönderiliyordu (YÜKSEK)
 
-**Dosya:** `app/llm/cloud_inference.py`  
-**Problem:** Tam belge içeriği gereksiz token tüketimi ve ticari veri gizliliği riski yaratıyordu.  
+**Dosya:** `app/llm/cloud_inference.py`
+**Problem:** Tam belge içeriği gereksiz token tüketimi ve ticari veri gizliliği riski yaratıyordu.
 **Çözüm:** Payload yalnızca yerel risk bulgularını, işaretlenmiş alanların mevcut değerlerini ve bu alanlarla eşleşen OCR satırlarını içeriyor. Referanslar varsayılan bağlamdan çıkarıldı; OCR excerpt üst sınırı varsayılan 2500 karakter olarak belirlendi.
 
 ### 55. “AI Doğruluk Skoru” Yanıltıcı Bir İsimdi (ORTA)
 
-**Dosyalar:** `app/models.py`, `static/index.html`, `static/app.js`  
-**Problem:** İki modelin uyumu, belgenin mutlak doğruluğu gibi gösteriliyordu.  
+**Dosyalar:** `app/models.py`, `static/index.html`, `static/app.js`
+**Problem:** İki modelin uyumu, belgenin mutlak doğruluğu gibi gösteriliyordu.
 **Çözüm:** Sonuç sözleşmesi `audit_confidence_score`, `local_risk_score`, `audit_summary`, `cloud_review_used` ve `suspicious_fields` alanlarına dönüştürüldü. UI, çağrı yapılmadıysa “Local Check”, yapıldıysa “DeepSeek Audit” etiketi gösteriyor.
 
 ### 56. Ücretsiz Yerel Belge Tutarlılık Kontrolleri Eksikti (YÜKSEK)
 
-**Dosya:** `app/llm/local_audit.py`  
-**Problem:** Bulut çağrısından önce konteyner, tarih, kod, miktar ve toplam tutarlılığı gibi deterministik kontroller kullanılmıyordu.  
+**Dosya:** `app/llm/local_audit.py`
+**Problem:** Bulut çağrısından önce konteyner, tarih, kod, miktar ve toplam tutarlılığı gibi deterministik kontroller kullanılmıyordu.
 **Çözüm:** Zorunlu alan, XSD, ISO tarih, ülke kodu, UN/LOCODE, ISO 6346 konteyner check-digit, pozitif adet/ağırlık/hacim, shipper/consignee rolü, kısa OCR ve ağırlık toplamı kontrolleri eklendi.
 
 ### 57. Ton ve Kilogram Değerleri Doğrudan Karşılaştırılabiliyordu (ORTA)
 
-**Dosya:** `app/llm/local_audit.py`  
-**Problem:** Cargo ve equipment ağırlık toplamları farklı birimlerdeyse sahte uyuşmazlık oluşabilirdi.  
+**Dosya:** `app/llm/local_audit.py`
+**Problem:** Cargo ve equipment ağırlık toplamları farklı birimlerdeyse sahte uyuşmazlık oluşabilirdi.
 **Çözüm:** Toplam karşılaştırmasından önce TON değerleri kilograma çevriliyor; yalnızca %5'ten büyük gerçek farklar risk olarak işaretleniyor.
 
 ### 58. Kullanıcının İsteğe Bağlı Kısa Denetim Çalıştırma Yolu Yoktu (ORTA)
 
-**Dosyalar:** `app/routes/processing.py`, `static/index.html`, `static/app.js`  
-**Problem:** Düşük riskli ancak önemli bir belge için kullanıcı bulut denetimini bilinçli biçimde başlatamıyordu.  
+**Dosyalar:** `app/routes/processing.py`, `static/index.html`, `static/app.js`
+**Problem:** Düşük riskli ancak önemli bir belge için kullanıcı bulut denetimini bilinçli biçimde başlatamıyordu.
 **Çözüm:** `POST /api/sessions/{session_id}/cloud-review` endpoint'i ve “Run Cloud Review” düğmesi eklendi. Düğme yalnızca API anahtarı mevcut ve mod `off` değilse etkinleşiyor.
 
 ### 59. Aynı Oturum İçin Tekrarlı DeepSeek Çağrıları Yapılabilirdi (ORTA)
 
-**Dosya:** `app/routes/processing.py`  
-**Problem:** Manuel endpoint'e art arda veya eş zamanlı istekler aynı belge için tekrar maliyet oluşturabilirdi.  
+**Dosya:** `app/routes/processing.py`
+**Problem:** Manuel endpoint'e art arda veya eş zamanlı istekler aynı belge için tekrar maliyet oluşturabilirdi.
 **Çözüm:** Başarılı bulut sonucu oturumda cache'leniyor; sonraki manuel istekler mevcut sonucu döndürüyor. Global cloud semaphore eş zamanlı API çağrılarını seri hale getiriyor.
 
 ### 60. Kullanıcı Düzenlemesinden Sonra Eski Bulut Skoru Geçerli Kalıyordu (YÜKSEK)
 
-**Dosya:** `app/routes/processing.py`  
-**Problem:** Form verisi değiştirildikten sonra önceki DeepSeek skoru yeni veri için hâlâ geçerliymiş gibi gösterilebilirdi.  
+**Dosya:** `app/routes/processing.py`
+**Problem:** Form verisi değiştirildikten sonra önceki DeepSeek skoru yeni veri için hâlâ geçerliymiş gibi gösterilebilirdi.
 **Çözüm:** Taslak/onay kaydında yerel risk kontrolleri yeniden çalışıyor, eski bulut sonucu temizleniyor ve DeepSeek otomatik olarak yeniden çağrılmıyor. Yeni bulut denetimi ancak kullanıcı isterse yapılabiliyor.
 
 ## V8 Doğrulama Özeti
@@ -778,104 +778,104 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 ## V9 — Uçtan Uca WSL2, OpenVINO ve GPU Entegrasyonu
 
-**Tarih:** 17.07.2026  
-**Hedef dağıtım:** `\\wsl.localhost\Ubuntu` / WSL2  
-**WSL çalışma dizini:** `/home/ardam/projects/CerberusVision`  
+**Tarih:** 17.07.2026
+**Hedef dağıtım:** `\\wsl.localhost\Ubuntu` / WSL2
+**WSL çalışma dizini:** `/home/ardam/projects/CerberusVision`
 **Kapsam:** Tekrarlanabilir WSL kurulumu, gerçek OCR, OpenVINO model çalıştırma, Arc 140V GPU profili, 14B CPU kalite profili, API/SSE smoke testleri ve dokümantasyon
 
 ### 61. Mevcut `Ubuntu` Dağıtımı Yerine Yanlış WSL Hedefi Seçilebiliyordu (YÜKSEK)
 
-**Problem:** Sandbox içindeki ilk WSL sorgusu mevcut dağıtımı göstermediği için yanlışlıkla `Ubuntu-22.04` kurulum girişimi başlatılmıştı.  
+**Problem:** Sandbox içindeki ilk WSL sorgusu mevcut dağıtımı göstermediği için yanlışlıkla `Ubuntu-22.04` kurulum girişimi başlatılmıştı.
 **Çözüm:** Sandbox dışı doğrulamada gerçek hedefin `Ubuntu` ve WSL2 olduğu belirlendi. Proje yalnızca bu dağıtıma kuruldu. Görev sırasında oluşan `Ubuntu-22.04` kaydının `/home` dizininin boş olduğu doğrulandı ve kullanıcı onayıyla kaldırıldı; mevcut `Ubuntu` verisine dokunulmadı.
 
 ### 62. Proje `/mnt/c` Üzerinden Çalıştırılacak Şekilde Bırakılmıştı (ORTA)
 
-**Dosyalar:** `scripts/wsl_sync.sh`, `.gitattributes`  
-**Problem:** Windows bağlama noktası üzerinden doğrudan Python/model çalıştırmak dosya erişimi, izin ve satır-sonu davranışını olumsuz etkileyebilirdi.  
+**Dosyalar:** `scripts/wsl_sync.sh`, `.gitattributes`
+**Problem:** Windows bağlama noktası üzerinden doğrudan Python/model çalıştırmak dosya erişimi, izin ve satır-sonu davranışını olumsuz etkileyebilirdi.
 **Çözüm:** Kaynak proje Windows çalışma alanında tutulurken çalışma kopyası `rsync` ile WSL ext4 alanındaki `/home/ardam/projects/CerberusVision` dizinine alınmaya başlandı. `.env`, `.venv`, model, log, upload ve cache dizinleri senkronizasyonda korunuyor; shell dosyaları LF olarak sabitlendi.
 
 ### 63. WSL İçin Tekrarlanabilir Python Çalışma Zamanı Yoktu (YÜKSEK)
 
-**Dosyalar:** `.python-version`, `requirements-wsl.txt`, `scripts/wsl_setup.sh`  
-**Problem:** Ubuntu 26.04 sistem Python'u 3.14 iken Paddle/OpenVINO paketlerinin hedef sürümleri için proje Python sürümü garanti edilmiyordu.  
+**Dosyalar:** `.python-version`, `requirements-wsl.txt`, `scripts/wsl_setup.sh`
+**Problem:** Ubuntu 26.04 sistem Python'u 3.14 iken Paddle/OpenVINO paketlerinin hedef sürümleri için proje Python sürümü garanti edilmiyordu.
 **Çözüm:** Sistem Python'una ve `apt` paketlerine dokunmadan kullanıcı hesabına `uv 0.11.28`, yönetilen Python `3.12.13` ve proje içi `.venv` kuruldu. WSL profili ana gereksinimleri ve WSL'ye özel paketleri tek kurulumdan çözüyor.
 
 ### 64. `wsl_setup.sh` İkinci Çalıştırmada Mevcut `.venv` Nedeniyle Hata Veriyordu (ORTA)
 
-**Dosya:** `scripts/wsl_setup.sh`  
-**Problem:** `uv venv` mevcut sanal ortamı görünce kurulum betiği yeniden çalıştırılamıyordu.  
+**Dosya:** `scripts/wsl_setup.sh`
+**Problem:** `uv venv` mevcut sanal ortamı görünce kurulum betiği yeniden çalıştırılamıyordu.
 **Çözüm:** Betik idempotent hale getirildi. Mevcut ortam Python 3.12 ise korunup yalnızca bağımlılıklar eşitleniyor; farklı Python minor sürümünde güvenli ve açıklayıcı hata üretiliyor.
 
 ### 65. PaddleOCR/PaddlePaddle Çalışma Zamanında `setuptools` Eksikti (YÜKSEK)
 
-**Dosya:** `requirements-wsl.txt`  
-**Problem:** Paket çözümlemesi başarılı görünmesine rağmen gerçek import denetiminde `No module named 'setuptools'` oluşuyordu.  
+**Dosya:** `requirements-wsl.txt`
+**Problem:** Paket çözümlemesi başarılı görünmesine rağmen gerçek import denetiminde `No module named 'setuptools'` oluşuyordu.
 **Çözüm:** Örtük çalışma zamanı bağımlılığı `setuptools==83.0.0` olarak açıkça sabitlendi. PaddleOCR ve Paddle importları WSL smoke testinde doğrulandı.
 
 ### 66. Hazır Qwen OpenVINO Modeli ile Çalışma Zamanı Sürümü Uyumsuzdu (YÜKSEK)
 
-**Dosya:** `requirements.txt`  
-**Problem:** Proje OpenVINO 2024.6'ya sabitlenmişti; resmi Qwen2.5 INT4 OpenVINO modelleri 2025.1 veya üstünü gerektiriyordu.  
+**Dosya:** `requirements.txt`
+**Problem:** Proje OpenVINO 2024.6'ya sabitlenmişti; resmi Qwen2.5 INT4 OpenVINO modelleri 2025.1 veya üstünü gerektiriyordu.
 **Çözüm:** OpenVINO, OpenVINO GenAI ve tokenizers uyumlu biçimde 2025.4 serisine yükseltildi. `huggingface-hub==1.23.0` WSL profiline eklendi; 88 kurulu paketin birbiriyle uyumlu olduğu `uv pip check` ile doğrulandı.
 
 ### 67. WSL Smoke Aracı Doğrudan Çalıştırıldığında `app` Paketini Bulamıyordu (ORTA)
 
-**Dosya:** `scripts/wsl_smoke.py`  
-**Problem:** `python scripts/wsl_smoke.py --pdf ...` komutu proje kökünü `sys.path` içine almadığı için `ModuleNotFoundError: app` veriyordu.  
+**Dosya:** `scripts/wsl_smoke.py`
+**Problem:** `python scripts/wsl_smoke.py --pdf ...` komutu proje kökünü `sys.path` içine almadığı için `ModuleNotFoundError: app` veriyordu.
 **Çözüm:** Betik proje kökünü güvenli biçimde Python arama yoluna ekliyor. Gerçek örnek PDF'de 694 karakter, 1 sayfa ve 28 OCR kutusu üretildi.
 
 ### 68. OpenVINO 2025 Yapısal JSON API Değişikliği Tam Hattı Durduruyordu (KRİTİK)
 
-**Dosyalar:** `app/llm/inference.py`, `tests/test_guided_decoding.py`  
-**Problem:** Eski `structured_generation`, `guided_decoding` ve `json_schema` alanları OpenVINO 2025.1 nesnesinde yoktu; gerçek PDF hattı `GenerationConfig object has no attribute json_schema` hatasıyla kesiliyordu.  
+**Dosyalar:** `app/llm/inference.py`, `tests/test_guided_decoding.py`
+**Problem:** Eski `structured_generation`, `guided_decoding` ve `json_schema` alanları OpenVINO 2025.1 nesnesinde yoktu; gerçek PDF hattı `GenerationConfig object has no attribute json_schema` hatasıyla kesiliyordu.
 **Çözüm:** OpenVINO 2025.4'ün `StructuredOutputConfig.json_schema` ve `structured_output_config` API'si kullanıldı. Eski sürümler için hata üretmeyen kontrollü fallback eklendi ve iki yeni regresyon testi yazıldı.
 
 ### 69. 14B CPU Çıkarımı Sabit 300 Saniyelik SSE Timeout'a Takılıyordu (YÜKSEK)
 
-**Dosyalar:** `app/config.py`, `app/routes/processing.py`, `.env.example`  
-**Problem:** Model çalışmaya devam ettiği halde SSE generator 300 saniyede `TIMEOUT` üretiyor ve geçici sunucu kapanınca pipeline yarıda kalıyordu.  
+**Dosyalar:** `app/config.py`, `app/routes/processing.py`, `.env.example`
+**Problem:** Model çalışmaya devam ettiği halde SSE generator 300 saniyede `TIMEOUT` üretiyor ve geçici sunucu kapanınca pipeline yarıda kalıyordu.
 **Çözüm:** Timeout `SSE_TIMEOUT_SECONDS` ile yönetilebilir yapıldı ve WSL varsayılanı 1800 saniyeye çıkarıldı. 14B CPU hattı yaklaşık 10 dakika sonunda `XML_VALIDATING → DRAFT → COMPLETE` olaylarını başarıyla üretti.
 
 ### 70. Model İndirme ve Readiness Süreci Elle ve Belirsizdi (YÜKSEK)
 
-**Dosyalar:** `scripts/wsl_model_setup.sh`, `scripts/wsl_smoke.py`, `scripts/wsl_api_smoke.sh`  
-**Problem:** Model yolunun varlığı, gerekli IR dosyaları, boş disk, gerçek model yükleme ve HTTP readiness ayrı ayrı doğrulanmıyordu.  
+**Dosyalar:** `scripts/wsl_model_setup.sh`, `scripts/wsl_smoke.py`, `scripts/wsl_api_smoke.sh`
+**Problem:** Model yolunun varlığı, gerekli IR dosyaları, boş disk, gerçek model yükleme ve HTTP readiness ayrı ayrı doğrulanmıyordu.
 **Çözüm:** Resmi Hugging Face modelini devam ettirilebilir biçimde indiren, en az 12 GiB boş alan ve `openvino_model.xml/.bin` kontrolü yapan model betiği eklendi. Model probu gerçek token üretir; API smoke betiği root, health ve tam multipart/SSE hattını denetler.
 
 ### 71. Qwen2.5-14B INT4 Arc 140V GPU Bellek Havuzuna Sığmıyordu (YÜKSEK)
 
-**Dosyalar:** `scripts/wsl_gpu_info.py`, `scripts/wsl_profile.sh`, `.env.example`  
-**Problem:** OpenVINO GPU'yu görmesine rağmen 14B model derlemesi `USM Host` tahsis hatası veriyordu. Ölçümde WSL'nin 24 GiB RAM'inin tükenmediği, sürecin yaklaşık 9.54 GiB tepe RSS'de başarısız olduğu görüldü; sınır iGPU grafik/USM havuzuydu.  
+**Dosyalar:** `scripts/wsl_gpu_info.py`, `scripts/wsl_profile.sh`, `.env.example`
+**Problem:** OpenVINO GPU'yu görmesine rağmen 14B model derlemesi `USM Host` tahsis hatası veriyordu. Ölçümde WSL'nin 24 GiB RAM'inin tükenmediği, sürecin yaklaşık 9.54 GiB tepe RSS'de başarısız olduğu görüldü; sınır iGPU grafik/USM havuzuydu.
 **Çözüm:** 14B model silinmeden CPU kalite profili olarak korundu. Yaklaşık 4.2 GiB Qwen2.5-7B INT4 modeli ana GPU profili yapıldı ve Arc 140V üzerinde gerçek token ile tam PDF hattında doğrulandı. Modeller aynı anda yüklenmiyor.
 
 ### 72. Varsayılan WSL Bellek Sınırı Büyük Model Derleme Tepe Kullanımı İçin Düşüktü (ORTA)
 
-**Dosya:** `.wslconfig.example`  
-**Problem:** 31.5 GiB fiziksel RAM'li makinede `.wslconfig` yoktu; WSL varsayılan yaklaşık 16 GiB RAM ve 4 GiB swap görüyordu.  
+**Dosya:** `.wslconfig.example`
+**Problem:** 31.5 GiB fiziksel RAM'li makinede `.wslconfig` yoktu; WSL varsayılan yaklaşık 16 GiB RAM ve 4 GiB swap görüyordu.
 **Çözüm:** WSL2 için 24 GiB RAM ve 8 GiB swap profili oluşturulup `%UserProfile%\.wslconfig` konumuna uygulandı. Yeniden başlatma sonrası Ubuntu `24611032 kB` RAM ve `8388608 kB` swap gördü.
 
 ### 73. İlk 7B GPU Çıktısı Kritik Ağırlık/Hacim ve Kod Alanlarını Yanlış Eşliyordu (YÜKSEK)
 
-**Dosya:** `app/llm/inference.py`  
-**Problem:** İlk gerçek 7B sonucu `28,16 m³` değerini ağırlığa, `26.080 kg` değerini hacme taşıdı; liman adlarını UN/LOCODE alanına yazdı ve yerel risk 94 oldu.  
+**Dosya:** `app/llm/inference.py`
+**Problem:** İlk gerçek 7B sonucu `28,16 m³` değerini ağırlığa, `26.080 kg` değerini hacme taşıdı; liman adlarını UN/LOCODE alanına yazdı ve yerel risk 94 oldu.
 **Çözüm:** Ünite, Avrupa sayı biçimi, POL/POD, serbest metin/UNLOCODE, adres, iletişim, vergi dairesi ve ISO 6346 benzeri konteyner eşleme kuralları prompt'a eklendi; örnekleme kapatılıp deterministik üretime geçildi. Son turda `MSKU1875698`, 26080 kg brüt, 24776 kg net, 28.16 CBM, limanlar ve şehirler doğru eşlendi; risk 14B ile aynı 30'a düştü.
 
 ### 74. Pytest Geçici Klasörü WSL Senkronizasyonunu Durduruyordu (ORTA)
 
-**Dosyalar:** `scripts/wsl_sync.sh`, `pytest.ini`  
-**Problem:** Windows'ta erişimi kısıtlı `.pytest-tmp-final` klasörü `rsync` için code 23 hatası oluşturuyordu; ayrıca pytest-asyncio loop scope uyarısı vardı.  
+**Dosyalar:** `scripts/wsl_sync.sh`, `pytest.ini`
+**Problem:** Windows'ta erişimi kısıtlı `.pytest-tmp-final` klasörü `rsync` için code 23 hatası oluşturuyordu; ayrıca pytest-asyncio loop scope uyarısı vardı.
 **Çözüm:** Tüm `.pytest-tmp*` dizinleri senkronizasyondan çıkarıldı ve async fixture loop scope açıkça `function` olarak sabitlendi.
 
 ### 75. Audit CLI Risk Politikasını Atlıyor ve Modeli Sabit 14B Raporluyordu (YÜKSEK)
 
-**Dosya:** `scripts/api_compare.py`  
-**Problem:** API anahtarı varsa `off/manual/risk` politikası dikkate alınmadan DeepSeek çağrılıyor, kullanılan profil ne olursa olsun rapora 14B yazılıyordu.  
+**Dosya:** `scripts/api_compare.py`
+**Problem:** API anahtarı varsa `off/manual/risk` politikası dikkate alınmadan DeepSeek çağrılıyor, kullanılan profil ne olursa olsun rapora 14B yazılıyordu.
 **Çözüm:** CLI web hattıyla aynı yerel risk kararını kullanıyor. Zorla kısa denetim yalnızca açık `--cloud-review` seçeneği ve izinli mod/API anahtarıyla çalışıyor; rapor gerçek model dizini ve OpenVINO aygıtını içeriyor.
 
 ### 76. GPU/CPU Profil Geçişi ve WSL Denetimi Tekrarlanabilir Değildi (ORTA)
 
-**Dosyalar:** `scripts/wsl_profile.sh`, `scripts/wsl_gpu_info.py`, `scripts/wsl_api_smoke.sh`, `README.md`  
-**Problem:** Kullanıcı model yolunu elle değiştirmek, GPU özelliklerini ayrı komutlarla araştırmak ve API hattını manuel izlemek zorundaydı.  
+**Dosyalar:** `scripts/wsl_profile.sh`, `scripts/wsl_gpu_info.py`, `scripts/wsl_api_smoke.sh`, `README.md`
+**Problem:** Kullanıcı model yolunu elle değiştirmek, GPU özelliklerini ayrı komutlarla araştırmak ve API hattını manuel izlemek zorundaydı.
 **Çözüm:** `gpu`, `quality/14b` ve `show` profil komutları; OpenVINO GPU bellek/aygıt raporu; geçici sunucu ile readiness/tam PDF testi eklendi. README WSL2-first kurulum, senkronizasyon, iki model profili, gerçek donanım sınırı ve doğrulama komutlarıyla baştan güncellendi.
 
 ## V9 Doğrulama Özeti
@@ -895,31 +895,31 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 ## V10 — Türkçe Arayüz, Opsiyonel İngilizce ve Koyu Tema
 
-**Tarih:** 17.07.2026  
-**Kapsam:** Arayüz yerelleştirme, dinamik mesajlar, tema yönetimi ve tarayıcı doğrulaması  
+**Tarih:** 17.07.2026
+**Kapsam:** Arayüz yerelleştirme, dinamik mesajlar, tema yönetimi ve tarayıcı doğrulaması
 
 ### 77. Arayüz Varsayılan Olarak İngilizce Görünüyordu (YÜKSEK)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
-**Problem:** Belge yükleme, form alanları, tablo başlıkları ve işlem eylemleri sabit İngilizce metinlerle sunuluyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Problem:** Belge yükleme, form alanları, tablo başlıkları ve işlem eylemleri sabit İngilizce metinlerle sunuluyordu.
 **Çözüm:** HTML'in JavaScript yüklenmeden önceki ilk görünümü dahil tüm arayüz Türkçeleştirildi. Türkçe varsayılan dil olarak sabitlendi ve sayfa başlığı ile `lang` niteliği de dile bağlandı.
 
 ### 78. İngilizceye Kontrollü Geçiş ve Dil Kalıcılığı Yoktu (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
-**Problem:** Kullanıcının arayüz dilini değiştirebileceği bir seçenek ve seçimi sonraki açılışta koruyan mekanizma bulunmuyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Problem:** Kullanıcının arayüz dilini değiştirebileceği bir seçenek ve seçimi sonraki açılışta koruyan mekanizma bulunmuyordu.
 **Çözüm:** Tek merkezli TR/EN çeviri sözlüğü, erişilebilir `TR / EN` seçicisi ve `cerberus-language` kalıcı tercihi eklendi. Statik etiketler, yer tutucular, başlıklar ve sayfa dili birlikte güncelleniyor.
 
 ### 79. Dinamik Durum ve Denetim Metinleri Dil Değişimini İzlemiyordu (YÜKSEK)
 
-**Dosya:** `static/app.js`  
-**Problem:** SSE durumları, denetim skoru, şüpheli alan açıklamaları, eksik kalemler, kopyalama bildirimi ve API mesajları sabit veya karışık dilde kalabiliyordu.  
+**Dosya:** `static/app.js`
+**Problem:** SSE durumları, denetim skoru, şüpheli alan açıklamaları, eksik kalemler, kopyalama bildirimi ve API mesajları sabit veya karışık dilde kalabiliyordu.
 **Çözüm:** Durum, denetim ve tablo durumu bellekte tutularak dil değişiminde yeniden oluşturuluyor. Bilinen sunucu mesajları iki dilde eşleniyor; dosya adı ve üretilmiş XML gibi gerçek verilerin çeviri katmanı tarafından ezilmesi engellendi.
 
 ### 80. Koyu Tema ve Tema Tercihi Bulunmuyordu (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
-**Problem:** Arayüz yalnızca açık renklerle tasarlanmıştı; sistem renk tercihini veya kullanıcı seçimini izlemiyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Problem:** Arayüz yalnızca açık renklerle tasarlanmıştı; sistem renk tercihini veya kullanıcı seçimini izlemiyordu.
 **Çözüm:** Tailwind sınıf tabanlı koyu tema, ilk boyamadan önce tema uygulaması, sistem tercihi desteği, erişilebilir tema düğmesi ve `cerberus-theme` kalıcı tercihi eklendi. Kartlar, formlar, doğrulama durumları, tablolar ve denetim panelleri iki tema için ayrı ayrı uyarlandı.
 
 ## V10 Doğrulama Özeti
@@ -934,31 +934,31 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 ## V11 — Arayüz Etkileşimlerinin Eksiksizleştirilmesi
 
-**Tarih:** 17.07.2026  
-**Kapsam:** Tüm buton, girdi, PDF aracı ve açılır panel davranışlarının kod/canlı tarayıcı denetimi  
+**Tarih:** 17.07.2026
+**Kapsam:** Tüm buton, girdi, PDF aracı ve açılır panel davranışlarının kod/canlı tarayıcı denetimi
 
 ### 81. Üst Menüdeki Arama, Bildirim ve Profil Öğelerinin Davranışı Yoktu (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
-**Problem:** Tasarımda etkileşimli görünen arama, bildirim ve kullanıcı alanları gerçek bir işlem yapmıyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Problem:** Tasarımda etkileşimli görünen arama, bildirim ve kullanıcı alanları gerçek bir işlem yapmıyordu.
 **Çözüm:** Form alanı/bölüm arayıp hedefe odaklanan arama paneli, son işlem durumunu ve okunmamış işaretini gösteren bildirim paneli, etkin dil/tema/oturum bilgisini gösteren profil paneli eklendi. Paneller birbirini kapatıyor; dış tıklama ve `Escape` destekleniyor.
 
 ### 82. PDF Araç Çubuğu ve Sayfa Kontrolleri İşlevsizdi (YÜKSEK)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
-**Problem:** PDF kopyala, yakınlaştır, tam ekran, önceki/sonraki sayfa düğmelerinin dinleyicisi yoktu; küçük-resim kenar çubuğu boş kalıyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Problem:** PDF kopyala, yakınlaştır, tam ekran, önceki/sonraki sayfa düğmelerinin dinleyicisi yoktu; küçük-resim kenar çubuğu boş kalıyordu.
 **Çözüm:** Oturumluk PDF bağlantısı kopyalama, döngüsel `%100/%125/%150/%200` yakınlaştırma, Fullscreen API ile giriş/çıkış, PDF nesne/ağaç işaretlerinden sayfa sayımı, sayfa düğmeleri ve oklarla gezinme eklendi. Tek sayfalı belgede gezinme okları doğru biçimde devre dışı kalıyor.
 
 ### 83. Sonuç Eylemleri Veri Hazır Olmadan Etkin Görünüyordu (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.js`  
-**Problem:** XML kopyalama, taslak kaydetme ve veri onaylama düğmeleri işlenecek sonuç yokken tıklanabiliyor; yeni belge yüklendiğinde önceki sonuç ekranda kalabiliyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Problem:** XML kopyalama, taslak kaydetme ve veri onaylama düğmeleri işlenecek sonuç yokken tıklanabiliyor; yeni belge yüklendiğinde önceki sonuç ekranda kalabiliyordu.
 **Çözüm:** Düğmeler ilgili XML/yapılandırılmış veri oluşana kadar `disabled` tutuluyor. Yeni belge yüklemesi form, zorunlu alan işaretleri, kalem tablosu ve XML çıktısını temiz bir duruma getiriyor; sonuç geldiğinde eylemler otomatik etkinleşiyor.
 
 ### 84. Etkileşim Sözleşmesi ve Onay Hatası Yerelleştirmesi Eksikti (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.js`, `tests/test_frontend_ui.py`  
-**Problem:** Yeni veya mevcut bir butonun dinleyicisiz kalmasını otomatik yakalayan denetim yoktu; zorunlu alanlarla onay engellendiğinde sunucu hatası Türkçe arayüzde İngilizce görünüyordu.  
+**Dosyalar:** `static/index.html`, `static/app.js`, `tests/test_frontend_ui.py`
+**Problem:** Yeni veya mevcut bir butonun dinleyicisiz kalmasını otomatik yakalayan denetim yoktu; zorunlu alanlarla onay engellendiğinde sunucu hatası Türkçe arayüzde İngilizce görünüyordu.
 **Çözüm:** Statik tüm butonların `type="button"`, kimlik ve click davranışını; girdi, arama ve PDF kontrollerini denetleyen regresyon testleri eklendi. Onay engeli iki dilde çeviri katmanına alındı.
 
 ## V11 Doğrulama Özeti
@@ -973,37 +973,37 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 ## V12 — Güvenli İngilizce Belge Keşfi ve Sınırlı DeepSeek Filtresi
 
-**Tarih:** 17.07.2026  
-**Kapsam:** Hedefli arama, güvenli indirme, yerel ön eleme, İngilizce denetimi, veri kümesi kaydı ve WSL kalıcılığı  
+**Tarih:** 17.07.2026
+**Kapsam:** Hedefli arama, güvenli indirme, yerel ön eleme, İngilizce denetimi, veri kümesi kaydı ve WSL kalıcılığı
 
 ### 85. Örnek Belge Araması Tekrarlanabilir ve Programatik Değildi (YÜKSEK)
 
-**Dosyalar:** `app/search/document_discovery.py`, `scripts/find_shipping_documents.py`, `app/config.py`, `.env.example`  
-**Problem:** PDF/PNG/JPG Shipping Instruction ve Bill of Lading örneklerini hedefli sorgularla bulup tek bir denetlenebilir akışta toplama aracı yoktu. Arama sonuç sayfasını kazımak kararsız ve servis koşullarına bağımlı bir çözüm oluşturacaktı.  
+**Dosyalar:** `app/search/document_discovery.py`, `scripts/find_shipping_documents.py`, `app/config.py`, `.env.example`
+**Problem:** PDF/PNG/JPG Shipping Instruction ve Bill of Lading örneklerini hedefli sorgularla bulup tek bir denetlenebilir akışta toplama aracı yoktu. Arama sonuç sayfasını kazımak kararsız ve servis koşullarına bağımlı bir çözüm oluşturacaktı.
 **Çözüm:** İngilizce Google-dork benzeri sorgular, resmî Brave Search API sağlayıcısı, mevcut müşteriler için Google Custom Search JSON API sağlayıcısı ve yalnızca sorgu bağlantılarını yazdıran manuel Google modu eklendi. Sağlayıcı, çıktı dizini, sonuç sınırı ve eşikler ortam değişkenleri ile yönetilebilir hale getirildi.
 
 ### 86. Uzak Belge İndirmeleri Güvenlik ve Dosya Bütünlüğü Denetiminden Geçmiyordu (KRİTİK)
 
-**Dosya:** `app/search/document_discovery.py`  
-**Problem:** Arama sonucundaki bir URL'nin doğrudan indirilmesi özel ağlara erişim, yönlendirme üzerinden SSRF, aşırı büyük içerik veya PDF/görsel gibi görünen HTML indirme riski taşıyordu.  
+**Dosya:** `app/search/document_discovery.py`
+**Problem:** Arama sonucundaki bir URL'nin doğrudan indirilmesi özel ağlara erişim, yönlendirme üzerinden SSRF, aşırı büyük içerik veya PDF/görsel gibi görünen HTML indirme riski taşıyordu.
 **Çözüm:** Yalnızca HTTP(S), her yönlendirmede global IP denetimi, gömülü kimlik bilgisi reddi, altı yönlendirme sınırı, akışlı boyut sınırı ve PDF/PNG/JPEG sihirli bayt doğrulaması uygulandı. İçerik SHA-256 ile kimliklendirilip yinelenen dosyalar atlanıyor.
 
 ### 87. Konu Dışı veya İngilizce Olmayan Belgeler Veri Kümesine Karışabiliyordu (YÜKSEK)
 
-**Dosyalar:** `app/llm/document_relevance.py`, `app/search/document_discovery.py`, `tests/test_document_discovery.py`  
-**Problem:** Arama sorgusunun İngilizce olması, dönen belgenin hem lojistik konusuyla ilgili hem de İngilizce olduğunu garanti etmiyordu.  
+**Dosyalar:** `app/llm/document_relevance.py`, `app/search/document_discovery.py`, `tests/test_document_discovery.py`
+**Problem:** Arama sorgusunun İngilizce olması, dönen belgenin hem lojistik konusuyla ilgili hem de İngilizce olduğunu garanti etmiyordu.
 **Çözüm:** Yerel anahtar kelime/okunabilirlik ön elemesinden sonra DeepSeek'e yalnızca konu ve dil kararı verdirildi. `relevant=true`, `english=true` ve geçerli belge türü koşullarından biri sağlanmazsa belge reddediliyor; İngilizce olmayan ilgili belge için ayrı regresyon testi eklendi.
 
 ### 88. DeepSeek'in Keşif Hattındaki Yetkisi Gereğinden Genişleyebilirdi (YÜKSEK)
 
-**Dosyalar:** `app/llm/document_relevance.py`, `app/search/document_discovery.py`  
-**Problem:** Bulut modelinin kalite puanı vermesi, içeriği düzeltmesi, alan çıkarması veya belge üretmesi kullanıcı tarafından istenmeyen maliyet ve veri değiştirme davranışı oluşturabilirdi.  
+**Dosyalar:** `app/llm/document_relevance.py`, `app/search/document_discovery.py`
+**Problem:** Bulut modelinin kalite puanı vermesi, içeriği düzeltmesi, alan çıkarması veya belge üretmesi kullanıcı tarafından istenmeyen maliyet ve veri değiştirme davranışı oluşturabilirdi.
 **Çözüm:** Katı Pydantic sözleşmesi yalnızca `relevant`, `english`, `document_type` ve kısa `reason` alanlarına izin veriyor; skor ve ek alanlar reddediliyor. Prompt kalite, doğruluk, tamlık, düzeltme, çıkarım ve üretimi açıkça yasaklıyor. DeepSeek yalnızca ücretsiz yerel filtreyi geçen adaylarda ve sınırlı metin alıntısıyla çağrılıyor.
 
 ### 89. Keşif Sonuçları İzlenebilir Değildi ve WSL Senkronizasyonunda Kaybolabilirdi (ORTA)
 
-**Dosyalar:** `app/search/document_discovery.py`, `scripts/wsl_sync.sh`, `README.md`  
-**Problem:** Kabul/red gerekçesi, kaynak URL, içerik özeti ve kullanılan denetimler kalıcı bir kayda sahip değildi. WSL'de üretilen `veriler` dizini sonraki Windows kaynak senkronizasyonunda silinebilirdi.  
+**Dosyalar:** `app/search/document_discovery.py`, `scripts/wsl_sync.sh`, `README.md`
+**Problem:** Kabul/red gerekçesi, kaynak URL, içerik özeti ve kullanılan denetimler kalıcı bir kayda sahip değildi. WSL'de üretilen `veriler` dizini sonraki Windows kaynak senkronizasyonunda silinebilirdi.
 **Çözüm:** Kabul edilen, yerel denetimde bekleyen ve manifest kayıtları ayrı tutuldu; kaynak, özellikler, kararlar ve SHA-256 JSONL denetim izine yazılıyor. `veriler/` WSL senkronizasyonundan çıkarılarak Linux çalışma kopyasında kalıcı hale getirildi; kullanım ve lisans sorumluluğu README'de açıklandı.
 
 ## V12 Doğrulama Özeti
@@ -1017,97 +1017,97 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 ## V13 — Güvenlik, Eşzamanlılık ve Yaşam Döngüsü Sertleştirmesi
 
-**Tarih:** 17.07.2026  
-**Kapsam:** V11 sonrası bağımsız denetimde bildirilen 18 güvenlik, hata, performans ve bakım bulgusunun uygulanması  
+**Tarih:** 17.07.2026
+**Kapsam:** V11 sonrası bağımsız denetimde bildirilen 18 güvenlik, hata, performans ve bakım bulgusunun uygulanması
 
 ### 90. Stream'e Bağlanılmayan SSE Kuyrukları Sınırsız Kalıyordu (YÜKSEK)
 
-**Dosyalar:** `app/routes/processing.py`, `app/config.py`  
+**Dosyalar:** `app/routes/processing.py`, `app/config.py`
 **Çözüm:** Kuyruklar 20 kayıtla sınırlandı; tamamlanmış ve tüketicisiz kuyruklara 300 saniyelik gerçek zamanlayıcı ve tembel TTL temizliği eklendi. Aktif/tüketilen kuyruklar korunuyor, bilinmeyen stream kimlikleri yeni kuyruk oluşturamıyor ve geç bağlanan geçerli istemci sonuç penceresini koruyor.
 
 ### 91. PDF Render Hatasında PyMuPDF Belgesi Kapanmıyordu (ORTA)
 
-**Dosya:** `app/ocr/spatial_ocr.py`  
+**Dosya:** `app/ocr/spatial_ocr.py`
 **Çözüm:** Belge context manager ile açıldı; sayfa/pixmap üretimi hata verse bile handle kapanıyor. Exception yolu sahte fitz belgesiyle regresyon testine alındı.
 
 ### 92. Yeni PDF Önceki SSE Akışını İptal Etmiyordu (YÜKSEK)
 
-**Dosyalar:** `static/app.js`, `tests/test_frontend_ui.py`  
+**Dosyalar:** `static/app.js`, `tests/test_frontend_ui.py`
 **Çözüm:** Her yüklemeye `AbortController` ve monoton istek kimliği bağlandı. Yeni seçim önceki fetch/reader akışını iptal ediyor; eski istekten gelen durum ve sonuçlar güncel arayüzü değiştiremiyor.
 
 ### 93. Manuel Bulut Denetimi Eski İşlem Durumunu Yazabiliyordu (ORTA)
 
-**Dosya:** `app/routes/processing.py`  
+**Dosya:** `app/routes/processing.py`
 **Çözüm:** DeepSeek dönüşünden sonra durum store'dan yeniden okunuyor. Bulut denetimi güncel olmayan `stored_result.status` değerini artık store'a geri yazmıyor.
 
 ### 94. JSON Fallback Tek Tırnaklı Değerleri Ayrıştıramıyordu (DÜŞÜK)
 
-**Dosyalar:** `app/llm/inference.py`, `tests/test_guided_decoding.py`  
+**Dosyalar:** `app/llm/inference.py`, `tests/test_guided_decoding.py`
 **Çözüm:** Regex ile değer değiştirmek yerine önce JSON onarımı, ardından yalnızca güvenli Python literal yapılarını kabul eden `ast.literal_eval` fallback'i eklendi. Sonuç sözlük değilse açıkça reddediliyor.
 
 ### 95. Health Her Çağrıda OpenVINO Core Oluşturuyordu (DÜŞÜK)
 
-**Dosyalar:** `app/main.py`, `tests/test_runtime_hardening.py`  
+**Dosyalar:** `app/main.py`, `tests/test_runtime_hardening.py`
 **Çözüm:** Başarılı cihaz keşfi `lru_cache` ile süreç ömrü boyunca saklanıyor; hata durumları cache'lenmediği için geçici sürücü hatası sonraki health çağrısında yeniden denenebiliyor.
 
 ### 96. Sabit Pydantic JSON Şeması Her Çıkarımda Yeniden Üretiliyordu (DÜŞÜK)
 
-**Dosya:** `app/llm/inference.py`  
+**Dosya:** `app/llm/inference.py`
 **Çözüm:** `ShippingInstruction` şeması tek örnek olarak cache'lendi ve hem prompt hem OpenVINO structured-output yapılandırması aynı değeri kullanıyor.
 
 ### 97. Arayüz Tailwind CDN ve Google Fonts'a Bağımlıydı (ORTA)
 
-**Dosyalar:** `static/index.html`, `static/app.css`, `static/tailwind.input.css`, `tailwind.config.js`, `package.json`, `pnpm-lock.yaml`  
+**Dosyalar:** `static/index.html`, `static/app.css`, `static/tailwind.input.css`, `tailwind.config.js`, `package.json`, `pnpm-lock.yaml`
 **Çözüm:** Tailwind 3.4.17 sabitlendi, kullanılan sınıflar minify edilmiş yerel `app.css` dosyasına derlendi ve harici font/CDN istekleri kaldırıldı. Runtime artık internet bağlantısı olmadan tam tema stilini yükleyebiliyor.
 
 ### 98. API Kimlik Doğrulaması ve Güvenli Varsayılan Dinleme Yoktu (YÜKSEK)
 
-**Dosyalar:** `app/security.py`, `app/routes/processing.py`, `scripts/wsl_run.sh`, `static/app.js`  
+**Dosyalar:** `app/security.py`, `app/routes/processing.py`, `scripts/wsl_run.sh`, `static/app.js`
 **Çözüm:** Tüm `/api` route'larına opsiyonel sabit-zamanlı Bearer/X-Cerberus-Api-Key doğrulaması eklendi. Sunucu varsayılanı `127.0.0.1`; loopback dışı dinleme `CERBERUS_API_KEY` olmadan başlamıyor. UI HTTP 401 sonrasında anahtarı yalnızca sekme ömründeki sessionStorage'da tutuyor.
 
 ### 99. Yükleme Hızı ve Bekleyen Pipeline Sayısı Sınırsızdı (YÜKSEK)
 
-**Dosyalar:** `app/security.py`, `app/routes/processing.py`, `app/config.py`  
+**Dosyalar:** `app/security.py`, `app/routes/processing.py`, `app/config.py`
 **Çözüm:** IP başına kayan pencere yükleme limiti, temizlenen sınırlı istemci tablosu ve varsayılan iki aktif pipeline kotası eklendi. Kota dolunca `429`/`Retry-After` dönüyor; hata ve pipeline final yollarında slot kesin olarak bırakılıyor.
 
 ### 100. Aynı Oturumdaki Pipeline, Taslak ve Bulut Denetimi Yarışabiliyordu (ORTA)
 
-**Dosyalar:** `app/routes/processing.py`, `tests/test_processing_pipeline.py`  
+**Dosyalar:** `app/routes/processing.py`, `tests/test_processing_pipeline.py`
 **Çözüm:** Oturum başına `asyncio.Lock` ile pipeline, save/approve ve manuel review atomik sıraya alındı. Rastgele geçersiz session kimliklerinin lock oluşturması engellendi; store FIFO temizliği ilgili modeli ve kilidi beraber kaldırıyor.
 
 ### 101. XML `schemaLocation` Gerçek XSD Dosya Adıyla Eşleşmiyordu (DÜŞÜK)
 
-**Dosya:** `app/xml/converter.py`  
+**Dosya:** `app/xml/converter.py`
 **Çözüm:** Üretilen XML ipucu `shipping_instruction.xsd` olarak paketlenen şemayla eşleştirildi ve regresyon testi eklendi.
 
 ### 102. Zorunlu Alanlar Yalnızca Koleksiyonların İlk Öğesinde Denetleniyordu (ORTA)
 
-**Dosyalar:** `app/xml/validator.py`, `tests/test_validator.py`  
+**Dosyalar:** `app/xml/validator.py`, `tests/test_validator.py`
 **Çözüm:** Transport plan, equipment ve cargo koleksiyonlarındaki her öğe kendi gerçek indeksiyle doğrulanıyor. Boş koleksiyonlarda UI uyumluluğu için `[0]` alan yolları korunuyor; sonraki eksik öğeler artık onaydan kaçamıyor.
 
 ### 103. `IsShipperOwned` XSD'de Gevşek String Olarak Tanımlıydı (ORTA)
 
-**Dosyalar:** `app/xml/schemas/shipping_instruction.xsd`, `tests/test_validator.py`  
+**Dosyalar:** `app/xml/schemas/shipping_instruction.xsd`, `tests/test_validator.py`
 **Çözüm:** Alan `xs:boolean` yapıldı. Converter'ın ürettiği `true/false` doğrulanıyor, rastgele metin XSD tarafından reddediliyor.
 
 ### 104. Structured Output Uyumluluk Seçimi Gözlemlenemiyordu (DÜŞÜK)
 
-**Dosya:** `app/llm/inference.py`  
+**Dosya:** `app/llm/inference.py`
 **Çözüm:** `_configure_structured_output` dönüşü debug loguna bağlandı; seçilen OpenVINO API yolu artık test edilebilir ve teşhis edilebilir bir amaca sahip.
 
 ### 105. XML Kopyalama Düğmesi i18n DOM Niteliğine Bağlıydı (DÜŞÜK)
 
-**Dosya:** `static/app.js`  
+**Dosya:** `static/app.js`
 **Çözüm:** XML hazır olma durumu `currentXmlContent` ile ayrı tutuluyor. Yerelleştirme niteliği artık işlevsel buton durumunun kaynağı değil; kopyalama da aynı gerçek XML state'ini kullanıyor.
 
 ### 106. OCR Dil Profili Sabit ve Yapılandırılamazdı (DÜŞÜK)
 
-**Dosyalar:** `app/config.py`, `.env.example`  
+**Dosyalar:** `app/config.py`, `.env.example`
 **Çözüm:** `OCR_LANG` ortam değişkeni eklendi; İngilizce varsayılan korunurken belge kümesine göre `tr` veya desteklenen başka bir PaddleOCR profili seçilebilir.
 
 ### 107. Audit Oturumları İçin Saklama Politikası Yoktu (ORTA)
 
-**Dosyalar:** `app/utils/audit_logger.py`, `app/config.py`  
+**Dosyalar:** `app/utils/audit_logger.py`, `app/config.py`
 **Çözüm:** Varsayılan 30 günlük yapılandırılabilir retention eklendi. Temizlik günde en fazla bir kez çalışıyor, yalnızca üretim session adı desenine uyan eski dizinleri kaldırıyor, ilgisiz klasörleri koruyor ve cleanup I/O hatası belge işlemesini durdurmuyor.
 
 ## V13 Doğrulama Özeti
@@ -1116,3 +1116,117 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 - Python compile, JavaScript syntax, `bash -n`, Tailwind yerel/minify CSS üretimi ve yeni kod kaynaklarının whitespace denetimleri başarılı.
 - FastAPI route seviyesinde API anahtarı, kayan pencere rate limit, aktif pipeline kotası, SSE TTL/kapasite, bilinmeyen stream reddi ve aynı oturum lock davranışları ayrı testlerle doğrulandı.
 - PDF render exception kapanışı, tek tırnaklı JSON fallback'i, OpenVINO/schema cache, tüm koleksiyon öğeleri, boolean XSD, schemaLocation, OCR ortam ayarı ve audit retention regresyon kapsamına alındı.
+
+---
+
+## V14 — Belge/Çıktı Dili, Model Ayarları ve WSL Model Keşfi
+
+**Tarih:** 17.07.2026
+**Kapsam:** İşlem başına OCR/çıktı dili, güvenli çalışma zamanı API ayarları, WSL yerel model keşfi ve örnek belge alan eşleme doğruluğu
+
+### 108. Belge Dili İşlem Başına Seçilemiyordu (YÜKSEK)
+
+**Dosyalar:** `static/index.html`, `static/app.js`, `app/routes/processing.py`, `app/ocr/spatial_ocr.py`
+**Çözüm:** Kullanıcıya Türkçe/İngilizce belge dili seçimi eklendi; multipart parametresi OCR hattına taşındı. PaddleOCR örneği dil başına cache'lendiği için aynı sunucu sürecinde Türkçe ve İngilizce belgeler doğru motorla işlenebiliyor.
+
+### 109. XML İçerik Dili Yerel Model Çıkarımını Yönlendirmiyordu (YÜKSEK)
+
+**Dosyalar:** `static/index.html`, `static/app.js`, `app/routes/processing.py`, `app/llm/inference.py`
+**Çözüm:** XML içerik dili seçimi Qwen promptuna aktarıldı. Yalnızca açıklama ve notlar hedef dile çevriliyor; özel ad, adres, liman, kimlik, kod ve sayılar korunuyor. DCSA eleman adları XSD geçerliliği için sabit kalıyor.
+
+### 110. Model ve OpenVINO Çalışma Bilgileri Arayüzde Görünmüyordu (ORTA)
+
+**Dosyalar:** `static/index.html`, `static/app.js`, `app/routes/processing.py`
+**Çözüm:** Arama simgesinin yanına ayarlar paneli eklendi. Etkin model, model yolu, OpenVINO aygıtı, readiness, token sınırı ve KV-cache hassasiyeti `/api/runtime-settings` üzerinden gösteriliyor.
+
+### 111. DeepSeek Anahtarı ve Risk Politikası İçin Sunucuyu Yeniden Başlatmak Gerekiyordu (ORTA)
+
+**Dosyalar:** `app/models.py`, `app/routes/processing.py`, `static/index.html`, `static/app.js`
+**Çözüm:** DeepSeek anahtarı, `off/manual/risk/always` modu ve risk eşiği ayarlar panelinden güncellenebilir hale getirildi. Anahtar yalnızca süreç belleğinde tutuluyor, API yanıtında geri dönmüyor ve arayüz anahtarı yeniden göstermiyor.
+
+### 112. Cerberus Sunucu API Anahtarı İçin Kalıcı Olmayan Ayar Alanı Yoktu (ORTA)
+
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Çözüm:** Ayarlar paneline sunucu erişim anahtarı alanı eklendi. Değer yalnızca aktif sekmenin `sessionStorage` alanında tutuluyor ve sonraki korumalı isteklerde Bearer başlığı olarak kullanılıyor.
+
+### 113. WSL İçindeki Yüklü Yerel Modeller Tespit Edilemiyordu (ORTA)
+
+**Dosyalar:** `app/utils/model_discovery.py`, `app/routes/processing.py`, `static/index.html`, `static/app.js`
+**Çözüm:** Proje `models/`, `~/models`, Hugging Face cache ve Ollama manifestleri sınırlı derinlikle taranıyor. OpenVINO, Transformers, Diffusers, GGUF ve cache/manifest kayıtları tekilleştirilip etkin model işaretiyle panelde listeleniyor.
+
+### 114. Vergi Numarası Etiketleri `party_id` Alanına Açıkça Eşlenmiyordu (YÜKSEK)
+
+**Dosya:** `app/llm/inference.py`
+**Çözüm:** `V.NO`, `VKN`, `VERGI NO`, `TAX ID` ve `VAT NO` etiketlerinin ilgili gönderici `party_id` alanına yazılması promptta kesinleştirildi. Vergi dairesinin `place_of_issue` olmadığı kuralı korunuyor.
+
+### 115. Net Ağırlık Alanı Arayüzde “Toplam Tutar” Olarak Etiketlenmişti (ORTA)
+
+**Dosyalar:** `static/index.html`, `static/app.js`
+**Çözüm:** `cargo_items[0].weight.weight_value` alanının Türkçe etiketi “Net Yük Ağırlığı”, İngilizce etiketi “Net Cargo Weight” olarak düzeltildi.
+
+## V14 Doğrulama Özeti
+
+- Dil parametreleri, Qwen prompt yönlendirmesi, runtime ayar API'si, anahtar gizliliği, WSL model keşfi ve tüm yeni DOM etkileşimleri için 6 yeni regresyon testi eklendi.
+- Windows doğrulama ortamında değişiklikle ilişkili `92/92` test, Python compile, JavaScript syntax, `git diff --check` ve yerel Tailwind CSS üretimi başarılı.
+- V14 sonunda WSL çalışma kopyasında tam koşu `124/124 PASSED` olarak doğrulandı; V15 ile Windows senkronizasyon modeli tamamen kaldırıldı.
+
+---
+
+## V15 — WSL-Native Kaynak, Önbellek Düzeltmesi ve Çoklu/Çok Formatlı Yükleme
+
+**Tarih:** 17.07.2026
+**Kapsam:** WSL'yi tek kaynak haline getirme, arayüz asset cache yenilemesi, PDF/DOCX/XML/PNG/JPEG kabulü, güvenli içerik doğrulama ve sıralı çoklu belge kuyruğu
+
+### 116. Windows ve WSL Arasında İki Ayrı Kaynak Kopyası Bulunuyordu (KRİTİK)
+
+**Dosyalar:** `scripts/wsl_sync.sh`, `.gitattributes`, `.gitignore`, `README.md`
+**Problem:** Kaynağın Windows'ta, runtime'ın WSL'de tutulması yeni arayüz kodunun çalışan sunucuya ulaşmamasına, satır sonu farklarına ve yanlış kopyanın düzenlenmesine yol açıyordu.
+**Çözüm:** `/home/ardam/projects/CerberusVision` tek kaynak ve çalışma dizini yapıldı. Git geçmişi WSL'ye taşındı, LF kuralları genişletildi, model dizini Git dışında tutuldu ve `wsl_sync.sh` kopyalama yerine WSL-native çalışma dizimi denetimi yapacak şekilde değiştirildi.
+
+### 117. WSL Çalışma Kopyasında Git Geçmişi Bulunmuyordu (YÜKSEK)
+
+**Dosyalar:** `.git/`, `scripts/wsl_sync.sh`, `README.md`
+**Problem:** Eski senkronizasyon `.git` dizinini dışladığı için WSL kopyasında güvenilir diff, commit, remote ve geri izleme yapılamıyordu.
+**Çözüm:** Tam Git metadatası WSL projesine aktarıldı; uzak depo ve çalışma ağacı Linux dosya sistemi içinde korunur hale getirildi.
+
+### 118. Tarayıcı Eski HTML/JavaScript'i Göstererek Ayarlar Simgesini Gizliyordu (YÜKSEK)
+
+**Dosyalar:** `app/main.py`, `static/index.html`, `tests/test_runtime_hardening.py`, `tests/test_frontend_ui.py`
+**Problem:** Sunucudaki güncel ayarlar paneli ve dil kontrolleri mevcut olmasına rağmen kök HTML tarayıcı önbelleğinden açılabiliyordu.
+**Çözüm:** Kök yanıta `no-store`/`no-cache` başlıkları, statik CSS/JS adreslerine V15 sürüm parametresi ve bunları doğrulayan regresyon testleri eklendi.
+
+### 119. Yükleme Hattı Yalnızca PDF Kabul Ediyordu (YÜKSEK)
+
+**Dosyalar:** `app/document_ingestion.py`, `app/routes/processing.py`, `app/ocr/spatial_ocr.py`
+**Problem:** DOCX, XML, PNG ve JPEG belgeleri aynı yerel çıkarım/XML hattına alınamıyordu.
+**Çözüm:** PDF, DOCX, XML, PNG, JPG ve JPEG ortak belge kabul katmanına bağlandı. PDF/görseller uzamsal OCR'a; DOCX/XML güvenli metin çıkarımı üzerinden doğrudan yerel Qwen hattına gider.
+
+### 120. Yeni Formatlarda Yalnızca Uzantıya Güvenme Riski Vardı (YÜKSEK)
+
+**Dosya:** `app/document_ingestion.py`
+**Problem:** Sahte uzantı, bozuk Office ZIP paketi, hatalı XML, aşırı büyük akış ve XML dış varlıkları güvenlik ve kararlılık riski oluşturuyordu.
+**Çözüm:** Akışlı 50 MB sınırı; PDF/PNG/JPEG sihirli baytları; DOCX paket girdileri ve açılmış XML boyutu; `resolve_entities=False`, `no_network=True`, `huge_tree=False` XML ayrıştırması uygulandı. Geçersiz/kısmi dosya her hata yolunda siliniyor.
+
+### 121. Arayüz Aynı Seçimde Birden Fazla Belge Alamıyordu (YÜKSEK)
+
+**Dosyalar:** `static/index.html`, `static/app.js`, `tests/test_frontend_ui.py`
+**Problem:** Dosya girdisi ve sürükle-bırak yalnızca ilk PDF'yi kullanıyor, seçilen diğer belgeleri sessizce yok sayıyordu.
+**Çözüm:** En fazla 10 dosyalık çoklu seçim/sürükle-bırak, dosya başına durum rozeti ve tamamlanma özeti eklendi. Desteklenmeyen uzantı veya sınır aşımı işlem başlamadan kullanıcıya bildiriliyor.
+
+### 122. Çoklu Belgeler GPU'yu Eşzamanlı Pipeline'larla Zorlayabilirdi (YÜKSEK)
+
+**Dosya:** `static/app.js`
+**Problem:** Bütün belgeleri aynı anda sunucuya göndermek Arc 140V üzerinde model belleği ve aktif pipeline kotasını gereksiz yere zorlayabilirdi.
+**Çözüm:** Kuyruk belgeleri bağımsız session'larla sıralı işler. Her SSE akışı tamamlanmadan sonraki dosya başlamaz; başarısız bir belge ERROR olarak işaretlenip kuyruk sonraki belgeyle devam eder.
+
+### 123. Çok Formatlı İşleme İçin Güvenlik ve Regresyon Kapsamı Yoktu (ORTA)
+
+**Dosyalar:** `tests/test_document_ingestion.py`, `tests/test_frontend_ui.py`, `README.md`
+**Problem:** Dosya imzası, bozuk XML, bağımlılıksız DOCX metin çıkarımı, XML'in OCR'ı atlaması ve çoklu UI kuyruğu otomatik doğrulanmıyordu.
+**Çözüm:** Tüm format doğrulamaları, DOCX/XML çıkarımı, bozuk belge reddi, XML doğrudan pipeline dalı, çoklu input ve sıralı kuyruk davranışı ayrı testlerle kapsandı; WSL-native kurulum ve API dokümantasyonu güncellendi.
+
+## V15 Doğrulama Özeti
+
+- Ubuntu WSL2 içindeki tek kaynak projede `135/135` otomatik test başarılı.
+- PDF, PNG, JPG/JPEG ve XML imza/yapı doğrulaması; DOCX paket/metin çıkarımı; bozuk XML reddi ve XML'in OCR'ı atlayarak Qwen/XML hattına girmesi test edildi.
+- Çoklu seçim, 10 dosya sınırı, sıralı `await` kuyruğu, dosya başına durum ve TR/EN metinleri statik arayüz regresyon testleriyle doğrulandı.

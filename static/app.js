@@ -3,6 +3,7 @@ const fileInput = document.getElementById('fileInput');
 const browseLink = document.getElementById('browseLink');
 const fileInfo = document.getElementById('fileInfo');
 const fileName = document.getElementById('fileName');
+const fileQueue = document.getElementById('fileQueue');
 const uploadProgressBar = document.getElementById('uploadProgressBar');
 const uploadProgressLabel = document.getElementById('uploadProgressLabel');
 const pdfPlaceholder = document.getElementById('pdfPlaceholder');
@@ -32,6 +33,23 @@ const globalSearchBtn = document.getElementById('globalSearchBtn');
 const globalSearchPanel = document.getElementById('globalSearchPanel');
 const globalSearchInput = document.getElementById('globalSearchInput');
 const globalSearchResults = document.getElementById('globalSearchResults');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+const settingsRefreshBtn = document.getElementById('settingsRefreshBtn');
+const settingsSaveBtn = document.getElementById('settingsSaveBtn');
+const settingsStatus = document.getElementById('settingsStatus');
+const modelReadyBadge = document.getElementById('modelReadyBadge');
+const modelNameValue = document.getElementById('modelNameValue');
+const modelDeviceValue = document.getElementById('modelDeviceValue');
+const modelTokensValue = document.getElementById('modelTokensValue');
+const modelKvValue = document.getElementById('modelKvValue');
+const detectedModelCount = document.getElementById('detectedModelCount');
+const detectedModelsList = document.getElementById('detectedModelsList');
+const serverApiKeyInput = document.getElementById('serverApiKeyInput');
+const deepSeekApiKeyInput = document.getElementById('deepSeekApiKeyInput');
+const deepSeekReviewMode = document.getElementById('deepSeekReviewMode');
+const deepSeekRiskThreshold = document.getElementById('deepSeekRiskThreshold');
+const clearDeepSeekKey = document.getElementById('clearDeepSeekKey');
 const notificationsBtn = document.getElementById('notificationsBtn');
 const notificationsPanel = document.getElementById('notificationsPanel');
 const notificationDot = document.getElementById('notificationDot');
@@ -51,18 +69,53 @@ const prevPageBtn = document.getElementById('prevPageBtn');
 const nextPageBtn = document.getElementById('nextPageBtn');
 const currentPageLabel = document.getElementById('currentPage');
 const totalPagesLabel = document.getElementById('totalPages');
+const documentLanguage = document.getElementById('documentLanguage');
+const outputLanguage = document.getElementById('outputLanguage');
 
 const TRANSLATIONS = {
     tr: {
         'page.title': 'CerberusVision — Belge İşleme',
         'nav.languageSelection': 'Dil seçimi',
         'nav.search': 'Arama',
+        'nav.settings': 'Model ayarları',
         'nav.notifications': 'Bildirimler',
         'nav.profileMenu': 'Kullanıcı menüsü',
         'search.title': 'Arayüzde Ara',
         'search.placeholder': 'Alan veya bölüm ara...',
         'search.empty': 'Aramak için yazmaya başlayın.',
         'search.noResults': 'Eşleşen alan veya bölüm bulunamadı.',
+        'settings.title': 'Model ve API Ayarları',
+        'settings.memoryNotice': 'DeepSeek anahtarı yalnızca sunucu belleğinde tutulur.',
+        'settings.refresh': 'Bilgileri yenile',
+        'settings.localModel': 'Yerel Model',
+        'settings.modelName': 'Model',
+        'settings.device': 'Aygıt',
+        'settings.maxTokens': 'Azami çıktı',
+        'settings.kvCache': 'KV önbellek',
+        'settings.detectedModels': "WSL'de Bulunan Modeller",
+        'settings.noModels': 'Yüklü yerel model bulunamadı.',
+        'settings.modelsFound': '{count} model',
+        'settings.active': 'Etkin',
+        'settings.ready': 'Hazır',
+        'settings.notReady': 'Hazır değil',
+        'settings.serverApiKey': 'Cerberus sunucu API anahtarı',
+        'settings.deepSeekApiKey': 'DeepSeek API anahtarı',
+        'settings.sessionOnly': 'Yalnızca bu tarayıcı oturumu',
+        'settings.leaveBlank': 'Mevcut anahtarı korumak için boş bırakın',
+        'settings.reviewMode': 'Denetim modu',
+        'settings.riskThreshold': 'Risk eşiği',
+        'settings.modeOff': 'Kapalı',
+        'settings.modeManual': 'Manuel',
+        'settings.modeRisk': 'Riske göre',
+        'settings.modeAlways': 'Her zaman',
+        'settings.clearKey': 'Kayıtlı DeepSeek anahtarını kaldır',
+        'settings.save': 'Ayarları Kaydet',
+        'settings.loading': 'Model bilgileri yükleniyor...',
+        'settings.saving': 'Ayarlar kaydediliyor...',
+        'settings.saved': 'Ayarlar kaydedildi. DeepSeek: {state}',
+        'settings.configured': 'yapılandırıldı',
+        'settings.notConfigured': 'yapılandırılmadı',
+        'settings.loadFailed': 'Ayarlar alınamadı',
         'notifications.title': 'Bildirimler',
         'notifications.empty': 'Henüz yeni bildirim yok.',
         'notifications.latest': 'Son durum',
@@ -78,11 +131,17 @@ const TRANSLATIONS = {
         'theme.switchDark': 'Koyu temaya geç',
         'theme.switchLight': 'Açık temaya geç',
         'upload.title': 'Belge Yükle',
-        'upload.dropPrompt': "PDF'yi sürükleyip bırakın veya",
+        'upload.dropPrompt': 'Belgeleri sürükleyip bırakın veya',
         'upload.browse': 'Göz Atın',
-        'upload.pdfOnly': 'Yalnızca PDF dosyaları desteklenir',
-        'upload.invalidPdf': 'Lütfen geçerli bir PDF dosyası seçin.',
+        'upload.supported': 'PDF, DOCX, XML, PNG ve JPEG · en fazla 10 dosya',
+        'upload.invalidDocument': 'Desteklenmeyen dosya var. PDF, DOCX, XML, PNG veya JPEG seçin.',
+        'upload.tooMany': 'Tek seferde en fazla 10 dosya seçebilirsiniz.',
+        'upload.queue': '{done}/{total} belge tamamlandı',
+        'upload.previewUnavailable': 'Bu DOCX belgesi için tarayıcı önizlemesi kullanılamıyor.',
         'upload.uploading': 'Dosya yükleniyor...',
+        'processing.documentLanguage': 'Belge dili',
+        'processing.outputLanguage': 'XML içerik dili',
+        'processing.outputHint': 'DCSA XML etiketleri standart gereği sabit kalır; açıklama ve not değerleri seçilen dilde üretilir.',
         'pdf.noneLoaded': 'Belge yüklenmedi',
         'pdf.previewPrompt': 'Önizlemek için bir PDF yükleyin',
         'pdf.copyLink': 'PDF bağlantısını kopyala',
@@ -110,7 +169,7 @@ const TRANSLATIONS = {
         'status.timeout': 'İşlem zaman aşımına uğradı.',
         'status.processFirst': 'Önce bir PDF işleyin.',
         'status.cloudRunning': 'DeepSeek kısa denetimi çalıştırılıyor...',
-        'status.ocr': 'OCR işleniyor...',
+        'status.ocr': 'Belge içeriği işleniyor...',
         'status.llm': 'LLM analizi yapılıyor...',
         'status.xml': 'XML doğrulanıyor...',
         'status.cloud': 'Riskli alanlar DeepSeek ile kısa denetimden geçiriliyor...',
@@ -134,7 +193,7 @@ const TRANSLATIONS = {
         'form.vendor': 'Satıcı',
         'form.vendorAddress': 'Satıcı Adresi',
         'form.taxId': 'Vergi Kimlik No',
-        'form.totalAmount': 'Toplam Tutar',
+        'form.totalAmount': 'Net Yük Ağırlığı',
         'form.required': '(Zorunlu)',
         'form.autoExtracted': 'Otomatik çıkarıldı',
         'form.empty': 'Boş',
@@ -167,12 +226,45 @@ const TRANSLATIONS = {
         'page.title': 'CerberusVision — Document Processing',
         'nav.languageSelection': 'Language selection',
         'nav.search': 'Search',
+        'nav.settings': 'Model settings',
         'nav.notifications': 'Notifications',
         'nav.profileMenu': 'User menu',
         'search.title': 'Search Interface',
         'search.placeholder': 'Search for a field or section...',
         'search.empty': 'Start typing to search.',
         'search.noResults': 'No matching field or section was found.',
+        'settings.title': 'Model and API Settings',
+        'settings.memoryNotice': 'The DeepSeek key is kept only in server memory.',
+        'settings.refresh': 'Refresh information',
+        'settings.localModel': 'Local Model',
+        'settings.modelName': 'Model',
+        'settings.device': 'Device',
+        'settings.maxTokens': 'Maximum output',
+        'settings.kvCache': 'KV cache',
+        'settings.detectedModels': 'Models Detected in WSL',
+        'settings.noModels': 'No installed local model was found.',
+        'settings.modelsFound': '{count} model(s)',
+        'settings.active': 'Active',
+        'settings.ready': 'Ready',
+        'settings.notReady': 'Not ready',
+        'settings.serverApiKey': 'Cerberus server API key',
+        'settings.deepSeekApiKey': 'DeepSeek API key',
+        'settings.sessionOnly': 'This browser session only',
+        'settings.leaveBlank': 'Leave blank to keep the existing key',
+        'settings.reviewMode': 'Review mode',
+        'settings.riskThreshold': 'Risk threshold',
+        'settings.modeOff': 'Off',
+        'settings.modeManual': 'Manual',
+        'settings.modeRisk': 'Risk based',
+        'settings.modeAlways': 'Always',
+        'settings.clearKey': 'Remove the stored DeepSeek key',
+        'settings.save': 'Save Settings',
+        'settings.loading': 'Loading model information...',
+        'settings.saving': 'Saving settings...',
+        'settings.saved': 'Settings saved. DeepSeek: {state}',
+        'settings.configured': 'configured',
+        'settings.notConfigured': 'not configured',
+        'settings.loadFailed': 'Could not load settings',
         'notifications.title': 'Notifications',
         'notifications.empty': 'No new notifications yet.',
         'notifications.latest': 'Latest status',
@@ -188,11 +280,17 @@ const TRANSLATIONS = {
         'theme.switchDark': 'Switch to dark theme',
         'theme.switchLight': 'Switch to light theme',
         'upload.title': 'Upload Document',
-        'upload.dropPrompt': 'Drag & drop a PDF or',
+        'upload.dropPrompt': 'Drag & drop documents or',
         'upload.browse': 'Browse',
-        'upload.pdfOnly': 'Only PDF files are supported',
-        'upload.invalidPdf': 'Please select a valid PDF file.',
+        'upload.supported': 'PDF, DOCX, XML, PNG and JPEG · up to 10 files',
+        'upload.invalidDocument': 'An unsupported file was selected. Choose PDF, DOCX, XML, PNG or JPEG.',
+        'upload.tooMany': 'You can select up to 10 files at once.',
+        'upload.queue': '{done}/{total} documents completed',
+        'upload.previewUnavailable': 'Browser preview is unavailable for this DOCX document.',
         'upload.uploading': 'Uploading file...',
+        'processing.documentLanguage': 'Document language',
+        'processing.outputLanguage': 'XML content language',
+        'processing.outputHint': 'DCSA XML element names remain fixed by the standard; descriptions and remarks are generated in the selected language.',
         'pdf.noneLoaded': 'No document loaded',
         'pdf.previewPrompt': 'Upload a PDF to preview',
         'pdf.copyLink': 'Copy PDF link',
@@ -220,7 +318,7 @@ const TRANSLATIONS = {
         'status.timeout': 'Processing timed out.',
         'status.processFirst': 'Process a PDF first.',
         'status.cloudRunning': 'Running the short DeepSeek audit...',
-        'status.ocr': 'Processing OCR...',
+        'status.ocr': 'Processing document content...',
         'status.llm': 'Running LLM analysis...',
         'status.xml': 'Validating XML...',
         'status.cloud': 'Running a short DeepSeek audit on risky fields...',
@@ -244,7 +342,7 @@ const TRANSLATIONS = {
         'form.vendor': 'Vendor',
         'form.vendorAddress': 'Vendor Address',
         'form.taxId': 'Tax ID',
-        'form.totalAmount': 'Total Amount',
+        'form.totalAmount': 'Net Cargo Weight',
         'form.required': '(Required)',
         'form.autoExtracted': 'Auto-extracted',
         'form.empty': 'Empty',
@@ -277,6 +375,10 @@ const TRANSLATIONS = {
 
 const savedLanguage = localStorage.getItem('cerberus-language');
 let currentLanguage = Object.hasOwn(TRANSLATIONS, savedLanguage) ? savedLanguage : 'tr';
+const savedDocumentLanguage = localStorage.getItem('cerberus-document-language');
+const savedOutputLanguage = localStorage.getItem('cerberus-output-language');
+documentLanguage.value = ['tr', 'en'].includes(savedDocumentLanguage) ? savedDocumentLanguage : 'tr';
+outputLanguage.value = ['tr', 'en'].includes(savedOutputLanguage) ? savedOutputLanguage : 'en';
 
 function t(key, values = {}) {
     const template = TRANSLATIONS[currentLanguage][key] || TRANSLATIONS.tr[key] || key;
@@ -298,8 +400,97 @@ async function apiFetch(resource, options = {}, allowCredentialRetry = true) {
     return apiFetch(resource, options, false);
 }
 
+function renderDetectedModels(models = []) {
+    detectedModelCount.textContent = t('settings.modelsFound', { count: models.length });
+    if (!models.length) {
+        detectedModelsList.innerHTML = `<p class="text-xs text-slate-400">${escapeHtml(t('settings.noModels'))}</p>`;
+        return;
+    }
+    detectedModelsList.innerHTML = models.map((model) => `
+        <div class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-950/60" title="${escapeHtml(model.path || '')}">
+            <div class="flex items-center justify-between gap-2">
+                <span class="truncate text-xs font-medium text-slate-700 dark:text-slate-200">${escapeHtml(model.name || '--')}</span>
+                ${model.active ? `<span class="rounded-full bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 dark:bg-teal-950 dark:text-teal-300">${escapeHtml(t('settings.active'))}</span>` : ''}
+            </div>
+            <p class="mt-0.5 truncate text-[10px] text-slate-400">${escapeHtml(model.source || '')} · ${escapeHtml(model.format || '')}</p>
+        </div>
+    `).join('');
+}
+
+function renderRuntimeSettings(data) {
+    currentRuntimeSettings = data;
+    const localModel = data.local_model || {};
+    modelNameValue.textContent = localModel.name || '--';
+    modelNameValue.title = localModel.path || '';
+    modelDeviceValue.textContent = localModel.device || '--';
+    modelTokensValue.textContent = localModel.max_new_tokens ?? '--';
+    modelKvValue.textContent = localModel.kv_cache_precision || '--';
+    modelReadyBadge.textContent = t(localModel.ready ? 'settings.ready' : 'settings.notReady');
+    modelReadyBadge.className = localModel.ready
+        ? 'rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700 dark:bg-teal-950 dark:text-teal-300'
+        : 'rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300';
+    deepSeekReviewMode.value = data.deepseek?.review_mode || 'risk';
+    deepSeekRiskThreshold.value = data.deepseek?.risk_threshold ?? 30;
+    renderDetectedModels(data.installed_models || []);
+    settingsStatus.textContent = `DeepSeek: ${t(data.deepseek?.configured ? 'settings.configured' : 'settings.notConfigured')}`;
+}
+
+async function loadRuntimeSettings() {
+    settingsRefreshBtn.disabled = true;
+    settingsStatus.textContent = t('settings.loading');
+    try {
+        const response = await apiFetch('/api/runtime-settings');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        renderRuntimeSettings(data);
+    } catch (error) {
+        settingsStatus.textContent = `${t('settings.loadFailed')}: ${error.message}`;
+    } finally {
+        settingsRefreshBtn.disabled = false;
+    }
+}
+
+async function saveRuntimeSettings() {
+    settingsSaveBtn.disabled = true;
+    settingsStatus.textContent = t('settings.saving');
+    const serverKey = serverApiKeyInput.value.trim();
+    if (serverKey) sessionStorage.setItem('cerberus-api-key', serverKey);
+    const payload = {
+        clear_deepseek_api_key: clearDeepSeekKey.checked,
+        deepseek_review_mode: deepSeekReviewMode.value,
+        deepseek_risk_threshold: Number(deepSeekRiskThreshold.value),
+    };
+    const deepSeekKey = deepSeekApiKeyInput.value.trim();
+    if (deepSeekKey && !clearDeepSeekKey.checked) payload.deepseek_api_key = deepSeekKey;
+    try {
+        const response = await apiFetch('/api/runtime-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        deepSeekApiKeyInput.value = '';
+        clearDeepSeekKey.checked = false;
+        renderRuntimeSettings(data);
+        settingsStatus.textContent = t('settings.saved', {
+            state: t(data.deepseek?.configured ? 'settings.configured' : 'settings.notConfigured'),
+        });
+        currentCloudReviewAvailable = Boolean(data.deepseek?.configured && data.deepseek?.review_mode !== 'off');
+        updateResultActionAvailability();
+    } catch (error) {
+        settingsStatus.textContent = `${t('error.prefix')}: ${error.message}`;
+    } finally {
+        settingsSaveBtn.disabled = false;
+    }
+}
+
 let uploadedPdfUrl = null;
 let currentPdfFile = null;
+let currentPreviewKind = null;
+let documentQueue = [];
+const SUPPORTED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'docx', 'xml', 'png', 'jpg', 'jpeg']);
+const MAX_BATCH_FILES = 10;
 let currentPage = 1;
 let totalPages = 1;
 let currentZoom = 100;
@@ -317,6 +508,7 @@ let currentItems = null;
 let activeUploadController = null;
 let activeUploadRequestId = 0;
 let latestNotification = null;
+let currentRuntimeSettings = null;
 
 const STATUS_BADGE_MAP = {
     PENDING: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
@@ -351,6 +543,7 @@ const SEARCH_TARGETS = [
 function closeTopPanels(except = null) {
     [
         [globalSearchPanel, globalSearchBtn],
+        [settingsPanel, settingsBtn],
         [notificationsPanel, notificationsBtn],
         [profilePanel, profileBtn],
     ].forEach(([panel, button]) => {
@@ -446,14 +639,15 @@ function renderPageThumbnails() {
 }
 
 function updatePdfControls() {
-    const hasPdf = Boolean(uploadedPdfUrl);
+    const hasPreview = Boolean(uploadedPdfUrl) && currentPreviewKind !== 'docx';
+    const hasPdf = hasPreview && currentPreviewKind === 'pdf';
     currentPage = Math.min(Math.max(currentPage, 1), totalPages);
     currentPageLabel.textContent = String(currentPage);
     totalPagesLabel.textContent = String(totalPages);
     pdfZoomLevel.textContent = `${currentZoom}%`;
-    pdfCopyBtn.disabled = !hasPdf;
+    pdfCopyBtn.disabled = !hasPreview;
     pdfZoomBtn.disabled = !hasPdf;
-    pdfFullscreenBtn.disabled = !hasPdf;
+    pdfFullscreenBtn.disabled = !hasPreview;
     prevPageBtn.disabled = !hasPdf || currentPage <= 1;
     nextPageBtn.disabled = !hasPdf || currentPage >= totalPages;
     pdfZoomBtn.title = t('pdf.zoomAt', { level: currentZoom });
@@ -462,11 +656,14 @@ function updatePdfControls() {
     pdfFullscreenBtn.title = t(isFullscreen ? 'pdf.exitFullscreen' : 'pdf.fullscreen');
     pdfFullscreenBtn.setAttribute('aria-label', pdfFullscreenBtn.title);
     if (hasPdf) renderPageThumbnails();
+    else thumbnailSidebar.innerHTML = '';
 }
 
 function refreshPdfViewer() {
     if (!uploadedPdfUrl) return;
-    pdfIframe.src = `${uploadedPdfUrl}#page=${currentPage}&zoom=${currentZoom}`;
+    pdfIframe.src = currentPreviewKind === 'pdf'
+        ? `${uploadedPdfUrl}#page=${currentPage}&zoom=${currentZoom}`
+        : uploadedPdfUrl;
     updatePdfControls();
 }
 
@@ -555,6 +752,7 @@ function translateServerMessage(message) {
     const normalized = String(message).trim();
     const messageKeys = {
         'OCR Isleniyor...': 'status.ocr',
+        'Belge icerigi isleniyor...': 'status.ocr',
         'LLM Analizi...': 'status.llm',
         'XML Dogrulaniyor...': 'status.xml',
         'Riskli alanlar DeepSeek ile kisa denetimden geciriliyor...': 'status.cloud',
@@ -632,6 +830,8 @@ function applyLanguage(language, persist = true) {
     refreshSuspiciousFieldTitles();
     renderSearchResults(globalSearchInput.value);
     renderNotification();
+    if (currentRuntimeSettings) renderRuntimeSettings(currentRuntimeSettings);
+    renderDocumentQueue();
     updateThemeControl();
     updateProfileSummary();
     updatePdfControls();
@@ -704,16 +904,62 @@ function resetDocumentResults() {
     updateResultActionAvailability();
 }
 
-function handleFile(file) {
-    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-        alert(t('upload.invalidPdf'));
+function documentExtension(file) {
+    return file?.name?.split('.').pop()?.toLowerCase() || '';
+}
+
+function renderDocumentQueue() {
+    if (!documentQueue.length) {
+        fileQueue.classList.add('hidden');
+        fileQueue.innerHTML = '';
+        return;
+    }
+    const completeCount = documentQueue.filter((job) => ['COMPLETED', 'DRAFT'].includes(job.status)).length;
+    fileQueue.classList.remove('hidden');
+    fileQueue.innerHTML = `
+        <p class="px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">${escapeHtml(t('upload.queue', { done: completeCount, total: documentQueue.length }))}</p>
+        ${documentQueue.map((job) => {
+            const status = STATUS_BADGE_MAP[job.status] ? job.status : 'PENDING';
+            return `<div class="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs dark:bg-slate-900">
+                <span class="truncate text-slate-700 dark:text-slate-200" title="${escapeHtml(job.file.name)}">${escapeHtml(job.file.name)}</span>
+                <span class="shrink-0 rounded-full px-2 py-0.5 font-semibold ${STATUS_BADGE_MAP[status]}">${escapeHtml(t(`status.${status}`))}</span>
+            </div>`;
+        }).join('')}`;
+}
+
+async function handleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (files.length > MAX_BATCH_FILES) {
+        alert(t('upload.tooMany'));
+        return;
+    }
+    if (files.some((file) => !SUPPORTED_DOCUMENT_EXTENSIONS.has(documentExtension(file)))) {
+        alert(t('upload.invalidDocument'));
         return;
     }
 
     if (activeUploadController) activeUploadController.abort();
     const requestId = ++activeUploadRequestId;
-    const controller = new AbortController();
-    activeUploadController = controller;
+    documentQueue = files.map((file, index) => ({ id: `${requestId}-${index}`, file, status: 'PENDING' }));
+    renderDocumentQueue();
+    for (const job of documentQueue) {
+        if (requestId !== activeUploadRequestId) return;
+        const controller = new AbortController();
+        activeUploadController = controller;
+        await processQueuedFile(job, controller, requestId);
+    }
+    if (requestId === activeUploadRequestId) activeUploadController = null;
+    fileInput.value = '';
+}
+
+function handleFile(file) {
+    return handleFiles(file ? [file] : []);
+}
+
+async function processQueuedFile(job, controller, requestId) {
+    const file = job.file;
+    currentPreviewKind = documentExtension(file);
     pdfViewerFileName.removeAttribute('data-i18n');
     fileName.textContent = file.name;
     currentPdfFile = file;
@@ -737,16 +983,26 @@ function handleFile(file) {
     }
 
     uploadedPdfUrl = URL.createObjectURL(file);
-    pdfPlaceholder.classList.add('hidden');
-    refreshPdfViewer();
-    pdfIframe.classList.remove('hidden');
-    thumbnailSidebar.classList.remove('hidden');
-    pdfFooter.classList.remove('hidden');
-    pdfFooter.classList.add('flex');
+    const canPreview = currentPreviewKind !== 'docx';
+    const isPdf = currentPreviewKind === 'pdf';
+    pdfPlaceholder.classList.toggle('hidden', canPreview);
+    pdfIframe.classList.toggle('hidden', !canPreview);
+    thumbnailSidebar.classList.toggle('hidden', !isPdf);
+    pdfFooter.classList.toggle('hidden', !isPdf);
+    pdfFooter.classList.toggle('flex', isPdf);
+    if (canPreview) {
+        refreshPdfViewer();
+    } else {
+        const previewMessage = pdfPlaceholder.querySelector('p');
+        previewMessage.removeAttribute('data-i18n');
+        previewMessage.textContent = t('upload.previewUnavailable');
+        updatePdfControls();
+    }
 
     setUploadProgress(100);
 
-    estimatePdfPageCount(file).then((count) => {
+    const pageCountPromise = isPdf ? estimatePdfPageCount(file) : Promise.resolve(1);
+    pageCountPromise.then((count) => {
         if (currentPdfFile !== file) return;
         totalPages = count;
         updatePdfControls();
@@ -755,16 +1011,18 @@ function handleFile(file) {
         updatePdfControls();
     });
 
-    uploadAndStream(file, controller, requestId);
+    await uploadAndStream(file, controller, requestId, job);
 }
 
-async function uploadAndStream(file, controller, requestId) {
+async function uploadAndStream(file, controller, requestId, job = null) {
     updateStatusBadge('PENDING');
     showStatusMessage('', true, 'upload.uploading');
     showSpinner(true);
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('document_language', documentLanguage.value);
+    formData.append('output_language', outputLanguage.value);
 
     try {
         const response = await apiFetch('/api/upload-and-stream', {
@@ -774,7 +1032,8 @@ async function uploadAndStream(file, controller, requestId) {
         });
 
         if (!response.ok) {
-            throw new Error(`${t('error.uploadFailed')}: ${response.statusText}`);
+            const errorPayload = await response.json().catch(() => ({}));
+            throw new Error(errorPayload.error || `${t('error.uploadFailed')}: ${response.statusText}`);
         }
 
         const reader = response.body.getReader();
@@ -798,7 +1057,7 @@ async function uploadAndStream(file, controller, requestId) {
                     const jsonStr = line.slice(6).trim();
                     if (jsonStr) {
                         try {
-                            handleSseEvent(JSON.parse(jsonStr), requestId);
+                            handleSseEvent(JSON.parse(jsonStr), requestId, job);
                         } catch (e) {
                             console.error('SSE parse error:', e, jsonStr);
                         }
@@ -811,13 +1070,23 @@ async function uploadAndStream(file, controller, requestId) {
         updateStatusBadge('ERROR');
         showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
         showSpinner(false);
+        if (job) {
+            job.status = 'ERROR';
+            renderDocumentQueue();
+        }
     } finally {
         if (requestId === activeUploadRequestId) activeUploadController = null;
     }
 }
 
-function handleSseEvent(event, requestId = activeUploadRequestId) {
+function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
     if (requestId !== activeUploadRequestId) return;
+    if (job && event.session_id) job.sessionId = event.session_id;
+    if (job && event.data) job.result = event.data;
+    if (job && event.status && event.status !== 'COMPLETE') {
+        job.status = event.status === 'TIMEOUT' ? 'ERROR' : event.status;
+        renderDocumentQueue();
+    }
     if (event.session_id) {
         currentSessionId = event.session_id;
         updateProfileSummary();
@@ -828,6 +1097,7 @@ function handleSseEvent(event, requestId = activeUploadRequestId) {
     }
 
     if (event.status === 'TIMEOUT') {
+        if (job) job.status = 'ERROR';
         showSpinner(false);
         updateStatusBadge('ERROR');
         showStatusMessage('', true, 'status.timeout');
@@ -1172,13 +1442,11 @@ dropZone.addEventListener('dragleave', (e) => {
 dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('border-teal-500', 'bg-teal-50/30', 'dark:bg-teal-950/30');
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    handleFiles(e.dataTransfer.files);
 });
 
 fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) handleFile(file);
+    handleFiles(e.target.files);
 });
 
 copyXmlBtn.addEventListener('click', () => {
@@ -1218,6 +1486,25 @@ globalSearchResults.addEventListener('click', (event) => {
     if (resultButton) focusSearchTarget(resultButton.dataset.searchTarget);
 });
 
+settingsBtn.addEventListener('click', () => {
+    if (toggleTopPanel(settingsPanel, settingsBtn)) loadRuntimeSettings();
+});
+
+settingsRefreshBtn.addEventListener('click', loadRuntimeSettings);
+settingsSaveBtn.addEventListener('click', saveRuntimeSettings);
+
+clearDeepSeekKey.addEventListener('change', () => {
+    deepSeekApiKeyInput.disabled = clearDeepSeekKey.checked;
+});
+
+documentLanguage.addEventListener('change', () => {
+    localStorage.setItem('cerberus-document-language', documentLanguage.value);
+});
+
+outputLanguage.addEventListener('change', () => {
+    localStorage.setItem('cerberus-output-language', outputLanguage.value);
+});
+
 notificationsBtn.addEventListener('click', () => {
     if (toggleTopPanel(notificationsPanel, notificationsBtn)) {
         notificationDot.classList.add('hidden');
@@ -1244,6 +1531,7 @@ document.addEventListener('fullscreenchange', updatePdfControls);
 
 document.addEventListener('click', (event) => {
     if (!event.target.closest('#globalSearchPanel') && !event.target.closest('#globalSearchBtn')
+        && !event.target.closest('#settingsPanel') && !event.target.closest('#settingsBtn')
         && !event.target.closest('#notificationsPanel') && !event.target.closest('#notificationsBtn')
         && !event.target.closest('#profilePanel') && !event.target.closest('#profileBtn')) {
         closeTopPanels();

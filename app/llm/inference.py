@@ -38,8 +38,12 @@ _system_prompt = (
     "followed by seven digits; preserve them in equipment_reference and link matching cargo equipment references. "
     "Only populate place_of_issue when the document explicitly labels a place of issue; V.DAIRESI, VERGI DAIRESI, "
     "and TAX OFFICE are tax-office labels and must never become place_of_issue. A contact name must be a person's "
-    "name; a telephone label or phone number belongs only in phone_number."
+    "name; a telephone label or phone number belongs only in phone_number. For a shipper, labels such as V.NO, "
+    "VKN, VERGI NO, TAX ID, and VAT NO map to that party's party_id. Preserve company names, personal names, "
+    "addresses, identifiers, codes, port names, and numeric values exactly as found in the source."
 )
+
+_language_names = {"tr": "Turkish", "en": "English"}
 
 
 def get_llm_pipeline():
@@ -76,11 +80,21 @@ def get_json_schema() -> Dict[str, Any]:
     return schema
 
 
-def build_prompt(ocr_text: str) -> str:
+def build_prompt(
+    ocr_text: str,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> str:
     schema = get_json_schema()
     schema_str = json.dumps(schema, indent=2, ensure_ascii=False)
+    source_language = _language_names.get(document_language, "English")
+    target_language = _language_names.get(output_language, "English")
     prompt = (
         f"System: {_system_prompt}\n\n"
+        f"The document language is {source_language}. Interpret OCR labels in that language.\n"
+        f"The requested XML content language is {target_language}. Translate only translatable descriptive values "
+        f"such as description_of_goods and remarks into {target_language}. Never translate proper names, addresses, "
+        f"locations, identifiers, codes, measurement units, or enum values.\n\n"
         f"JSON Schema:\n{schema_str}\n\n"
         f"OCR Text (layout-preserved):\n{ocr_text}\n\n"
         f"Extract the shipping instruction data as JSON:"
@@ -88,9 +102,13 @@ def build_prompt(ocr_text: str) -> str:
     return prompt
 
 
-def run_guided_inference(ocr_text: str) -> str:
+def run_guided_inference(
+    ocr_text: str,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> str:
     pipe = get_llm_pipeline()
-    prompt = build_prompt(ocr_text)
+    prompt = build_prompt(ocr_text, document_language, output_language)
     config = _build_generation_config()
     result = pipe.generate(prompt, config)
     return str(result)
@@ -158,8 +176,12 @@ def _parse_json_with_fallback(text: str) -> Dict[str, Any]:
     return data
 
 
-def run_inference_with_fallback(ocr_text: str) -> Tuple[ShippingInstruction, str]:
-    raw_output = run_guided_inference(ocr_text)
+def run_inference_with_fallback(
+    ocr_text: str,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> Tuple[ShippingInstruction, str]:
+    raw_output = run_guided_inference(ocr_text, document_language, output_language)
     try:
         return parse_llm_output(raw_output), raw_output
     except Exception:
