@@ -15,6 +15,16 @@ if [[ -f "$ROOT/.env" ]]; then
 fi
 
 cd "$ROOT"
+HOST="${CERBERUS_HOST:-127.0.0.1}"
+case "$HOST" in
+  127.0.0.1|localhost|::1) ;;
+  *)
+    if [[ -z "${CERBERUS_API_KEY:-}" ]]; then
+      echo "CERBERUS_API_KEY is required when listening on a non-loopback host." >&2
+      exit 1
+    fi
+    ;;
+esac
 exec "$ROOT/.venv/bin/uvicorn" app.main:app \
-  --host "${CERBERUS_HOST:-0.0.0.0}" \
+  --host "$HOST" \
   --port "${CERBERUS_PORT:-8000}"

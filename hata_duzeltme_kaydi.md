@@ -2,9 +2,9 @@
 
 **Denetim Tarihi:** 17.07.2026  
 **Denetim Saati:** WSL2 entegrasyonu ve gerçek model denetimi dahil (Europe/Istanbul, UTC+3)  
-**Denetim Yöntemi:** V1-V12 uçtan uca kod, WSL2, gerçek OCR/model/API, arayüz etkileşimleri, güvenli belge keşfi, risk ve regresyon doğrulaması  
-**Toplam Düzeltilen Hata Sayısı:** 89 (V1-V6: 32 + V7: 18 + V8: 10 + V9: 16 + V10: 4 + V11: 4 + V12: 5)  
-**Test Sonucu:** 97/97 PASSED  
+**Denetim Yöntemi:** V1-V13 uçtan uca kod, WSL2, gerçek OCR/model/API, arayüz etkileşimleri, güvenli belge keşfi, güvenlik/yaşam döngüsü sertleştirmesi, risk ve regresyon doğrulaması  
+**Toplam Düzeltilen Hata Sayısı:** 107 (V1-V6: 32 + V7: 18 + V8: 10 + V9: 16 + V10: 4 + V11: 4 + V12: 5 + V13: 18)  
+**Test Sonucu:** 118/118 PASSED  
 
 ---
 
@@ -1012,3 +1012,107 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 - Belge keşfi modülündeki `13/13` test; sorgu bütçesi dağıtımını, Brave ve Google sağlayıcı parametrelerini, dosya imzasını, yerel kalite ön elemesini, özel IP engelini, DeepSeek sözleşmesini ve İngilizce olmayan belge reddini doğruladı.
 - Yeni Python modüllerinin derleme denetimi ve yeni kodda açıklama satırı bulunmadığı kontrolü başarılı.
 - Canlı arama API isteği, çalışma ortamında Brave veya mevcut Google arama anahtarı yapılandırılmadığı için yapılmadı; sorgu üretimi ve tüm ağ davranışları mock taşıma ile doğrulandı.
+
+---
+
+## V13 — Güvenlik, Eşzamanlılık ve Yaşam Döngüsü Sertleştirmesi
+
+**Tarih:** 17.07.2026  
+**Kapsam:** V11 sonrası bağımsız denetimde bildirilen 18 güvenlik, hata, performans ve bakım bulgusunun uygulanması  
+
+### 90. Stream'e Bağlanılmayan SSE Kuyrukları Sınırsız Kalıyordu (YÜKSEK)
+
+**Dosyalar:** `app/routes/processing.py`, `app/config.py`  
+**Çözüm:** Kuyruklar 20 kayıtla sınırlandı; tamamlanmış ve tüketicisiz kuyruklara 300 saniyelik gerçek zamanlayıcı ve tembel TTL temizliği eklendi. Aktif/tüketilen kuyruklar korunuyor, bilinmeyen stream kimlikleri yeni kuyruk oluşturamıyor ve geç bağlanan geçerli istemci sonuç penceresini koruyor.
+
+### 91. PDF Render Hatasında PyMuPDF Belgesi Kapanmıyordu (ORTA)
+
+**Dosya:** `app/ocr/spatial_ocr.py`  
+**Çözüm:** Belge context manager ile açıldı; sayfa/pixmap üretimi hata verse bile handle kapanıyor. Exception yolu sahte fitz belgesiyle regresyon testine alındı.
+
+### 92. Yeni PDF Önceki SSE Akışını İptal Etmiyordu (YÜKSEK)
+
+**Dosyalar:** `static/app.js`, `tests/test_frontend_ui.py`  
+**Çözüm:** Her yüklemeye `AbortController` ve monoton istek kimliği bağlandı. Yeni seçim önceki fetch/reader akışını iptal ediyor; eski istekten gelen durum ve sonuçlar güncel arayüzü değiştiremiyor.
+
+### 93. Manuel Bulut Denetimi Eski İşlem Durumunu Yazabiliyordu (ORTA)
+
+**Dosya:** `app/routes/processing.py`  
+**Çözüm:** DeepSeek dönüşünden sonra durum store'dan yeniden okunuyor. Bulut denetimi güncel olmayan `stored_result.status` değerini artık store'a geri yazmıyor.
+
+### 94. JSON Fallback Tek Tırnaklı Değerleri Ayrıştıramıyordu (DÜŞÜK)
+
+**Dosyalar:** `app/llm/inference.py`, `tests/test_guided_decoding.py`  
+**Çözüm:** Regex ile değer değiştirmek yerine önce JSON onarımı, ardından yalnızca güvenli Python literal yapılarını kabul eden `ast.literal_eval` fallback'i eklendi. Sonuç sözlük değilse açıkça reddediliyor.
+
+### 95. Health Her Çağrıda OpenVINO Core Oluşturuyordu (DÜŞÜK)
+
+**Dosyalar:** `app/main.py`, `tests/test_runtime_hardening.py`  
+**Çözüm:** Başarılı cihaz keşfi `lru_cache` ile süreç ömrü boyunca saklanıyor; hata durumları cache'lenmediği için geçici sürücü hatası sonraki health çağrısında yeniden denenebiliyor.
+
+### 96. Sabit Pydantic JSON Şeması Her Çıkarımda Yeniden Üretiliyordu (DÜŞÜK)
+
+**Dosya:** `app/llm/inference.py`  
+**Çözüm:** `ShippingInstruction` şeması tek örnek olarak cache'lendi ve hem prompt hem OpenVINO structured-output yapılandırması aynı değeri kullanıyor.
+
+### 97. Arayüz Tailwind CDN ve Google Fonts'a Bağımlıydı (ORTA)
+
+**Dosyalar:** `static/index.html`, `static/app.css`, `static/tailwind.input.css`, `tailwind.config.js`, `package.json`, `pnpm-lock.yaml`  
+**Çözüm:** Tailwind 3.4.17 sabitlendi, kullanılan sınıflar minify edilmiş yerel `app.css` dosyasına derlendi ve harici font/CDN istekleri kaldırıldı. Runtime artık internet bağlantısı olmadan tam tema stilini yükleyebiliyor.
+
+### 98. API Kimlik Doğrulaması ve Güvenli Varsayılan Dinleme Yoktu (YÜKSEK)
+
+**Dosyalar:** `app/security.py`, `app/routes/processing.py`, `scripts/wsl_run.sh`, `static/app.js`  
+**Çözüm:** Tüm `/api` route'larına opsiyonel sabit-zamanlı Bearer/X-Cerberus-Api-Key doğrulaması eklendi. Sunucu varsayılanı `127.0.0.1`; loopback dışı dinleme `CERBERUS_API_KEY` olmadan başlamıyor. UI HTTP 401 sonrasında anahtarı yalnızca sekme ömründeki sessionStorage'da tutuyor.
+
+### 99. Yükleme Hızı ve Bekleyen Pipeline Sayısı Sınırsızdı (YÜKSEK)
+
+**Dosyalar:** `app/security.py`, `app/routes/processing.py`, `app/config.py`  
+**Çözüm:** IP başına kayan pencere yükleme limiti, temizlenen sınırlı istemci tablosu ve varsayılan iki aktif pipeline kotası eklendi. Kota dolunca `429`/`Retry-After` dönüyor; hata ve pipeline final yollarında slot kesin olarak bırakılıyor.
+
+### 100. Aynı Oturumdaki Pipeline, Taslak ve Bulut Denetimi Yarışabiliyordu (ORTA)
+
+**Dosyalar:** `app/routes/processing.py`, `tests/test_processing_pipeline.py`  
+**Çözüm:** Oturum başına `asyncio.Lock` ile pipeline, save/approve ve manuel review atomik sıraya alındı. Rastgele geçersiz session kimliklerinin lock oluşturması engellendi; store FIFO temizliği ilgili modeli ve kilidi beraber kaldırıyor.
+
+### 101. XML `schemaLocation` Gerçek XSD Dosya Adıyla Eşleşmiyordu (DÜŞÜK)
+
+**Dosya:** `app/xml/converter.py`  
+**Çözüm:** Üretilen XML ipucu `shipping_instruction.xsd` olarak paketlenen şemayla eşleştirildi ve regresyon testi eklendi.
+
+### 102. Zorunlu Alanlar Yalnızca Koleksiyonların İlk Öğesinde Denetleniyordu (ORTA)
+
+**Dosyalar:** `app/xml/validator.py`, `tests/test_validator.py`  
+**Çözüm:** Transport plan, equipment ve cargo koleksiyonlarındaki her öğe kendi gerçek indeksiyle doğrulanıyor. Boş koleksiyonlarda UI uyumluluğu için `[0]` alan yolları korunuyor; sonraki eksik öğeler artık onaydan kaçamıyor.
+
+### 103. `IsShipperOwned` XSD'de Gevşek String Olarak Tanımlıydı (ORTA)
+
+**Dosyalar:** `app/xml/schemas/shipping_instruction.xsd`, `tests/test_validator.py`  
+**Çözüm:** Alan `xs:boolean` yapıldı. Converter'ın ürettiği `true/false` doğrulanıyor, rastgele metin XSD tarafından reddediliyor.
+
+### 104. Structured Output Uyumluluk Seçimi Gözlemlenemiyordu (DÜŞÜK)
+
+**Dosya:** `app/llm/inference.py`  
+**Çözüm:** `_configure_structured_output` dönüşü debug loguna bağlandı; seçilen OpenVINO API yolu artık test edilebilir ve teşhis edilebilir bir amaca sahip.
+
+### 105. XML Kopyalama Düğmesi i18n DOM Niteliğine Bağlıydı (DÜŞÜK)
+
+**Dosya:** `static/app.js`  
+**Çözüm:** XML hazır olma durumu `currentXmlContent` ile ayrı tutuluyor. Yerelleştirme niteliği artık işlevsel buton durumunun kaynağı değil; kopyalama da aynı gerçek XML state'ini kullanıyor.
+
+### 106. OCR Dil Profili Sabit ve Yapılandırılamazdı (DÜŞÜK)
+
+**Dosyalar:** `app/config.py`, `.env.example`  
+**Çözüm:** `OCR_LANG` ortam değişkeni eklendi; İngilizce varsayılan korunurken belge kümesine göre `tr` veya desteklenen başka bir PaddleOCR profili seçilebilir.
+
+### 107. Audit Oturumları İçin Saklama Politikası Yoktu (ORTA)
+
+**Dosyalar:** `app/utils/audit_logger.py`, `app/config.py`  
+**Çözüm:** Varsayılan 30 günlük yapılandırılabilir retention eklendi. Temizlik günde en fazla bir kez çalışıyor, yalnızca üretim session adı desenine uyan eski dizinleri kaldırıyor, ilgisiz klasörleri koruyor ve cleanup I/O hatası belge işlemesini durdurmuyor.
+
+## V13 Doğrulama Özeti
+
+- Ubuntu WSL2 gerçek çalışma kopyasında `118/118` otomatik test başarılı.
+- Python compile, JavaScript syntax, `bash -n`, Tailwind yerel/minify CSS üretimi ve yeni kod kaynaklarının whitespace denetimleri başarılı.
+- FastAPI route seviyesinde API anahtarı, kayan pencere rate limit, aktif pipeline kotası, SSE TTL/kapasite, bilinmeyen stream reddi ve aynı oturum lock davranışları ayrı testlerle doğrulandı.
+- PDF render exception kapanışı, tek tırnaklı JSON fallback'i, OpenVINO/schema cache, tüm koleksiyon öğeleri, boolean XSD, schemaLocation, OCR ortam ayarı ve audit retention regresyon kapsamına alındı.

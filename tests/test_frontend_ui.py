@@ -5,6 +5,8 @@ from html.parser import HTMLParser
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = (PROJECT_ROOT / "static" / "index.html").read_text(encoding="utf-8")
 APP_JS = (PROJECT_ROOT / "static" / "app.js").read_text(encoding="utf-8")
+TAILWIND_CONFIG = (PROJECT_ROOT / "tailwind.config.js").read_text(encoding="utf-8")
+APP_CSS = (PROJECT_ROOT / "static" / "app.css").read_text(encoding="utf-8")
 
 
 class _ButtonCollector(HTMLParser):
@@ -34,12 +36,19 @@ def test_english_is_available_as_an_optional_persistent_language():
 
 
 def test_dark_theme_is_class_based_and_persistent():
-    assert "darkMode: 'class'" in INDEX_HTML
+    assert 'darkMode: "class"' in TAILWIND_CONFIG
     assert 'id="themeToggle"' in INDEX_HTML
     assert "localStorage.getItem('cerberus-theme')" in INDEX_HTML
     assert "localStorage.setItem('cerberus-theme', theme)" in APP_JS
     assert "dark:bg-slate-950" in INDEX_HTML
     assert "prefers-color-scheme: dark" in APP_JS
+
+
+def test_frontend_assets_are_local_and_precompiled():
+    assert "cdn.tailwindcss.com" not in INDEX_HTML
+    assert "fonts.googleapis.com" not in INDEX_HTML
+    assert '<link rel="stylesheet" href="/static/app.css">' in INDEX_HTML
+    assert len(APP_CSS) > 10000
 
 
 def test_runtime_messages_and_generated_rows_use_translations():
@@ -110,3 +119,12 @@ def test_result_actions_are_disabled_until_processing_data_exists():
     assert 'id="approveDataBtn" type="button" disabled' in INDEX_HTML
     assert "updateResultActionAvailability" in APP_JS
     assert "copyXmlBtn.disabled = false" in APP_JS
+    assert "copyXmlBtn.disabled = !currentXmlContent" in APP_JS
+
+
+def test_upload_replaces_previous_stream_and_api_auth_can_retry():
+    assert "new AbortController()" in APP_JS
+    assert "activeUploadController.abort()" in APP_JS
+    assert "requestId !== activeUploadRequestId" in APP_JS
+    assert "async function apiFetch" in APP_JS
+    assert "Authorization" in APP_JS

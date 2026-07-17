@@ -1,13 +1,17 @@
 from __future__ import annotations
+import ast
 import json
+import logging
 from pathlib import Path
 import re
+from functools import lru_cache
 from typing import Optional, Dict, Any, Tuple
 from app.config import settings
 from app.models import ShippingInstruction
 
 
 _llm_pipeline = None
+logger = logging.getLogger(__name__)
 _system_prompt = (
     "You are a shipping instruction document parser. "
     "Extract structured data from the OCR text of a shipping instruction / bill of lading document. "
@@ -66,6 +70,7 @@ def get_llm_pipeline():
     return _llm_pipeline
 
 
+@lru_cache(maxsize=1)
 def get_json_schema() -> Dict[str, Any]:
     schema = ShippingInstruction.model_json_schema()
     return schema
@@ -97,11 +102,12 @@ def _build_generation_config():
     config = openvino_genai.GenerationConfig()
     config.max_new_tokens = settings.model.max_new_tokens
     config.do_sample = False
-    _configure_structured_output(
+    structured_output_mode = _configure_structured_output(
         config,
         openvino_genai,
         json.dumps(get_json_schema()),
     )
+    logger.debug("OpenVINO structured output mode: %s", structured_output_mode)
     return config
 
 
@@ -141,12 +147,22 @@ def _repair_json(text: str) -> str:
     return text
 
 
+def _parse_json_with_fallback(text: str) -> Dict[str, Any]:
+    repaired = _repair_json(text)
+    try:
+        data = json.loads(repaired)
+    except json.JSONDecodeError:
+        data = ast.literal_eval(text)
+    if not isinstance(data, dict):
+        raise ValueError("LLM output must contain a JSON object")
+    return data
+
+
 def run_inference_with_fallback(ocr_text: str) -> Tuple[ShippingInstruction, str]:
     raw_output = run_guided_inference(ocr_text)
     try:
         return parse_llm_output(raw_output), raw_output
     except Exception:
         cleaned = _extract_json(raw_output)
-        cleaned = _repair_json(cleaned)
-        data = json.loads(cleaned)
+        data = _parse_json_with_fallback(cleaned)
         return ShippingInstruction.model_validate(data), raw_output

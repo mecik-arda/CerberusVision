@@ -201,3 +201,58 @@ async def test_manual_cloud_review_returns_short_comment_without_changing_data(t
 
     processing._processing_store.pop(session_id, None)
     processing._session_models.pop(session_id, None)
+
+
+@pytest.mark.asyncio
+async def test_save_waits_for_same_session_cloud_review(tmp_path, monkeypatch):
+    session_id = "session-lock-test"
+    instruction = create_complete_si()
+    processing._session_models[session_id] = instruction
+    processing._processing_store[session_id] = ProcessingResult(
+        status=ProcessingStatus.COMPLETED,
+        raw_ocr_text="OCR " * 40,
+        structured_data=instruction.model_dump(mode="json"),
+    )
+    monkeypatch.setattr(settings, "logs_dir", tmp_path / "logs")
+    monkeypatch.setattr(settings.deepseek, "api_key", "test-key")
+    monkeypatch.setattr(settings.deepseek, "review_mode", "manual")
+    review_started = processing.asyncio.Event()
+    release_review = processing.asyncio.Event()
+
+    async def fake_execute(*args):
+        review_started.set()
+        await release_review.wait()
+        return {
+            "audit_confidence_score": 90,
+            "audit_summary": "Reviewed.",
+            "cloud_review_used": True,
+            "cloud_review_available": True,
+            "local_risk_score": 0,
+            "local_warnings": [],
+            "suspicious_fields": [],
+        }, None
+
+    monkeypatch.setattr(processing, "_execute_cloud_review", fake_execute)
+    review_task = processing.asyncio.create_task(
+        processing.run_manual_cloud_review(session_id)
+    )
+    await review_started.wait()
+    edited = instruction.model_copy(deep=True)
+    edited.carrier_booking_reference = "LOCKED-SAVE"
+    save_task = processing.asyncio.create_task(
+        processing._save_instruction(
+            session_id,
+            SaveInstructionRequest(shipping_instruction=edited),
+            approve=False,
+        )
+    )
+    await processing.asyncio.sleep(0)
+    assert save_task.done() is False
+    release_review.set()
+    assert (await review_task).status_code == 200
+    save_response = await save_task
+    assert save_response.status_code == 200
+    assert json.loads(save_response.body)["structured_data"]["carrier_booking_reference"] == "LOCKED-SAVE"
+    processing._processing_store.pop(session_id, None)
+    processing._session_models.pop(session_id, None)
+    processing._session_locks.pop(session_id, None)

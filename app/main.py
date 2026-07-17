@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import importlib.util
+from functools import lru_cache
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -17,6 +18,13 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
 app.include_router(processing_router)
+
+
+@lru_cache(maxsize=1)
+def _get_openvino_devices() -> tuple[str, ...]:
+    from openvino import Core
+
+    return tuple(Core().available_devices)
 
 
 @app.get("/")
@@ -36,9 +44,7 @@ async def health():
     devices = []
     device_ready = False
     try:
-        from openvino import Core
-
-        devices = Core().available_devices
+        devices = list(_get_openvino_devices())
         requested_device = settings.model.device.split(".", 1)[0].upper()
         device_ready = any(
             device.split(".", 1)[0].upper() == requested_device for device in devices

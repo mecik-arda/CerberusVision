@@ -161,6 +161,7 @@ const TRANSLATIONS = {
         'error.uploadFailed': 'Yükleme başarısız',
         'error.requestFailed': 'İstek başarısız',
         'error.approvalBlocked': 'Zorunlu alanlar veya XSD doğrulama hataları onayı engelliyor.',
+        'auth.apiKeyPrompt': 'Sunucu erişimi için CerberusVision API anahtarını girin:',
     },
     en: {
         'page.title': 'CerberusVision — Document Processing',
@@ -270,6 +271,7 @@ const TRANSLATIONS = {
         'error.uploadFailed': 'Upload failed',
         'error.requestFailed': 'Request failed',
         'error.approvalBlocked': 'Mandatory fields or XSD validation errors prevent approval.',
+        'auth.apiKeyPrompt': 'Enter the CerberusVision API key to access the server:',
     },
 };
 
@@ -284,6 +286,18 @@ function t(key, values = {}) {
     );
 }
 
+async function apiFetch(resource, options = {}, allowCredentialRetry = true) {
+    const headers = new Headers(options.headers || {});
+    const apiKey = sessionStorage.getItem('cerberus-api-key');
+    if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
+    const response = await fetch(resource, { ...options, headers });
+    if (response.status !== 401 || !allowCredentialRetry) return response;
+    const suppliedKey = window.prompt(t('auth.apiKeyPrompt'));
+    if (!suppliedKey) return response;
+    sessionStorage.setItem('cerberus-api-key', suppliedKey.trim());
+    return apiFetch(resource, options, false);
+}
+
 let uploadedPdfUrl = null;
 let currentPdfFile = null;
 let currentPage = 1;
@@ -292,6 +306,7 @@ let currentZoom = 100;
 const ZOOM_LEVELS = [100, 125, 150, 200];
 let currentSessionId = null;
 let currentStructuredData = null;
+let currentXmlContent = '';
 let currentSuspiciousFields = [];
 let currentCloudReviewAvailable = false;
 let currentStatus = 'IDLE';
@@ -299,6 +314,8 @@ let currentStatusMessageKey = null;
 let currentStatusMessageFallback = '';
 let currentAuditState = null;
 let currentItems = null;
+let activeUploadController = null;
+let activeUploadRequestId = 0;
 let latestNotification = null;
 
 const STATUS_BADGE_MAP = {
@@ -665,7 +682,7 @@ function updateResultActionAvailability() {
     const hasStructuredData = Boolean(currentStructuredData);
     saveDraftBtn.disabled = !hasStructuredData;
     approveDataBtn.disabled = !hasStructuredData;
-    copyXmlBtn.disabled = xmlOutput.hasAttribute('data-i18n');
+    copyXmlBtn.disabled = !currentXmlContent;
 }
 
 function resetDocumentResults() {
@@ -681,6 +698,7 @@ function resetDocumentResults() {
         { field_path: 'cargo_items[0].weight.weight_value' },
     ]);
     populateItemsTable([]);
+    currentXmlContent = '';
     xmlOutput.dataset.i18n = 'xml.placeholder';
     xmlOutput.textContent = t('xml.placeholder');
     updateResultActionAvailability();
@@ -692,6 +710,10 @@ function handleFile(file) {
         return;
     }
 
+    if (activeUploadController) activeUploadController.abort();
+    const requestId = ++activeUploadRequestId;
+    const controller = new AbortController();
+    activeUploadController = controller;
     pdfViewerFileName.removeAttribute('data-i18n');
     fileName.textContent = file.name;
     currentPdfFile = file;
@@ -733,10 +755,10 @@ function handleFile(file) {
         updatePdfControls();
     });
 
-    uploadAndStream(file);
+    uploadAndStream(file, controller, requestId);
 }
 
-async function uploadAndStream(file) {
+async function uploadAndStream(file, controller, requestId) {
     updateStatusBadge('PENDING');
     showStatusMessage('', true, 'upload.uploading');
     showSpinner(true);
@@ -745,9 +767,10 @@ async function uploadAndStream(file) {
     formData.append('file', file);
 
     try {
-        const response = await fetch('/api/upload-and-stream', {
+        const response = await apiFetch('/api/upload-and-stream', {
             method: 'POST',
             body: formData,
+            signal: controller.signal,
         });
 
         if (!response.ok) {
@@ -761,6 +784,10 @@ async function uploadAndStream(file) {
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            if (requestId !== activeUploadRequestId) {
+                await reader.cancel();
+                return;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -771,7 +798,7 @@ async function uploadAndStream(file) {
                     const jsonStr = line.slice(6).trim();
                     if (jsonStr) {
                         try {
-                            handleSseEvent(JSON.parse(jsonStr));
+                            handleSseEvent(JSON.parse(jsonStr), requestId);
                         } catch (e) {
                             console.error('SSE parse error:', e, jsonStr);
                         }
@@ -780,13 +807,17 @@ async function uploadAndStream(file) {
             }
         }
     } catch (error) {
+        if (error.name === 'AbortError' || requestId !== activeUploadRequestId) return;
         updateStatusBadge('ERROR');
         showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
         showSpinner(false);
+    } finally {
+        if (requestId === activeUploadRequestId) activeUploadController = null;
     }
 }
 
-function handleSseEvent(event) {
+function handleSseEvent(event, requestId = activeUploadRequestId) {
+    if (requestId !== activeUploadRequestId) return;
     if (event.session_id) {
         currentSessionId = event.session_id;
         updateProfileSummary();
@@ -823,8 +854,9 @@ function handleSseEvent(event) {
 
         if (event.data) {
             if (event.data.xml_content) {
+                currentXmlContent = event.data.xml_content;
                 xmlOutput.removeAttribute('data-i18n');
-                xmlOutput.textContent = event.data.xml_content;
+                xmlOutput.textContent = currentXmlContent;
                 copyXmlBtn.disabled = false;
             }
             if (event.data.missing_fields) {
@@ -1045,7 +1077,7 @@ async function persistInstruction(approve) {
         const endpoint = approve
             ? `/api/sessions/${encodeURIComponent(currentSessionId)}/approve`
             : `/api/sessions/${encodeURIComponent(currentSessionId)}/draft`;
-        const response = await fetch(endpoint, {
+        const response = await apiFetch(endpoint, {
             method: approve ? 'POST' : 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ shipping_instruction: editedData }),
@@ -1058,8 +1090,9 @@ async function persistInstruction(approve) {
         currentStructuredData = result.structured_data;
         populateFormFields(currentStructuredData);
         populateItemsTable(currentStructuredData.cargo_items);
+        currentXmlContent = result.xml_content;
         xmlOutput.removeAttribute('data-i18n');
-        xmlOutput.textContent = result.xml_content;
+        xmlOutput.textContent = currentXmlContent;
         copyXmlBtn.disabled = false;
         highlightMissingFields(result.missing_fields || []);
         updateStatusBadge(result.status);
@@ -1094,7 +1127,7 @@ async function runManualCloudReview() {
     showSpinner(true);
     showStatusMessage('', true, 'status.cloudRunning');
     try {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/sessions/${encodeURIComponent(currentSessionId)}/cloud-review`,
             { method: 'POST' },
         );
@@ -1149,8 +1182,7 @@ fileInput.addEventListener('change', (e) => {
 });
 
 copyXmlBtn.addEventListener('click', () => {
-    const text = xmlOutput.textContent;
-    navigator.clipboard.writeText(text).then(() => {
+    navigator.clipboard.writeText(currentXmlContent).then(() => {
         copyXmlBtn.textContent = t('common.copied');
         setTimeout(() => { copyXmlBtn.textContent = t('common.copy'); }, 2000);
     }).catch((error) => {

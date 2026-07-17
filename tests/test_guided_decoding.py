@@ -4,6 +4,7 @@ from app.models import ShippingInstruction
 from app.llm.inference import (
     _configure_structured_output,
     _extract_json,
+    _parse_json_with_fallback,
     get_json_schema,
     parse_llm_output,
 )
@@ -135,6 +136,11 @@ class TestParseLlmOutput:
         assert si.place_of_issue.location_name == "ALIAGA"
         assert si.equipment_list[0].cargo_gross_weight.weight == 26080.00
         assert si.cargo_items[0].volume.volume_value == 28.16
+
+    def test_safe_fallback_parses_single_quoted_keys_and_values(self):
+        assert _parse_json_with_fallback("{'carrier_booking_reference': 'CBR-1'}") == {
+            "carrier_booking_reference": "CBR-1"
+        }
 
 
 class TestJsonSchema:

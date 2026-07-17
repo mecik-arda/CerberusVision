@@ -17,14 +17,23 @@ MANDATORY_FIELDS = [
     ("carrier_booking_reference", "Carrier Booking Reference"),
     ("issue_date", "Issue Date"),
     ("place_of_issue.location_name", "Place of Issue"),
-    ("transport_plans[0].port_of_loading.location_name", "Port of Loading"),
-    ("transport_plans[0].port_of_discharge.location_name", "Port of Discharge"),
-    ("equipment_list[0].equipment_reference", "Equipment Reference"),
-    ("equipment_list[0].cargo_gross_weight.weight", "Cargo Gross Weight"),
-    ("cargo_items[0].package_quantity", "Package Quantity"),
-    ("cargo_items[0].description_of_goods", "Description of Goods"),
-    ("cargo_items[0].weight.weight_value", "Cargo Weight"),
 ]
+
+COLLECTION_MANDATORY_FIELDS = {
+    "transport_plans": [
+        ("port_of_loading.location_name", "Port of Loading"),
+        ("port_of_discharge.location_name", "Port of Discharge"),
+    ],
+    "equipment_list": [
+        ("equipment_reference", "Equipment Reference"),
+        ("cargo_gross_weight.weight", "Cargo Gross Weight"),
+    ],
+    "cargo_items": [
+        ("package_quantity", "Package Quantity"),
+        ("description_of_goods", "Description of Goods"),
+        ("weight.weight_value", "Cargo Weight"),
+    ],
+}
 
 PARTY_MANDATORY_FIELDS = {
     PartyRoleCode.SHIPPER: (
@@ -103,6 +112,22 @@ def check_mandatory_fields(si: ShippingInstruction) -> List[FieldValidation]:
                     is_missing=True,
                 )
             )
+    for collection_name, fields in COLLECTION_MANDATORY_FIELDS.items():
+        items = getattr(si, collection_name)
+        targets = list(enumerate(items)) if items else [(0, None)]
+        for index, item in targets:
+            for relative_path, field_label in fields:
+                value = _get_nested_value(item, relative_path) if item is not None else None
+                if value is None or (isinstance(value, str) and value.strip() == ""):
+                    missing.append(
+                        FieldValidation(
+                            field_path=f"{collection_name}[{index}].{relative_path}",
+                            field_label=field_label,
+                            value=None,
+                            is_required=True,
+                            is_missing=True,
+                        )
+                    )
     for role, (role_label, fields) in PARTY_MANDATORY_FIELDS.items():
         party_index = next(
             (index for index, party in enumerate(si.parties) if party.party_role_code == role),

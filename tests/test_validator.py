@@ -138,6 +138,40 @@ class TestCheckMandatoryFields:
         assert "Shipper Name" in missing_labels
         assert "Shipper Address" in missing_labels
 
+    def test_every_collection_item_is_validated(self):
+        si = create_complete_si()
+        si.transport_plans.append(
+            TransportPlan(leg_sequence_number=2, transport_mode=TransportMode.SEA)
+        )
+        si.equipment_list.append(Equipment())
+        si.cargo_items.append(CargoItem())
+        missing_paths = {field.field_path for field in check_mandatory_fields(si)}
+        assert "transport_plans[1].port_of_loading.location_name" in missing_paths
+        assert "equipment_list[1].equipment_reference" in missing_paths
+        assert "cargo_items[1].description_of_goods" in missing_paths
+
+    def test_empty_collections_keep_first_item_paths_for_the_ui(self):
+        missing_paths = {field.field_path for field in check_mandatory_fields(create_incomplete_si())}
+        assert "transport_plans[0].port_of_loading.location_name" in missing_paths
+        assert "equipment_list[0].equipment_reference" in missing_paths
+        assert "cargo_items[0].description_of_goods" in missing_paths
+
+    def test_schema_location_matches_bundled_xsd(self):
+        xml_str = shipping_instruction_to_xml(create_complete_si())
+        assert "shipping_instruction.xsd" in xml_str
+        assert "dcsa_shipping_instruction_v2.xsd" not in xml_str
+
+    def test_shipper_owned_is_validated_as_boolean(self):
+        si = create_complete_si()
+        si.equipment_list[0].is_shipper_owned = True
+        xml_str = shipping_instruction_to_xml(si)
+        valid, errors = validate_xml_against_xsd(xml_str)
+        assert valid is True
+        invalid_xml = xml_str.replace(">true</IsShipperOwned>", ">invalid</IsShipperOwned>")
+        valid, errors = validate_xml_against_xsd(invalid_xml)
+        assert valid is False
+        assert errors
+
 
 class TestValidateAndGrade:
     def test_complete_si_returns_completed(self):

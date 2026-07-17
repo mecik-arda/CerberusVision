@@ -23,6 +23,7 @@ venv/
 env/
 ENV/
 .venv/
+node_modules/
 .openvino_cache/
 .pytest_cache/
 .pytest-tmp*/

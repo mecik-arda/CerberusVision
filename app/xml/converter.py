@@ -237,7 +237,7 @@ def shipping_instruction_to_xml(si: ShippingInstruction) -> str:
     root = etree.Element(_ns("ShippingInstruction"), nsmap=NSMAP)
     root.set(
         "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation",
-        f"{DCSA_NS} dcsa_shipping_instruction_v2.xsd",
+        f"{DCSA_NS} shipping_instruction.xsd",
     )
     _add_text_element(root, "ShippingInstructionReference", si.shipping_instruction_reference)
     _add_text_element(root, "DocumentStatusCode", si.document_status_code)

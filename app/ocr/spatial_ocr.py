@@ -26,13 +26,12 @@ def render_pdf_pages_to_images(
     import fitz
 
     images: List[bytes] = []
-    doc = fitz.open(str(pdf_path))
     zoom = dpi / 72.0
     matrix = fitz.Matrix(zoom, zoom)
-    for page in doc:
-        pix = page.get_pixmap(matrix=matrix)
-        images.append(pix.tobytes("png"))
-    doc.close()
+    with fitz.open(str(pdf_path)) as doc:
+        for page in doc:
+            pix = page.get_pixmap(matrix=matrix)
+            images.append(pix.tobytes("png"))
     return images
 
 

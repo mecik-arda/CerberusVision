@@ -4,10 +4,12 @@ import json
 import shutil
 from dataclasses import asdict
 from pathlib import Path
+from time import monotonic
 from typing import AsyncGenerator
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import StreamingResponse, JSONResponse
 from app.config import settings
+from app.security import enforce_upload_rate_limit, require_api_key
 from app.models import (
     DocumentStatusCode,
     ProcessingStatus,
@@ -33,7 +35,11 @@ from app.llm.local_audit import assess_local_result, should_run_automatic_cloud_
 from app.xml.converter import shipping_instruction_to_xml
 from app.xml.validator import check_mandatory_fields, validate_xml_against_xsd
 
-router = APIRouter(prefix="/api", tags=["processing"])
+router = APIRouter(
+    prefix="/api",
+    tags=["processing"],
+    dependencies=[Depends(require_api_key)],
+)
 
 inference_semaphore = asyncio.Semaphore(1)
 cloud_review_semaphore = asyncio.Semaphore(1)
@@ -41,6 +47,13 @@ cloud_review_semaphore = asyncio.Semaphore(1)
 _processing_store: dict[str, ProcessingResult] = {}
 _stream_queues: dict[str, asyncio.Queue] = {}
 _session_models: dict[str, ShippingInstruction] = {}
+_session_locks: dict[str, asyncio.Lock] = {}
+_stream_queue_created_at: dict[str, float] = {}
+_stream_queue_completed_at: dict[str, float] = {}
+_stream_cleanup_handles: dict[str, asyncio.TimerHandle] = {}
+_stream_consumers: set[str] = set()
+_active_pipeline_sessions: set[str] = set()
+_active_pipeline_lock = asyncio.Lock()
 
 
 _PROCESSING_STORE_MAX_SIZE = 100
@@ -80,6 +93,7 @@ def _emit_status(session_id: str, status: ProcessingStatus, message: str, data: 
         oldest_key = next(iter(_processing_store))
         _processing_store.pop(oldest_key, None)
         _session_models.pop(oldest_key, None)
+        _session_locks.pop(oldest_key, None)
     existing = _processing_store.get(session_id)
     existing_data = existing.model_dump() if existing else {}
     existing_data.update(store_kwargs)
@@ -91,6 +105,27 @@ def _emit_status(session_id: str, status: ProcessingStatus, message: str, data: 
 async def _run_blocking(func, *args, **kwargs):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    lock = _session_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _session_locks[session_id] = lock
+    return lock
+
+
+async def _reserve_pipeline_slot(session_id: str) -> bool:
+    async with _active_pipeline_lock:
+        if len(_active_pipeline_sessions) >= settings.server.max_active_pipelines:
+            return False
+        _active_pipeline_sessions.add(session_id)
+        return True
+
+
+async def _release_pipeline_slot(session_id: str) -> None:
+    async with _active_pipeline_lock:
+        _active_pipeline_sessions.discard(session_id)
 
 
 def _copy_upload_to_path(file: UploadFile, pdf_path: Path) -> None:
@@ -175,6 +210,21 @@ async def _execute_cloud_review(
 
 
 async def process_pdf_pipeline(
+    pdf_path: Path,
+    session_id: str,
+    filename: str,
+    status_queue: asyncio.Queue,
+):
+    async with _get_session_lock(session_id):
+        await _process_pdf_pipeline_locked(
+            pdf_path,
+            session_id,
+            filename,
+            status_queue,
+        )
+
+
+async def _process_pdf_pipeline_locked(
     pdf_path: Path,
     session_id: str,
     filename: str,
@@ -308,16 +358,93 @@ async def process_pdf_pipeline(
     finally:
         pdf_path.unlink(missing_ok=True)
         status_queue.put_nowait(None)
+        _mark_stream_queue_complete(session_id)
+        await _release_pipeline_slot(session_id)
+
+
+def _drop_stream_queue(session_id: str) -> None:
+    cleanup_handle = _stream_cleanup_handles.pop(session_id, None)
+    if cleanup_handle is not None:
+        cleanup_handle.cancel()
+    _stream_queues.pop(session_id, None)
+    _stream_queue_created_at.pop(session_id, None)
+    _stream_queue_completed_at.pop(session_id, None)
+
+
+def _prune_stream_queues(now: float | None = None) -> None:
+    timestamp = monotonic() if now is None else now
+    expired = [
+        session_id
+        for session_id, completed_at in _stream_queue_completed_at.items()
+        if timestamp - completed_at >= settings.server.stream_queue_ttl_seconds
+        and session_id not in _stream_consumers
+        and session_id not in _active_pipeline_sessions
+    ]
+    for session_id in expired:
+        _drop_stream_queue(session_id)
+    overflow = len(_stream_queues) - settings.server.stream_queue_max_size + 1
+    if overflow <= 0:
+        return
+    candidates = sorted(
+        (
+            _stream_queue_completed_at.get(
+                session_id,
+                _stream_queue_created_at.get(session_id, timestamp),
+            ),
+            session_id,
+        )
+        for session_id in _stream_queues
+        if session_id not in _stream_consumers
+        and session_id not in _active_pipeline_sessions
+    )
+    for _, session_id in candidates[:overflow]:
+        _drop_stream_queue(session_id)
+
+
+def _mark_stream_queue_complete(session_id: str) -> None:
+    if session_id in _stream_queues:
+        completed_at = monotonic()
+        _stream_queue_completed_at[session_id] = completed_at
+        existing_handle = _stream_cleanup_handles.pop(session_id, None)
+        if existing_handle is not None:
+            existing_handle.cancel()
+        loop = asyncio.get_running_loop()
+        _stream_cleanup_handles[session_id] = loop.call_later(
+            settings.server.stream_queue_ttl_seconds,
+            _expire_stream_queue,
+            session_id,
+            completed_at,
+        )
+
+
+def _expire_stream_queue(session_id: str, completed_at: float) -> None:
+    if (
+        _stream_queue_completed_at.get(session_id) == completed_at
+        and session_id not in _stream_consumers
+        and session_id not in _active_pipeline_sessions
+    ):
+        _drop_stream_queue(session_id)
 
 
 def _get_or_create_queue(session_id: str) -> asyncio.Queue:
-    if session_id not in _stream_queues:
-        _stream_queues[session_id] = asyncio.Queue()
-    return _stream_queues[session_id]
+    existing = _stream_queues.get(session_id)
+    if existing is not None:
+        return existing
+    _prune_stream_queues()
+    if len(_stream_queues) >= settings.server.stream_queue_max_size:
+        raise RuntimeError("The stream queue capacity has been reached.")
+    queue = asyncio.Queue()
+    _stream_queues[session_id] = queue
+    _stream_queue_created_at[session_id] = monotonic()
+    return queue
 
 
 async def _event_generator(session_id: str) -> AsyncGenerator[str, None]:
-    queue = _get_or_create_queue(session_id)
+    queue = _stream_queues.get(session_id)
+    if queue is None:
+        yield f"data: {json.dumps({'status': 'ERROR', 'session_id': session_id, 'message': 'Stream session not found.'})}\n\n"
+        return
+    _stream_consumers.add(session_id)
     try:
         while True:
             try:
@@ -332,12 +459,14 @@ async def _event_generator(session_id: str) -> AsyncGenerator[str, None]:
                 yield f"data: {json.dumps({'status': 'TIMEOUT', 'session_id': session_id})}\n\n"
                 break
     finally:
-        _stream_queues.pop(session_id, None)
+        _stream_consumers.discard(session_id)
+        _drop_stream_queue(session_id)
 
 
 @router.post("/upload")
 async def upload_pdf(
     file: UploadFile = File(...),
+    _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         return JSONResponse(
@@ -346,19 +475,35 @@ async def upload_pdf(
         )
 
     session_id = create_session_id()
+    if not await _reserve_pipeline_slot(session_id):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "The active document processing limit has been reached."},
+            headers={"Retry-After": "30"},
+        )
     safe_filename = Path(file.filename).name
     pdf_path = settings.uploads_dir / f"{session_id}_{safe_filename}"
     try:
         await _save_uploaded_pdf(file, pdf_path)
     except UploadTooLargeError:
+        await _release_pipeline_slot(session_id)
         return JSONResponse(
             status_code=413,
             content={"error": f"File size exceeds maximum allowed size ({_MAX_UPLOAD_SIZE // (1024*1024)} MB)."},
         )
     except ValueError as error:
+        await _release_pipeline_slot(session_id)
         return JSONResponse(status_code=400, content={"error": str(error)})
+    except Exception:
+        await _release_pipeline_slot(session_id)
+        raise
 
-    status_queue = _get_or_create_queue(session_id)
+    try:
+        status_queue = _get_or_create_queue(session_id)
+    except RuntimeError as error:
+        pdf_path.unlink(missing_ok=True)
+        await _release_pipeline_slot(session_id)
+        return JSONResponse(status_code=503, content={"error": str(error)})
 
     asyncio.create_task(
         process_pdf_pipeline(
@@ -381,6 +526,11 @@ async def upload_pdf(
 
 @router.get("/stream/{session_id}")
 async def stream_status(session_id: str):
+    if session_id not in _stream_queues:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"No stream found for session {session_id}"},
+        )
     return StreamingResponse(
         _event_generator(session_id),
         media_type="text/event-stream",
@@ -404,6 +554,20 @@ async def get_status(session_id: str):
 
 
 async def _save_instruction(
+    session_id: str,
+    request: SaveInstructionRequest,
+    approve: bool,
+):
+    if session_id not in _session_models:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"No processing found for session {session_id}"},
+        )
+    async with _get_session_lock(session_id):
+        return await _save_instruction_locked(session_id, request, approve)
+
+
+async def _save_instruction_locked(
     session_id: str,
     request: SaveInstructionRequest,
     approve: bool,
@@ -495,6 +659,16 @@ async def approve_instruction(session_id: str, request: SaveInstructionRequest):
 
 @router.post("/sessions/{session_id}/cloud-review")
 async def run_manual_cloud_review(session_id: str):
+    if session_id not in _session_models or session_id not in _processing_store:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"No processing found for session {session_id}"},
+        )
+    async with _get_session_lock(session_id):
+        return await _run_manual_cloud_review_locked(session_id)
+
+
+async def _run_manual_cloud_review_locked(session_id: str):
     instruction = _session_models.get(session_id)
     stored_result = _processing_store.get(session_id)
     if instruction is None or stored_result is None:
@@ -550,7 +724,8 @@ async def run_manual_cloud_review(session_id: str):
             content={"error": f"Cloud review failed: {error}"},
         )
 
-    current_status = stored_result.status
+    latest_result = _processing_store.get(session_id)
+    current_status = latest_result.status if latest_result else stored_result.status
     _emit_status(
         session_id,
         current_status,
@@ -563,6 +738,7 @@ async def run_manual_cloud_review(session_id: str):
 @router.post("/upload-and-stream")
 async def upload_and_stream(
     file: UploadFile = File(...),
+    _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         return JSONResponse(
@@ -571,19 +747,35 @@ async def upload_and_stream(
         )
 
     session_id = create_session_id()
+    if not await _reserve_pipeline_slot(session_id):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "The active document processing limit has been reached."},
+            headers={"Retry-After": "30"},
+        )
     safe_filename = Path(file.filename).name
     pdf_path = settings.uploads_dir / f"{session_id}_{safe_filename}"
     try:
         await _save_uploaded_pdf(file, pdf_path)
     except UploadTooLargeError:
+        await _release_pipeline_slot(session_id)
         return JSONResponse(
             status_code=413,
             content={"error": f"File size exceeds maximum allowed size ({_MAX_UPLOAD_SIZE // (1024*1024)} MB)."},
         )
     except ValueError as error:
+        await _release_pipeline_slot(session_id)
         return JSONResponse(status_code=400, content={"error": str(error)})
+    except Exception:
+        await _release_pipeline_slot(session_id)
+        raise
 
-    queue = _get_or_create_queue(session_id)
+    try:
+        queue = _get_or_create_queue(session_id)
+    except RuntimeError as error:
+        pdf_path.unlink(missing_ok=True)
+        await _release_pipeline_slot(session_id)
+        return JSONResponse(status_code=503, content={"error": str(error)})
 
     asyncio.create_task(
         process_pdf_pipeline(

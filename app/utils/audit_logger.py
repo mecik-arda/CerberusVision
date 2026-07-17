@@ -1,12 +1,52 @@
 from __future__ import annotations
 import json
+import re
+import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, List, Tuple
 from app.config import settings
 
 
+_SESSION_DIR_PATTERN = re.compile(r"^\d{8}_\d{6}_\d{6}$")
+_last_cleanup_at: Optional[float] = None
+
+
+def cleanup_expired_sessions(now: Optional[float] = None) -> int:
+    timestamp = time.time() if now is None else now
+    cutoff = timestamp - settings.server.log_retention_days * 86400
+    removed = 0
+    if not settings.logs_dir.exists():
+        return removed
+    for session_dir in settings.logs_dir.iterdir():
+        try:
+            if (
+                session_dir.is_dir()
+                and _SESSION_DIR_PATTERN.fullmatch(session_dir.name)
+                and session_dir.stat().st_mtime < cutoff
+            ):
+                shutil.rmtree(session_dir)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def _maybe_cleanup_expired_sessions() -> None:
+    global _last_cleanup_at
+    timestamp = time.monotonic()
+    if _last_cleanup_at is not None and timestamp - _last_cleanup_at < 86400:
+        return
+    try:
+        cleanup_expired_sessions()
+    except OSError:
+        pass
+    _last_cleanup_at = timestamp
+
+
 def create_session_id() -> str:
+    _maybe_cleanup_expired_sessions()
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 

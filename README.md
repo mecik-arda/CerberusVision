@@ -26,7 +26,7 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
-- Test sonucu: `97 passed`
+- Test sonucu: `118 passed`
 
 Kod Windows çalışma alanında düzenlenir, uygulama Linux dosya sistemi içindeki WSL
 kopyasından çalıştırılır. Bu düzen, `/mnt/c` üzerinden doğrudan çalıştırmaya göre
@@ -49,6 +49,11 @@ tema ve oturum kimliğini gösterir. PDF araç çubuğu; oturumluk belge bağlan
 kopyalama, `%100 / %125 / %150 / %200` yakınlaştırma, tam ekran, sayfa sayımı,
 sayfa düğmeleri ve önceki/sonraki gezinme işlevlerini sunar. Sonuç eylemleri,
 gerekli veri oluşana kadar açıkça devre dışı tutulur.
+
+Tailwind sınıfları geliştirme sırasında derlenip `static/app.css` içinde tutulur.
+Arayüz çalışma zamanında Tailwind CDN veya Google Fonts bağlantısı kurmaz. CSS'i
+yeniden üretmek için Node.js bulunan geliştirme ortamında `pnpm install` ve
+`pnpm run build:css` komutları kullanılabilir.
 
 ## İngilizce belge keşif aracı
 
@@ -215,12 +220,26 @@ cd ~/projects/CerberusVision
 
 Tarayıcı: `http://localhost:8000`
 
-Sunucu `.env` dosyasını yükler ve varsayılan olarak `0.0.0.0:8000` üzerinde
-çalışır. Portu geçici değiştirmek için:
+Sunucu `.env` dosyasını yükler ve varsayılan olarak yalnızca
+`127.0.0.1:8000` üzerinde çalışır. Portu geçici değiştirmek için:
 
 ```bash
 CERBERUS_PORT=8080 ./scripts/wsl_run.sh
 ```
+
+Uzak ağ erişimi gerekiyorsa güçlü bir API anahtarı zorunludur:
+
+```dotenv
+CERBERUS_HOST=0.0.0.0
+CERBERUS_API_KEY=uzun-rastgele-bir-deger
+```
+
+`wsl_run.sh`, loopback dışı adreste anahtar olmadan başlamayı reddeder. Web
+arayüzü API HTTP 401 döndürdüğünde anahtarı ister ve yalnızca geçerli tarayıcı
+sekmesinin `sessionStorage` alanında tutar. API istemcileri
+`Authorization: Bearer <anahtar>` veya `X-Cerberus-Api-Key` başlığını kullanabilir.
+Yüklemeler IP başına kayan zaman penceresiyle ve eşzamanlı aktif işlem kotasıyla
+sınırlanır.
 
 ## Doğrulama komutları
 
@@ -294,6 +313,15 @@ Audit CLI:
 | `OPENVINO_CACHE_DIR` | `.openvino_cache` | Derlenmiş OpenVINO önbelleği |
 | `OPENVINO_KV_CACHE_PRECISION` | `u8` | Daha düşük KV-cache bellek kullanımı |
 | `SSE_TIMEOUT_SECONDS` | `1800` | Uzun yerel çıkarım için SSE bekleme süresi |
+| `CERBERUS_HOST` | `127.0.0.1` | Uvicorn dinleme adresi |
+| `CERBERUS_API_KEY` | boş | Loopback dışı erişimde zorunlu Bearer/API anahtarı |
+| `UPLOAD_RATE_LIMIT` | `5` | Zaman penceresinde IP başına yükleme sınırı |
+| `UPLOAD_RATE_WINDOW_SECONDS` | `60` | Yükleme hız sınırı penceresi |
+| `MAX_ACTIVE_PIPELINES` | `2` | Aynı anda kabul edilen işlem hattı sayısı |
+| `STREAM_QUEUE_MAX_SIZE` | `20` | Bellekte tutulabilecek SSE kuyruğu üst sınırı |
+| `STREAM_QUEUE_TTL_SECONDS` | `300` | Bağlanılmayan tamamlanmış SSE kuyruğu ömrü |
+| `LOG_RETENTION_DAYS` | `30` | Audit oturumlarının otomatik saklama süresi |
+| `OCR_LANG` | `en` | PaddleOCR dil profili; belge kümesine göre değiştirilebilir |
 | `DEEPSEEK_API_KEY` | boş | Opsiyonel kısa bulut denetimi |
 | `DEEPSEEK_REVIEW_MODE` | `risk` | `off`, `manual`, `risk`, `always` |
 | `DEEPSEEK_RISK_THRESHOLD` | `30` | Otomatik kısa denetim eşiği |
@@ -322,12 +350,15 @@ Audit CLI:
 
 Her işlem `logs/<session_id>/` altında OCR metni/kutuları, yerel model çıktısı,
 XML, XSD doğrulama raporu, yerel/bulut risk raporu ve işlem özetini saklar.
-`logs/`, `uploads/`, `models/`, `.env` ve OpenVINO önbelleği Git'e eklenmez.
+Oturum biçimine uyan ve `LOG_RETENTION_DAYS` süresini aşan dizinler günde en fazla
+bir kez güvenli biçimde temizlenir. `logs/`, `uploads/`, `models/`, `.env` ve
+OpenVINO önbelleği Git'e eklenmez.
 
 ## Proje yapısı
 
 ```text
 app/
+  security.py           Opsiyonel API anahtarı ve kayan pencere yükleme limiti
   llm/                 Yerel Qwen, yerel risk ve kısa DeepSeek hakemi
   llm/document_relevance.py  Keşif için yalnızca konu ve İngilizce filtresi
   ocr/                 PaddleOCR ve uzamsal satır gruplama
@@ -344,7 +375,9 @@ scripts/
   wsl_smoke.py         Bağımlılık, OCR ve model probu
   wsl_api_smoke.sh     Readiness ve tam HTTP/SSE denetimi
   wsl_gpu_info.py      OpenVINO GPU özellik raporu
-tests/                 97 otomatik regresyon testi
+static/
+  app.css              Yerel, minify edilmiş Tailwind çıktısı
+tests/                 118 otomatik regresyon testi
 ```
 
 ## Lisans

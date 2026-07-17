@@ -88,6 +88,29 @@ class DocumentSearchConfig:
 
 
 @dataclass
+class ServerConfig:
+    api_key: Optional[str] = os.environ.get("CERBERUS_API_KEY")
+    upload_rate_limit: int = _env_int("UPLOAD_RATE_LIMIT", 5)
+    upload_rate_window_seconds: int = _env_int("UPLOAD_RATE_WINDOW_SECONDS", 60)
+    max_active_pipelines: int = _env_int("MAX_ACTIVE_PIPELINES", 2)
+    stream_queue_max_size: int = _env_int("STREAM_QUEUE_MAX_SIZE", 20)
+    stream_queue_ttl_seconds: int = _env_int("STREAM_QUEUE_TTL_SECONDS", 300)
+    log_retention_days: int = _env_int("LOG_RETENTION_DAYS", 30)
+
+    def __post_init__(self):
+        self.upload_rate_limit = min(1000, max(1, self.upload_rate_limit))
+        self.upload_rate_window_seconds = min(
+            3600, max(1, self.upload_rate_window_seconds)
+        )
+        self.max_active_pipelines = min(32, max(1, self.max_active_pipelines))
+        self.stream_queue_max_size = min(10000, max(10, self.stream_queue_max_size))
+        self.stream_queue_ttl_seconds = min(
+            86400, max(30, self.stream_queue_ttl_seconds)
+        )
+        self.log_retention_days = min(3650, max(1, self.log_retention_days))
+
+
+@dataclass
 class Settings:
     base_dir: Path = BASE_DIR
     logs_dir: Path = LOGS_DIR
@@ -97,7 +120,8 @@ class Settings:
     model: ModelConfig = field(default_factory=ModelConfig)
     deepseek: DeepSeekConfig = field(default_factory=DeepSeekConfig)
     document_search: DocumentSearchConfig = field(default_factory=DocumentSearchConfig)
-    ocr_lang: str = "en"
+    server: ServerConfig = field(default_factory=ServerConfig)
+    ocr_lang: str = field(default_factory=lambda: os.environ.get("OCR_LANG", "en"))
     line_grouping_y_threshold: float = 15.0
     horizontal_space_factor: float = 0.15
     sse_timeout_seconds: int = max(30, _env_int("SSE_TIMEOUT_SECONDS", 1800))
