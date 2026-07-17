@@ -1,0 +1,77 @@
+from __future__ import annotations
+from pathlib import Path
+from typing import List, Optional, Tuple
+from app.config import settings
+from app.ocr.line_grouper import process_ocr_results_to_layout_text, TextBox
+
+
+_ocr_engine = None
+
+
+def get_ocr_engine(lang: str = None):
+    global _ocr_engine
+    if _ocr_engine is not None:
+        return _ocr_engine
+    from paddleocr import PaddleOCR
+
+    use_lang = lang or settings.ocr_lang
+    _ocr_engine = PaddleOCR(use_angle_cls=True, lang=use_lang, show_log=False)
+    return _ocr_engine
+
+
+def render_pdf_pages_to_images(
+    pdf_path: Path,
+    dpi: int = 200,
+) -> List[bytes]:
+    import fitz
+
+    images: List[bytes] = []
+    doc = fitz.open(str(pdf_path))
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    for page in doc:
+        pix = page.get_pixmap(matrix=matrix)
+        images.append(pix.tobytes("png"))
+    doc.close()
+    return images
+
+
+def run_ocr_on_image(image_bytes: bytes) -> List:
+    ocr = get_ocr_engine()
+    import os
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(image_bytes)
+        tmp_path = tmp.name
+    try:
+        result = ocr.ocr(tmp_path, cls=True)
+    finally:
+        os.unlink(tmp_path)
+    if result and isinstance(result, list) and len(result) > 0:
+        return result[0] if isinstance(result[0], list) else result
+    return []
+
+
+def process_pdf_with_spatial_ocr(
+    pdf_path: Path,
+    lang: str = None,
+    dpi: int = 200,
+) -> Tuple[str, List[List[TextBox]]]:
+    images = render_pdf_pages_to_images(pdf_path, dpi)
+    all_pages_text: List[str] = []
+    all_pages_boxes: List[List[TextBox]] = []
+    for img_bytes in images:
+        raw_ocr = run_ocr_on_image(img_bytes)
+        layout_text, boxes = process_ocr_results_to_layout_text(raw_ocr)
+        all_pages_text.append(layout_text)
+        all_pages_boxes.append(boxes)
+    combined_text = "\n\n--- PAGE BREAK ---\n\n".join(all_pages_text)
+    return combined_text, all_pages_boxes
+
+
+def process_pdf_with_spatial_ocr_pymupdf(
+    pdf_path: Path,
+    lang: str = None,
+) -> Tuple[str, List[List[TextBox]]]:
+    return process_pdf_with_spatial_ocr(pdf_path, lang, dpi=200)

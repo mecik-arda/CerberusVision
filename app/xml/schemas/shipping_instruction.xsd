@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="http://dcsa.org/schemas/si/v2"
+           targetNamespace="http://dcsa.org/schemas/si/v2"
+           elementFormDefault="qualified">
+
+    <xs:complexType name="LocationType">
+        <xs:sequence>
+            <xs:element name="UNLocationCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="LocationName" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="AddressType">
+        <xs:sequence>
+            <xs:element name="Street" type="xs:string" minOccurs="0"/>
+            <xs:element name="City" type="xs:string" minOccurs="0"/>
+            <xs:element name="PostalCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="CountryCode" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ContactDetailsType">
+        <xs:sequence>
+            <xs:element name="Name" type="xs:string" minOccurs="0"/>
+            <xs:element name="Email" type="xs:string" minOccurs="0"/>
+            <xs:element name="PhoneNumber" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="PartyType">
+        <xs:sequence>
+            <xs:element name="PartyRoleCode" type="xs:string"/>
+            <xs:element name="PartyID" type="xs:string" minOccurs="0"/>
+            <xs:element name="PartyName" type="xs:string" minOccurs="0"/>
+            <xs:element name="Address" type="AddressType" minOccurs="0"/>
+            <xs:element name="ContactDetails" type="ContactDetailsType" minOccurs="0"/>
+            <xs:element name="SameAsConsignee" type="xs:boolean" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="TransportPlanType">
+        <xs:sequence>
+            <xs:element name="LegSequenceNumber" type="xs:integer"/>
+            <xs:element name="TransportMode" type="xs:string" minOccurs="0"/>
+            <xs:element name="PortOfLoading" type="LocationType" minOccurs="0"/>
+            <xs:element name="PortOfDischarge" type="LocationType" minOccurs="0"/>
+            <xs:element name="PlaceOfReceipt" type="LocationType" minOccurs="0"/>
+            <xs:element name="PlaceOfDelivery" type="LocationType" minOccurs="0"/>
+            <xs:element name="CarrierVoyageNumber" type="xs:string" minOccurs="0"/>
+            <xs:element name="VesselIMONumber" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="WeightType">
+        <xs:sequence>
+            <xs:element name="Weight" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="Unit" type="xs:string"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="VerifiedGrossMassType">
+        <xs:sequence>
+            <xs:element name="Weight" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="Unit" type="xs:string"/>
+            <xs:element name="VerificationMethod" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="SealType">
+        <xs:sequence>
+            <xs:element name="SealNumber" type="xs:string" minOccurs="0"/>
+            <xs:element name="SealSourceCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="SealTypeCode" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="SealsType">
+        <xs:sequence>
+            <xs:element name="Seal" type="SealType" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="TareWeightType">
+        <xs:sequence>
+            <xs:element name="Weight" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="Unit" type="xs:string"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="EquipmentType">
+        <xs:sequence>
+            <xs:element name="EquipmentReference" type="xs:string" minOccurs="0"/>
+            <xs:element name="ISOEquipmentCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="IsShipperOwned" type="xs:string" minOccurs="0"/>
+            <xs:element name="CargoGrossWeight" type="WeightType" minOccurs="0"/>
+            <xs:element name="VerifiedGrossMass" type="VerifiedGrossMassType" minOccurs="0"/>
+            <xs:element name="Seals" type="SealsType" minOccurs="0"/>
+            <xs:element name="TareWeight" type="TareWeightType" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="EquipmentReferenceDetailType">
+        <xs:sequence>
+            <xs:element name="EquipmentReference" type="xs:string" minOccurs="0"/>
+            <xs:element name="NumberOfPackages" type="xs:integer" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="EquipmentReferencesType">
+        <xs:sequence>
+            <xs:element name="EquipmentReferenceDetail" type="EquipmentReferenceDetailType" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="FlashPointType">
+        <xs:sequence>
+            <xs:element name="Temperature" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="Unit" type="xs:string"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="EmergencyContactType">
+        <xs:sequence>
+            <xs:element name="Name" type="xs:string" minOccurs="0"/>
+            <xs:element name="PhoneNumber" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DangerousGoodsType">
+        <xs:sequence>
+            <xs:element name="UNNumber" type="xs:string" minOccurs="0"/>
+            <xs:element name="IMDGClass" type="xs:string" minOccurs="0"/>
+            <xs:element name="PackingGroup" type="xs:string" minOccurs="0"/>
+            <xs:element name="TechnicalName" type="xs:string" minOccurs="0"/>
+            <xs:element name="FlashPoint" type="FlashPointType" minOccurs="0"/>
+            <xs:element name="EmergencyContact" type="EmergencyContactType" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DangerousGoodsListType">
+        <xs:sequence>
+            <xs:element name="DangerousGoods" type="DangerousGoodsType" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="CargoWeightType">
+        <xs:sequence>
+            <xs:element name="WeightValue" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="Unit" type="xs:string"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="CargoVolumeType">
+        <xs:sequence>
+            <xs:element name="VolumeValue" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="Unit" type="xs:string"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="CargoItemType">
+        <xs:sequence>
+            <xs:element name="PackageQuantity" type="xs:integer" minOccurs="0"/>
+            <xs:element name="PackageKindCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="DescriptionOfGoods" type="xs:string" minOccurs="0"/>
+            <xs:element name="ShippingMarks" type="xs:string" minOccurs="0"/>
+            <xs:element name="CommodityCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="Weight" type="CargoWeightType" minOccurs="0"/>
+            <xs:element name="Volume" type="CargoVolumeType" minOccurs="0"/>
+            <xs:element name="EquipmentReferences" type="EquipmentReferencesType" minOccurs="0"/>
+            <xs:element name="DangerousGoodsList" type="DangerousGoodsListType" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DocumentReferenceType">
+        <xs:sequence>
+            <xs:element name="TypeCode" type="xs:string" minOccurs="0"/>
+            <xs:element name="ReferenceNumber" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="CustomsInformationType">
+        <xs:sequence>
+            <xs:element name="FTADeclaration" type="xs:string" minOccurs="0"/>
+            <xs:element name="ExportCustomsClearanceLocation" minOccurs="0">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="UNLocationCode" type="xs:string" minOccurs="0"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:element name="ShippingInstruction">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="ShippingInstructionReference" type="xs:string" minOccurs="0"/>
+                <xs:element name="DocumentStatusCode" type="xs:string" minOccurs="0"/>
+                <xs:element name="ShippingInstructionDateTime" type="xs:string" minOccurs="0"/>
+                <xs:element name="CarrierBookingReference" type="xs:string" minOccurs="0"/>
+                <xs:element name="TransportDocumentType" type="xs:string" minOccurs="0"/>
+                <xs:element name="FreightPaymentTermCode" type="xs:string" minOccurs="0"/>
+                <xs:element name="IssueDate" type="xs:string" minOccurs="0"/>
+                <xs:element name="PlaceOfIssue" type="LocationType" minOccurs="0"/>
+                <xs:element name="ExportDeclarationNumber" type="xs:string" minOccurs="0"/>
+                <xs:element name="ServiceContractReference" type="xs:string" minOccurs="0"/>
+                <xs:element name="Parties" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="Party" type="PartyType" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="TransportPlans" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="TransportPlan" type="TransportPlanType" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="EquipmentList" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="Equipment" type="EquipmentType" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="CargoItems" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="CargoItem" type="CargoItemType" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="DocumentReferences" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="DocumentReference" type="DocumentReferenceType" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="CustomsInformation" type="CustomsInformationType" minOccurs="0"/>
+                <xs:element name="Remarks" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>
