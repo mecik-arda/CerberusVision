@@ -9,10 +9,20 @@ OCR ve yerel Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
 uygulamasıdır. Ana çalışma ortamı WSL2/Ubuntu'dur; DeepSeek yalnızca isteğe bağlı,
 kısa ve salt-okunur bir risk hakemi olarak kullanılır.
 
-```text
-PDF → Spatial OCR → Yerel Qwen → DCSA XML/XSD → Yerel risk kontrolleri
-                                                   ↓ gerekirse
-                                      Kısa DeepSeek skor/yorumu
+```mermaid
+graph LR
+    A[📄 PDF] --> B[👁️ Spatial OCR]
+    B --> C[🧠 Yerel Qwen]
+    C --> D[⚙️ DCSA XML / XSD]
+    D --> E[🛡️ Yerel Risk Kontrolleri]
+    E -.->|Gerekirse| F[☁️ Kısa DeepSeek Yorumu]
+
+    style A fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
+    style B fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
+    style C fill:#ebfbee,stroke:#8ce99a,stroke-width:2px,color:#212529
+    style D fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
+    style E fill:#fff4e6,stroke:#ffa94d,stroke-width:2px,color:#212529
+    style F fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
 ```
 
 DeepSeek belge verisini düzeltmez, alan doldurmaz ve ikinci bir Shipping
