@@ -209,10 +209,7 @@ CerberusVision/
 
 ## Donanım Gereksinimleri
 
-- **CPU:** Intel Core Ultra (NPU önerilir)
-- **GPU:** Intel Arc (OpenVINO GPU加速)
-- **RAM:** 32 GB önerilir
-- **Depolama:** Model için ~10 GB
+**Not:** Bu proje, yapay zeka çıkarımlarında OpenVINO altyapısını kullandığı için özellikle yüksek performanslı Intel işlemciler (CPU) ve Intel ekran kartları (GPU) ile tam uyumlu çalışacak şekilde tasarlanmış ve optimize edilmiştir. Modelin yüklenmesi için depolama alanında yaklaşık 10 GB boşluk önerilir.
 
 ## Lisans
 
