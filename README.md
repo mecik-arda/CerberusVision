@@ -2,7 +2,7 @@
 
 > Bu proje, Soft İş Çözümleri bünyesinde hazırlanmış bir staj projesidir.
 >
-> **Oluşturulma Tarihi:** 14.07.2026
+> **Oluşturulma Tarihi:** 17.07.2026
 
 CerberusVision, konşimento talimatı (Shipping Instruction) PDF belgelerini yerel
 OCR ve yerel Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
