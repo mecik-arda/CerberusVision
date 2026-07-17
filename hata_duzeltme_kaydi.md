@@ -780,7 +780,7 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 **Tarih:** 17.07.2026
 **Hedef dağıtım:** `\\wsl.localhost\Ubuntu` / WSL2
-**WSL çalışma dizini:** `/home/ardam/projects/CerberusVision`
+**WSL çalışma dizini:** `~/projects/CerberusVision`
 **Kapsam:** Tekrarlanabilir WSL kurulumu, gerçek OCR, OpenVINO model çalıştırma, Arc 140V GPU profili, 14B CPU kalite profili, API/SSE smoke testleri ve dokümantasyon
 
 ### 61. Mevcut `Ubuntu` Dağıtımı Yerine Yanlış WSL Hedefi Seçilebiliyordu (YÜKSEK)
@@ -792,7 +792,7 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 **Dosyalar:** `scripts/wsl_sync.sh`, `.gitattributes`
 **Problem:** Windows bağlama noktası üzerinden doğrudan Python/model çalıştırmak dosya erişimi, izin ve satır-sonu davranışını olumsuz etkileyebilirdi.
-**Çözüm:** Kaynak proje Windows çalışma alanında tutulurken çalışma kopyası `rsync` ile WSL ext4 alanındaki `/home/ardam/projects/CerberusVision` dizinine alınmaya başlandı. `.env`, `.venv`, model, log, upload ve cache dizinleri senkronizasyonda korunuyor; shell dosyaları LF olarak sabitlendi.
+**Çözüm:** Kaynak proje Windows çalışma alanında tutulurken çalışma kopyası `rsync` ile WSL ext4 alanındaki `~/projects/CerberusVision` dizinine alınmaya başlandı. `.env`, `.venv`, model, log, upload ve cache dizinleri senkronizasyonda korunuyor; shell dosyaları LF olarak sabitlendi.
 
 ### 63. WSL İçin Tekrarlanabilir Python Çalışma Zamanı Yoktu (YÜKSEK)
 
@@ -1181,7 +1181,7 @@ API çağrısı ve konsensüs hesabı `cloud_inference.py` içinde merkezileşti
 
 **Dosyalar:** `scripts/wsl_sync.sh`, `.gitattributes`, `.gitignore`, `README.md`
 **Problem:** Kaynağın Windows'ta, runtime'ın WSL'de tutulması yeni arayüz kodunun çalışan sunucuya ulaşmamasına, satır sonu farklarına ve yanlış kopyanın düzenlenmesine yol açıyordu.
-**Çözüm:** `/home/ardam/projects/CerberusVision` tek kaynak ve çalışma dizini yapıldı. Git geçmişi WSL'ye taşındı, LF kuralları genişletildi, model dizini Git dışında tutuldu ve `wsl_sync.sh` kopyalama yerine WSL-native çalışma dizimi denetimi yapacak şekilde değiştirildi.
+**Çözüm:** `~/projects/CerberusVision` tek kaynak ve çalışma dizini yapıldı. Git geçmişi WSL'ye taşındı, LF kuralları genişletildi, model dizini Git dışında tutuldu ve `wsl_sync.sh` kopyalama yerine WSL-native çalışma dizimi denetimi yapacak şekilde değiştirildi.
 
 ### 117. WSL Çalışma Kopyasında Git Geçmişi Bulunmuyordu (YÜKSEK)
 

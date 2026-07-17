@@ -40,7 +40,7 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 ## Doğrulanmış çalışma ortamı
 
 - WSL2 dağıtımı: `Ubuntu` (Ubuntu 26.04 LTS)
-- Tek kaynak ve çalışma dizini: `/home/ardam/projects/CerberusVision`
+- Tek kaynak ve çalışma dizini: `~/projects/CerberusVision`
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
@@ -124,7 +124,7 @@ WSL içindeki `.env` için önerilen ayar:
 DOCUMENT_SEARCH_PROVIDER=brave
 BRAVE_SEARCH_API_KEY=
 DEEPSEEK_API_KEY=
-DOCUMENT_SEARCH_OUTPUT_DIR=/home/ardam/projects/CerberusVision/veriler/discovered
+DOCUMENT_SEARCH_OUTPUT_DIR=veriler/discovered
 ```
 
 Google Custom Search JSON API erişimi bulunan mevcut hesaplar için:
@@ -205,7 +205,7 @@ git clone https://github.com/mecik-arda/CerberusVision.git ~/projects/CerberusVi
 cd ~/projects/CerberusVision
 ```
 
-Mevcut kurulum zaten `/home/ardam/projects/CerberusVision` altındaysa yeniden
+Mevcut kurulum zaten `~/projects/CerberusVision` altındaysa yeniden
 klonlama gerekmez. `./scripts/wsl_sync.sh` artık Windows'tan dosya kopyalamaz;
 yalnızca geçerli dizinin WSL2 içinde, Linux home altında ve Git geçmişiyle birlikte
 çalıştığını doğrular.
