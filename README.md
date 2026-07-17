@@ -1,8 +1,14 @@
 # [CerberusVision](https://github.com/mecik-arda/CerberusVision)
 
+[![Platform: WSL2 / Ubuntu](https://img.shields.io/badge/platform-WSL2%20%2F%20Ubuntu-E95420?logo=ubuntu&logoColor=white)](https://learn.microsoft.com/windows/wsl/)
+
 > Bu proje, Soft İş Çözümleri bünyesinde hazırlanmış bir staj projesidir.
 >
 > **Oluşturulma Tarihi:** 17.07.2026
+>
+> **WSL-native:** Kaynak kod, Git işlemleri, Python ortamı, modeller ve sunucu
+> doğrudan Ubuntu dosya sistemi içinde çalışır; Windows tarafında ikinci bir
+> kaynak kopyası veya dosya senkronizasyonu gerekmez.
 
 CerberusVision, konşimento talimatı (Shipping Instruction) belgelerini yerel
 çıkarım hattı ve Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
@@ -204,7 +210,21 @@ klonlama gerekmez. `./scripts/wsl_sync.sh` artık Windows'tan dosya kopyalamaz;
 yalnızca geçerli dizinin WSL2 içinde, Linux home altında ve Git geçmişiyle birlikte
 çalıştığını doğrular.
 
-### 3. Python ve bağımlılıkları kur
+### 3. VS Code'u WSL penceresinde aç
+
+Ubuntu terminalinde proje dizininden:
+
+```bash
+code .
+```
+
+VS Code'un sol alt köşesinde `WSL: Ubuntu` görünmelidir. İlk kullanımda Windows
+tarafındaki VS Code'a
+[WSL uzantısını](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-wsl)
+kurun. Windows klasörünü ayrı bir çalışma alanı olarak açmayın; terminal, Git,
+Python ve eklentiler WSL penceresinde çalışmalıdır.
+
+### 4. Python ve bağımlılıkları kur
 
 ```bash
 cd ~/projects/CerberusVision
@@ -215,7 +235,7 @@ Betik kullanıcı hesabına sabitlenmiş `uv 0.11.28` ve yönetilen Python 3.12 
 sistem Python'una ve `apt` paketlerine dokunmaz. Tekrar çalıştırılabilir ve mevcut
 `.venv` ortamını koruyarak bağımlılıkları günceller.
 
-### 4. Varsayılan GPU modelini indir
+### 5. Varsayılan GPU modelini indir
 
 ```bash
 ./scripts/wsl_model_setup.sh
@@ -236,7 +256,7 @@ QWEN_MODEL_PATH="$PWD/models/Qwen-2.5-14B-Instruct-INT4" \
 Hazır OpenVINO 14B modelinin kaynağı:
 [`OpenVINO/Qwen2.5-14B-Instruct-int4-ov`](https://huggingface.co/OpenVINO/Qwen2.5-14B-Instruct-int4-ov).
 
-### 5. Model profilini seç
+### 6. Model profilini seç
 
 ```bash
 ./scripts/wsl_profile.sh gpu      # 7B + GPU (varsayılan)
