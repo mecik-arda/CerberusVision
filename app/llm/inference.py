@@ -368,12 +368,16 @@ def run_threestage_extraction(
     )
     raw_outputs[2] = stage2_raw
     stage2_normalized = normalize_extracted_instruction(stage2_instruction, middle_text)
+    combined_middle_lower = (
+        (middle_text + "\n" + lower_text) if (middle_text.strip() and lower_text.strip())
+        else (middle_text or lower_text)
+    )
     stage3_instruction, stage3_raw = run_stage_inference(
-        lower_text if lower_text.strip() else middle_text,
+        combined_middle_lower if combined_middle_lower.strip() else lower_text,
         3, document_language, output_language,
     )
     raw_outputs[3] = stage3_raw
-    stage3_normalized = normalize_extracted_instruction(stage3_instruction, lower_text)
+    stage3_normalized = normalize_extracted_instruction(stage3_instruction, combined_middle_lower)
     merged = merge_stage_results(
         stage1_normalized, stage2_normalized, stage3_normalized
     )
@@ -521,6 +525,52 @@ _KNOWN_PORTS = frozenset({
 })
 
 
+def _parse_european_number(raw: str) -> Optional[float]:
+    if not raw:
+        return None
+    cleaned = raw.strip().replace(" ", "")
+    cleaned = cleaned.replace(".", "")
+    cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _iso6346_check_digit_light(reference: str) -> bool:
+    normalized = re.sub(r"\s+", "", reference or "").upper()
+    if not re.fullmatch(r"[A-Z]{4}\d{7}", normalized):
+        return False
+    letter_values: dict[str, int] = {}
+    value = 10
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        while value % 11 == 0:
+            value += 1
+        letter_values[letter] = value
+        value += 1
+    total = 0
+    for position, character in enumerate(normalized[:10]):
+        numeric = int(character) if character.isdigit() else letter_values[character]
+        total += numeric * (2 ** position)
+    calculated = (total % 11) % 10
+    return calculated == int(normalized[-1])
+
+
+def _extract_containers_from_ocr(ocr_text: str) -> list[str]:
+    candidates = re.findall(r"\b[A-Z]{4}\d{7}\b", ocr_text)
+    valid: list[str] = []
+    for candidate in candidates:
+        if _iso6346_check_digit_light(candidate):
+            valid.append(candidate)
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for container in valid:
+        if container not in seen:
+            seen.add(container)
+            deduped.append(container)
+    return deduped
+
+
 def _clean_location_name(location) -> None:
     if location is None or not location.location_name:
         return
@@ -662,6 +712,56 @@ def normalize_extracted_instruction(
         _clean_location_name(plan.port_of_discharge)
         _clean_location_name(plan.place_of_receipt)
         _clean_location_name(plan.place_of_delivery)
+    brut_value = _extract_labeled_value(
+        ocr_text,
+        (
+            r"(?im)(?:BRUT|GROSS\s+WEIGHT|GROSS|G\.W\.|GW)\s*[:#\-]?\s*(?:WEIGHT|AGIRLIK|WT\.?)?\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]+)?)",
+        ),
+    )
+    net_value = _extract_labeled_value(
+        ocr_text,
+        (
+            r"(?im)(?:NET|NET\s+WEIGHT|N\.W\.|NW)\s*[:#\-]?\s*(?:WEIGHT|AGIRLIK|WT\.?)?\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]+)?)",
+        ),
+    )
+    if brut_value is not None:
+        parsed_brut = _parse_european_number(brut_value)
+        if parsed_brut is not None and parsed_brut > 0:
+            from app.models import Weight, WeightUnit
+            applied = False
+            for equipment in normalized.equipment_list:
+                if equipment.cargo_gross_weight is None or equipment.cargo_gross_weight.weight is None:
+                    equipment.cargo_gross_weight = Weight(weight=parsed_brut, unit=WeightUnit.KILOGRAM)
+                    applied = True
+                    break
+            if not applied:
+                from app.models import Equipment
+                new_eq = Equipment(cargo_gross_weight=Weight(weight=parsed_brut, unit=WeightUnit.KILOGRAM))
+                normalized.equipment_list.append(new_eq)
+    if net_value is not None:
+        parsed_net = _parse_european_number(net_value)
+        if parsed_net is not None and parsed_net > 0:
+            from app.models import CargoWeight
+            applied = False
+            for cargo_item in normalized.cargo_items:
+                if cargo_item.weight is None or cargo_item.weight.weight_value is None:
+                    cargo_item.weight = CargoWeight(weight_value=parsed_net, unit="KGM")
+                    applied = True
+                    break
+            if not applied:
+                from app.models import CargoItem
+                new_item = CargoItem(weight=CargoWeight(weight_value=parsed_net, unit="KGM"))
+                normalized.cargo_items.append(new_item)
+    ocr_containers = _extract_containers_from_ocr(ocr_text)
+    if ocr_containers:
+        existing_refs: set[str] = set()
+        for equipment in normalized.equipment_list:
+            if equipment.equipment_reference:
+                existing_refs.add(re.sub(r"\s+", "", equipment.equipment_reference).upper())
+        for container_ref in ocr_containers:
+            if container_ref not in existing_refs:
+                from app.models import Equipment
+                normalized.equipment_list.append(Equipment(equipment_reference=container_ref))
     return normalized
 
 
