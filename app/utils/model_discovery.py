@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
+
+_model_cache: tuple[float, list[dict]] | None = None
+_model_cache_ttl: float = 60.0
 
 
 _MODEL_MARKERS = {
@@ -93,6 +97,11 @@ def _scan_ollama_manifests(root: Path) -> list[dict]:
 
 
 def discover_local_models(base_dir: Path, active_model_path: str) -> list[dict]:
+    global _model_cache
+    simdi = time.monotonic()
+    if _model_cache and (simdi - _model_cache[0]) < _model_cache_ttl:
+        return _model_cache[1]
+
     user_home = Path.home()
     candidates = []
     candidates.extend(_scan_model_directory(base_dir / "models", "CerberusVision", 2))
@@ -117,7 +126,14 @@ def discover_local_models(base_dir: Path, active_model_path: str) -> list[dict]:
             "active": True,
             "selectable": _directory_format(active) == "OpenVINO",
         }
-    return sorted(
+    sonuc = sorted(
         unique.values(),
         key=lambda item: (not item["active"], item["source"].casefold(), item["name"].casefold()),
     )
+    _model_cache = (simdi, sonuc)
+    return sonuc
+
+
+def invalidate_model_cache() -> None:
+    global _model_cache
+    _model_cache = None

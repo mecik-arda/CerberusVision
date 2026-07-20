@@ -99,6 +99,8 @@ def test_every_static_button_has_an_explicit_behavior_contract():
         "approveDataBtn",
         "startProcessingBtn",
         "clearSelectionBtn",
+        "exportAllBtn",
+        "webhookTestBtn",
     }
     for button_id in interactive_button_ids:
         assert f'id="{button_id}"' in INDEX_HTML

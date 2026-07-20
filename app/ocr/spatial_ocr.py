@@ -3,7 +3,14 @@ from pathlib import Path
 from functools import lru_cache
 from typing import List, Optional, Tuple
 from app.config import settings
-from app.ocr.line_grouper import process_ocr_results_to_layout_text, TextBox
+from app.ocr.line_grouper import (
+    parse_ocr_boxes,
+    process_ocr_results_to_layout_text,
+    reconstruct_layout_text,
+    reconstruct_region_texts,
+    segment_boxes_by_region,
+    TextBox,
+)
 
 
 @lru_cache(maxsize=2)
@@ -35,16 +42,12 @@ def render_pdf_pages_to_images(
 
 def run_ocr_on_image(image_bytes: bytes, lang: str = None) -> List:
     ocr = get_ocr_engine(lang)
-    import os
-    import tempfile
+    import io
+    import numpy as np
+    from PIL import Image
 
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(image_bytes)
-        tmp_path = tmp.name
-    try:
-        result = ocr.ocr(tmp_path, cls=True)
-    finally:
-        os.unlink(tmp_path)
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    result = ocr.ocr(np.array(img), cls=True)
     if result and isinstance(result, list) and len(result) > 0:
         return result[0] if isinstance(result[0], list) else result
     return []
@@ -74,3 +77,122 @@ def process_image_with_spatial_ocr(
     raw_ocr = run_ocr_on_image(image_path.read_bytes(), lang)
     layout_text, boxes = process_ocr_results_to_layout_text(raw_ocr)
     return layout_text, [boxes]
+
+
+def process_pdf_with_region_ocr(
+    pdf_path: Path,
+    lang: str = None,
+    dpi: int = 200,
+) -> Tuple[str, str, str, List[List[TextBox]]]:
+    import fitz
+
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    upper_parts: List[str] = []
+    middle_parts: List[str] = []
+    lower_parts: List[str] = []
+    all_pages_boxes: List[List[TextBox]] = []
+    with fitz.open(str(pdf_path)) as doc:
+        for page in doc:
+            pix = page.get_pixmap(matrix=matrix)
+            img_bytes = pix.tobytes("png")
+            page_height = float(pix.height)
+            raw_ocr = run_ocr_on_image(img_bytes, lang)
+            boxes = parse_ocr_boxes(raw_ocr)
+            all_pages_boxes.append(boxes)
+            upper_text, middle_text, lower_text = reconstruct_region_texts(
+                boxes, page_height
+            )
+            upper_parts.append(upper_text)
+            middle_parts.append(middle_text)
+            lower_parts.append(lower_text)
+    assert all_pages_boxes, "PDF'den hic kutu cikarilamadi"
+    assert len(all_pages_boxes) == len(upper_parts), (
+        f"Sayfa sayisi tutarsiz: kutular=%d bolgeler=%d"
+        % (len(all_pages_boxes), len(upper_parts))
+    )
+    combined_upper = "\n\n--- PAGE BREAK ---\n\n".join(upper_parts)
+    combined_middle = "\n\n--- PAGE BREAK ---\n\n".join(middle_parts)
+    combined_lower = "\n\n--- PAGE BREAK ---\n\n".join(lower_parts)
+    full_text = "\n\n--- PAGE BREAK ---\n\n".join(
+        p for p in [combined_upper, combined_middle, combined_lower] if p.strip()
+    )
+    assert full_text.strip(), "Tum bolge metinleri bos"
+    return combined_upper, combined_middle, combined_lower, all_pages_boxes
+
+
+def process_pdf_with_florence_regions(
+    pdf_path: Path,
+    lang: str = None,
+    dpi: int = 200,
+    use_florence: bool = True,
+) -> Tuple[str, str, str, List[List[TextBox]], Optional[Dict]]:
+    import fitz
+
+    from app.ocr.vlm_region import (
+        detect_regions_with_florence,
+        map_florence_regions_to_paddle_boxes,
+    )
+
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    upper_parts: List[str] = []
+    middle_parts: List[str] = []
+    lower_parts: List[str] = []
+    all_pages_boxes: List[List[TextBox]] = []
+    florence_meta: Dict[str, Any] = {"pages": []}
+    with fitz.open(str(pdf_path)) as doc:
+        for page_idx, page in enumerate(doc):
+            pix = page.get_pixmap(matrix=matrix)
+            img_bytes = pix.tobytes("png")
+            page_height = float(pix.height)
+            raw_ocr = run_ocr_on_image(img_bytes, lang)
+            boxes = parse_ocr_boxes(raw_ocr)
+            all_pages_boxes.append(boxes)
+            if use_florence and boxes:
+                try:
+                    florence_result = detect_regions_with_florence(img_bytes)
+                    florence_meta["pages"].append({
+                        "page": page_idx,
+                        "text_regions": len(florence_result.get("text_regions", [])),
+                        "tables": len(florence_result.get("tables", [])),
+                    })
+                    up, mid, low = map_florence_regions_to_paddle_boxes(
+                        florence_result, boxes, page_height
+                    )
+                except Exception:
+                    logger.warning(
+                        "Florence-2 sayfa %d icin basarisiz, Y-orani yontemine dusuluyor",
+                        page_idx,
+                    )
+                    florence_meta["pages"].append({
+                        "page": page_idx, "error": "florence_failed"
+                    })
+                    up, mid, low = segment_boxes_by_region(boxes, page_height)
+            else:
+                up, mid, low = segment_boxes_by_region(boxes, page_height)
+            upper_text = reconstruct_layout_text(up)
+            middle_text = reconstruct_layout_text(mid)
+            lower_text = reconstruct_layout_text(low)
+            upper_parts.append(upper_text)
+            middle_parts.append(middle_text)
+            lower_parts.append(lower_text)
+    assert all_pages_boxes, "PDF'den hic kutu cikarilamadi"
+    assert len(all_pages_boxes) == len(upper_parts), (
+        f"Sayfa sayisi tutarsiz: kutular=%d bolgeler=%d"
+        % (len(all_pages_boxes), len(upper_parts))
+    )
+    combined_upper = "\n\n--- PAGE BREAK ---\n\n".join(upper_parts)
+    combined_middle = "\n\n--- PAGE BREAK ---\n\n".join(middle_parts)
+    combined_lower = "\n\n--- PAGE BREAK ---\n\n".join(lower_parts)
+    full_text = "\n\n--- PAGE BREAK ---\n\n".join(
+        p for p in [combined_upper, combined_middle, combined_lower] if p.strip()
+    )
+    assert full_text.strip(), "Tum bolge metinleri bos"
+    return (
+        combined_upper,
+        combined_middle,
+        combined_lower,
+        all_pages_boxes,
+        florence_meta,
+    )

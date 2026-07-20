@@ -19,19 +19,29 @@ hakemi olarak kullanılır.
 
 ```mermaid
 graph LR
-    A[PDF / PNG / JPEG] --> B[Spatial OCR]
-    T[DOCX / XML] --> C
-    B --> C[Yerel Qwen]
-    C --> D[DCSA XML / XSD]
-    D --> E[Yerel Risk Kontrolleri]
-    E -.->|Gerekirse| F[Kısa DeepSeek Yorumu]
+    A[📄 PDF / PNG / JPEG] --> B[👁️ Florence-2 VLM + PaddleOCR<br/>Mizanpaj & Tablo Tespiti]
+    T[📄 DOCX / XML / TXT] --> C
+    B --> C[📐 Akıllı Bölge Ayrıştırma<br/>Üst / Orta / Alt Bölge]
+    C --> D[🧩 3 Aşamalı Modüler Çıkarım<br/>Qwen2.5 / LoRA OpenVINO]
+    D --> E[🛠️ Düzeltme & Normalizasyon<br/>Tarih / VKN / Konteyner]
+    E --> F[🛡️ Yerel Risk Kontrolleri<br/>Zorunlu Alan Denetimi]
+    F -.->|Gerekirse| G[☁️ Kısa DeepSeek Yorumu<br/>Salt-Okunur Hakem]
+    F --> H[⚙️ DCSA XML / XSD]
+    G -.-> H
+    H --> I[🖥️ Web Arayüzü & Onay]
+    H -.->|Otomatik / Tetik| J[🌐 Webhook ERP Entegrasyonu]
 
     style A fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
+    style T fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
     style B fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
-    style C fill:#ebfbee,stroke:#8ce99a,stroke-width:2px,color:#212529
-    style D fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
-    style E fill:#fff4e6,stroke:#ffa94d,stroke-width:2px,color:#212529
-    style F fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
+    style C fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
+    style D fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529
+    style E fill:#ebfbee,stroke:#8ce99a,stroke-width:2px,color:#212529
+    style F fill:#fff4e6,stroke:#ffa94d,stroke-width:2px,color:#212529
+    style G fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
+    style H fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
+    style I fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529
+    style J fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
 ```
 
 DeepSeek belge verisini düzeltmez, alan doldurmaz ve ikinci bir Shipping

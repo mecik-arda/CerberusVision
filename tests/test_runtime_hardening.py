@@ -29,9 +29,9 @@ async def test_optional_api_key_rejects_invalid_credentials(monkeypatch):
 def test_api_router_enforces_configured_key(monkeypatch):
     monkeypatch.setattr(settings.server, "api_key", "secret-key")
     client = TestClient(app)
-    assert client.get("/api/status/missing").status_code == 401
+    assert client.get("/api/status/20260720_000000_000000").status_code == 401
     response = client.get(
-        "/api/status/missing",
+        "/api/status/20260720_000000_000000",
         headers={"Authorization": "Bearer secret-key"},
     )
     assert response.status_code == 404
@@ -81,7 +81,7 @@ def test_completed_orphan_stream_queue_expires(monkeypatch):
 @pytest.mark.asyncio
 async def test_unknown_stream_does_not_allocate_queue():
     processing._stream_queues.clear()
-    response = await processing.stream_status("unknown")
+    response = await processing.stream_status("20260720_000000_000000")
     assert response.status_code == 404
     assert processing._stream_queues == {}
 

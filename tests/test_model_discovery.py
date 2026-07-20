@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from app.utils.model_discovery import discover_local_models
+import pytest
+from app.utils.model_discovery import discover_local_models, invalidate_model_cache
+
+
+@pytest.fixture(autouse=True)
+def temizle_model_cache():
+    invalidate_model_cache()
 
 
 def test_discovers_project_openvino_and_marks_active(tmp_path, monkeypatch):

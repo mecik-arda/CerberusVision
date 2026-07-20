@@ -7,7 +7,7 @@ from pathlib import Path
 from time import monotonic
 from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response
 from app.config import save_persistent_settings, settings
 from app.security import enforce_upload_rate_limit, require_api_key
 from app.models import (
@@ -43,6 +43,7 @@ from app.utils.model_discovery import discover_local_models
 from app.ocr.spatial_ocr import (
     process_image_with_spatial_ocr,
     process_pdf_with_spatial_ocr,
+    process_pdf_with_region_ocr,
 )
 from app.llm.inference import (
     reset_llm_pipeline,
@@ -117,12 +118,12 @@ def _runtime_settings_payload() -> dict:
     return {
         "local_model": {
             "name": model_path.name,
-            "path": str(model_path),
             "device": settings.model.device,
             "available_devices": devices,
             "ready": model_path.exists() and device_ready,
             "max_new_tokens": settings.model.max_new_tokens,
             "kv_cache_precision": settings.model.kv_cache_precision,
+            "lora_available": (Path(settings.model.model_path) / "adapter_config.json").exists(),
         },
         "deepseek": {
             "model": settings.deepseek.model_name,
@@ -144,12 +145,48 @@ def _runtime_settings_payload() -> dict:
             "output_language": settings.interface.output_language,
             "translation_enabled": settings.interface.translation_enabled,
         },
+        "inference": {
+            "mode": settings.inference_mode,
+            "layout_engine": settings.layout_engine,
+            "lora_enabled": settings.lora_enabled,
+            "lora_adapter_path": settings.lora_adapter_path,
+            "lora_adapters": _discover_lora_adapters(),
+            "region_upper_ratio": settings.region_upper_ratio,
+            "region_middle_ratio": settings.region_middle_ratio,
+            "stage_timeout_seconds": settings.stage_timeout_seconds,
+        },
         "supported_formats": sorted(SUPPORTED_DOCUMENT_EXTENSIONS),
         "installed_models": discover_local_models(
             settings.base_dir,
             settings.model.model_path,
         ),
     }
+
+
+def _discover_lora_adapters() -> list[dict]:
+    adapters: list[dict] = []
+    models_dir = settings.base_dir / "models"
+    if not models_dir.is_dir():
+        return adapters
+    for candidate in sorted(models_dir.iterdir()):
+        if not candidate.is_dir():
+            continue
+        adapter_config = candidate / "adapter_config.json"
+        if not adapter_config.is_file():
+            continue
+        try:
+            import json as _json
+            config_data = _json.loads(adapter_config.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        adapter_name = candidate.name
+        base_model = config_data.get("base_model_name_or_path", "")
+        adapters.append({
+            "name": adapter_name,
+            "path": str(candidate.resolve()),
+            "base_model": base_model,
+        })
+    return adapters
 
 
 def _emit_status(session_id: str, status: ProcessingStatus, message: str, data: dict = None) -> str:
@@ -201,6 +238,25 @@ async def _reserve_pipeline_slot(session_id: str) -> bool:
 async def _release_pipeline_slot(session_id: str) -> None:
     async with _active_pipeline_lock:
         _active_pipeline_sessions.discard(session_id)
+
+
+def _is_valid_session_id(session_id: str) -> bool:
+    """Reject session IDs that contain path traversal characters."""
+    import re
+
+    return bool(re.fullmatch(r"[0-9_]+", session_id))
+
+
+async def _trigger_webhook_delivery(
+    session_id: str, xml_content: str, instruction_data: dict
+) -> None:
+    """Fire-and-forget webhook delivery; never raises."""
+    try:
+        from app.integrations.webhook import deliver_approved_xml
+
+        await deliver_approved_xml(session_id, xml_content, instruction_data)
+    except Exception:
+        pass
 
 
 def _copy_upload_to_path(file: UploadFile, pdf_path: Path) -> None:
@@ -341,7 +397,42 @@ async def _process_document_pipeline_locked(
 
         async with inference_semaphore:
             extension = validate_supported_filename(filename)
-            if extension == ".pdf":
+            use_multi_stage = (
+                extension == ".pdf"
+                and settings.region_segmentation_enabled
+                and settings.inference_mode == "multi_stage"
+            )
+            use_florence = (
+                use_multi_stage
+                and settings.florence_enabled
+                and settings.layout_engine == "hybrid"
+            )
+            if use_florence:
+                from app.ocr.spatial_ocr import process_pdf_with_florence_regions
+
+                (
+                    upper_text, middle_text, lower_text, boxes, _florence_meta,
+                ) = await _run_blocking(
+                    process_pdf_with_florence_regions,
+                    document_path,
+                    _OCR_LANGUAGE_MAP[document_language],
+                    use_florence=True,
+                )
+                ocr_text = (
+                    f"{upper_text}\n\n--- ORTA BOLGE ---\n\n{middle_text}"
+                    f"\n\n--- ALT BOLGE ---\n\n{lower_text}"
+                )
+            elif use_multi_stage:
+                upper_text, middle_text, lower_text, boxes = await _run_blocking(
+                    process_pdf_with_region_ocr,
+                    document_path,
+                    _OCR_LANGUAGE_MAP[document_language],
+                )
+                ocr_text = (
+                    f"{upper_text}\n\n--- ORTA BOLGE ---\n\n{middle_text}"
+                    f"\n\n--- ALT BOLGE ---\n\n{lower_text}"
+                )
+            elif extension == ".pdf":
                 ocr_text, boxes = await _run_blocking(
                     process_pdf_with_spatial_ocr,
                     document_path,
@@ -365,18 +456,37 @@ async def _process_document_pipeline_locked(
         boxes_data = [[asdict(box) for box in page_boxes] for page_boxes in boxes]
         ocr_path = log_ocr_result(session_id, ocr_text, boxes_data)
 
-        status_queue.put_nowait(_emit_status(
-            session_id, ProcessingStatus.LLM_ANALYZING, "LLM Analizi...",
-            data={"raw_ocr_text": ocr_text},
-        ))
+        if use_multi_stage:
+            engine_label = (
+                "Florence-2 VLM" if use_florence else "Y-Orani Ayrıştırması"
+            )
+            status_queue.put_nowait(_emit_status(
+                session_id, ProcessingStatus.LLM_ANALYZING,
+                f"Taraflar ve belge bilgileri cikariliyor (Asama 1/3, {engine_label})...",
+                data={"raw_ocr_text": ocr_text},
+            ))
+        else:
+            status_queue.put_nowait(_emit_status(
+                session_id, ProcessingStatus.LLM_ANALYZING, "LLM Analizi...",
+                data={"raw_ocr_text": ocr_text},
+            ))
 
         async with inference_semaphore:
-            si_model, raw_llm_json = await _run_blocking(
-                run_inference_with_fallback,
-                ocr_text,
-                document_language,
-                output_language,
-            )
+            if use_multi_stage:
+                si_model, raw_llm_json = await _run_blocking(
+                    run_inference_with_fallback,
+                    ocr_text,
+                    document_language,
+                    output_language,
+                    (upper_text, middle_text, lower_text),
+                )
+            else:
+                si_model, raw_llm_json = await _run_blocking(
+                    run_inference_with_fallback,
+                    ocr_text,
+                    document_language,
+                    output_language,
+                )
 
         initial_xml = await _run_blocking(shipping_instruction_to_xml, si_model)
         initial_is_valid, initial_errors = await _run_blocking(
@@ -453,6 +563,7 @@ async def _process_document_pipeline_locked(
                         translate_instruction_content,
                         si_model,
                         output_language,
+                        document_language,
                     )
             except Exception as translation_error:
                 translation_raw_output = json.dumps(
@@ -577,8 +688,17 @@ async def _process_document_pipeline_locked(
             ))
 
     except Exception as e:
+        logger.exception("session=%s pipeline hatasi: %s", session_id, e)
+        try: ocr_len = len(ocr_text)
+        except NameError: ocr_len = 0
+        if ocr_len > 100000:
+            msg = f"Hata: Belge metni cok buyuk ({ocr_len // 1024} KB). Bu belge tek bir konşimento yerine cok sayfali bir dokuman olabilir. Lutfen tek sayfalik konşimento deneyin."
+        elif ocr_len < 50:
+            msg = "Hata: Belgede okunabilir metin bulunamadi. Lutfen daha net taranmis bir belge yukleyin."
+        else:
+            msg = "Hata: Belge isleme sirasinda beklenmeyen bir sorun olustu."
         status_queue.put_nowait(_emit_status(
-            session_id, ProcessingStatus.ERROR, f"Hata: {str(e)}",
+            session_id, ProcessingStatus.ERROR, msg,
         ))
 
     finally:
@@ -739,8 +859,57 @@ async def update_runtime_settings(request: RuntimeSettingsUpdate):
         settings.interface.output_language = request.output_language
     if request.translation_enabled is not None:
         settings.interface.translation_enabled = request.translation_enabled
+    if request.nmt_enabled is not None:
+        settings.nmt_enabled = request.nmt_enabled
+        if not request.nmt_enabled:
+            settings.nmt_fallback_to_llm = False
+    if request.inference_mode is not None:
+        settings.inference_mode = request.inference_mode
+    if request.layout_engine is not None:
+        settings.layout_engine = request.layout_engine
+        if request.layout_engine == "off":
+            settings.region_segmentation_enabled = False
+            settings.florence_enabled = False
+        elif request.layout_engine == "y_ratio":
+            settings.region_segmentation_enabled = True
+            settings.florence_enabled = False
+        elif request.layout_engine == "hybrid":
+            settings.region_segmentation_enabled = True
+            settings.florence_enabled = True
+    if request.lora_enabled is not None:
+        settings.lora_enabled = request.lora_enabled
+    if request.lora_adapter_path is not None:
+        settings.lora_adapter_path = request.lora_adapter_path
+    if request.region_upper_ratio is not None:
+        settings.region_upper_ratio = request.region_upper_ratio
+    if request.region_middle_ratio is not None:
+        settings.region_middle_ratio = request.region_middle_ratio
+    if request.stage_timeout_seconds is not None:
+        settings.stage_timeout_seconds = request.stage_timeout_seconds
     save_persistent_settings()
     return JSONResponse(content=_runtime_settings_payload())
+
+
+@router.post("/runtime-settings/webhook-test")
+async def test_webhook(request: dict):
+    import httpx
+
+    url = (request.get("url") or "").strip()
+    if not url:
+        return JSONResponse(status_code=400, content={"error": "URL gerekli."})
+    if not url.startswith("https://") and not url.startswith("http://localhost"):
+        return JSONResponse(status_code=400, content={"error": "Yalnızca HTTPS adresleri desteklenir (localhost hariç)."})
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(url, json={"test": "cerberus-webhook-ping"})
+            if 200 <= response.status_code < 300:
+                return JSONResponse(content={"status": "ok", "http_code": response.status_code})
+            return JSONResponse(
+                status_code=502,
+                content={"error": f"Hedef sunucu HTTP {response.status_code} döndü."},
+            )
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Bağlantı başarısız: {str(e)[:100]}"})
 
 
 @router.post("/upload")
@@ -775,15 +944,18 @@ async def upload_pdf(
     try:
         await _save_uploaded_document(file, document_path)
     except UploadTooLargeError:
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         return JSONResponse(
             status_code=413,
             content={"error": f"File size exceeds maximum allowed size ({_MAX_UPLOAD_SIZE // (1024*1024)} MB)."},
         )
     except ValueError as error:
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         return JSONResponse(status_code=400, content={"error": str(error)})
     except Exception:
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         raise
 
@@ -815,13 +987,14 @@ async def upload_pdf(
         }
     )
 
-
 @router.get("/stream/{session_id}")
 async def stream_status(session_id: str):
+    if not _is_valid_session_id(session_id):
+        return JSONResponse(status_code=400, content={"error": "Invalid session ID format."})
     if session_id not in _stream_queues:
         return JSONResponse(
             status_code=404,
-            content={"error": f"No stream found for session {session_id}"},
+            content={"error": "No stream found for the given session."},
         )
     return StreamingResponse(
         _event_generator(session_id),
@@ -834,13 +1007,96 @@ async def stream_status(session_id: str):
     )
 
 
+@router.get("/sessions/{session_id}/ocr-boxes")
+async def get_ocr_boxes(session_id: str):
+    """Return OCR bounding boxes for visual field mapping."""
+    if not _is_valid_session_id(session_id):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid session ID format."},
+        )
+    boxes_path = settings.logs_dir / session_id / "ocr_boxes.json"
+    resolved = boxes_path.resolve()
+    if not str(resolved).startswith(str(settings.logs_dir.resolve())):
+        return JSONResponse(
+            status_code=404,
+            content={"error": "OCR boxes not found for this session."},
+        )
+    if not resolved.exists():
+        return JSONResponse(
+            status_code=404,
+            content={"error": "OCR boxes not found for this session."},
+        )
+    try:
+        boxes_data = json.loads(resolved.read_text(encoding="utf-8"))
+        return JSONResponse(content={"pages": boxes_data})
+    except (OSError, ValueError):
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to read OCR boxes."},
+        )
+
+
+@router.post("/sessions/export")
+async def export_sessions(request: dict):
+    """Export approved/completed session XMLs as a ZIP archive."""
+    import io
+    import zipfile
+
+    session_ids = request.get("session_ids", [])
+    if not session_ids or not isinstance(session_ids, list):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "A non-empty session_ids list is required."},
+        )
+    if len(session_ids) > 50:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Maximum 50 sessions per export."},
+        )
+
+    logs_root = settings.logs_dir.resolve()
+    zip_buffer = io.BytesIO()
+    exported = 0
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for sid in session_ids:
+            if not _is_valid_session_id(sid):
+                continue
+            xml_path = logs_root / sid / "approved_shipping_instruction.xml"
+            if not xml_path.exists():
+                xml_path = logs_root / sid / "shipping_instruction_output.xml"
+            if not xml_path.exists() or not str(xml_path.resolve()).startswith(str(logs_root)):
+                continue
+            zf.write(str(xml_path), f"{sid}.xml")
+            exported += 1
+
+    if not exported:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "No approved XML files found for the given sessions."},
+        )
+
+    zip_buffer.seek(0)
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="cerberus_export_{exported}.zip"'
+            ),
+        },
+    )
+
+
 @router.get("/status/{session_id}")
 async def get_status(session_id: str):
+    if not _is_valid_session_id(session_id):
+        return JSONResponse(status_code=400, content={"error": "Invalid session ID format."})
     result = _processing_store.get(session_id)
     if result is None:
         return JSONResponse(
             status_code=404,
-            content={"error": f"No processing found for session {session_id}"},
+            content={"error": "No processing found for the given session."},
         )
     return JSONResponse(content=result.model_dump(mode="json"))
 
@@ -936,21 +1192,38 @@ async def _save_instruction_locked(
         "Veriler onaylandi." if approve else "Taslak kaydedildi.",
         data=result_data,
     )
+    if approve and instruction.document_status_code == DocumentStatusCode.FINAL:
+        asyncio.create_task(
+            _trigger_webhook_delivery(
+                session_id, xml_content, instruction.model_dump(mode="json")
+            )
+        )
     return JSONResponse(content=_processing_store[session_id].model_dump(mode="json"))
 
 
 @router.put("/sessions/{session_id}/draft")
-async def save_draft(session_id: str, request: SaveInstructionRequest):
+async def save_draft(
+    session_id: str,
+    request: SaveInstructionRequest,
+    _rate_limit: None = Depends(enforce_upload_rate_limit),
+):
     return await _save_instruction(session_id, request, approve=False)
 
 
 @router.post("/sessions/{session_id}/approve")
-async def approve_instruction(session_id: str, request: SaveInstructionRequest):
+async def approve_instruction(
+    session_id: str,
+    request: SaveInstructionRequest,
+    _rate_limit: None = Depends(enforce_upload_rate_limit),
+):
     return await _save_instruction(session_id, request, approve=True)
 
 
 @router.post("/sessions/{session_id}/cloud-review")
-async def run_manual_cloud_review(session_id: str):
+async def run_manual_cloud_review(
+    session_id: str,
+    _rate_limit: None = Depends(enforce_upload_rate_limit),
+):
     if session_id not in _session_models or session_id not in _processing_store:
         return JSONResponse(
             status_code=404,

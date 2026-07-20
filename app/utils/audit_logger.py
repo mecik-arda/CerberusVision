@@ -3,6 +3,7 @@ import json
 import re
 import shutil
 import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, List, Tuple
@@ -10,6 +11,24 @@ from app.config import settings
 
 
 _SESSION_DIR_PATTERN = re.compile(r"^\d{8}_\d{6}_\d{6}$")
+
+_PII_FIELDS = {"party_name", "party_id", "email", "phone_number", "name",
+               "street", "postal_code", "PartyName", "PartyID", "Email",
+               "PhoneNumber", "Name", "Street", "PostalCode"}
+
+
+def _mask_pii(data: Any) -> Any:
+    if isinstance(data, dict):
+        result = {}
+        for k, v in data.items():
+            if k in _PII_FIELDS and isinstance(v, str) and v.strip():
+                result[k] = v[:2] + "***" + v[-1] if len(v) > 3 else "***"
+            else:
+                result[k] = _mask_pii(v)
+        return result
+    if isinstance(data, list):
+        return [_mask_pii(item) for item in data]
+    return data
 _last_cleanup_at: Optional[float] = None
 
 
@@ -176,7 +195,7 @@ def log_user_revision(
     xml_path = session_dir / f"{safe_action}_shipping_instruction.xml"
     validation_path = session_dir / f"{safe_action}_validation_report.json"
     json_path.write_text(
-        json.dumps(instruction_data, indent=2, ensure_ascii=False),
+        json.dumps(_mask_pii(deepcopy(instruction_data)), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     xml_path.write_text(xml_content, encoding="utf-8")

@@ -65,11 +65,37 @@ def _translation_targets(
 def translate_instruction_content(
     instruction: ShippingInstruction,
     output_language: str,
+    source_language: str = "en",
 ) -> tuple[ShippingInstruction, str]:
     translated_instruction = instruction.model_copy(deep=True)
     targets = _translation_targets(translated_instruction)
     if not targets:
         return translated_instruction, ""
+
+    # Try NMT first when enabled and language pair is supported
+    from app.config import settings
+
+    nmt_used = False
+    if settings.nmt_enabled and source_language != output_language:
+        try:
+            from app.llm.translation_nmt import translate_descriptive_fields
+
+            translated = translate_descriptive_fields(
+                instruction, source_language, output_language
+            )
+            if translated is not None:
+                return translated, json.dumps(
+                    {"method": "nmt", "pair": f"{source_language}-{output_language}"},
+                    ensure_ascii=False,
+                )
+        except Exception as exc:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning("NMT translation unavailable, falling back to LLM: %s", exc)
+            # Fall through to LLM
+
+    # LLM fallback
     source_values = {
         path: getattr(target, attribute)
         for path, (target, attribute) in targets.items()

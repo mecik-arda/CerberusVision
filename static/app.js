@@ -59,6 +59,21 @@ const deepSeekApiKeyInput = document.getElementById('deepSeekApiKeyInput');
 const deepSeekReviewMode = document.getElementById('deepSeekReviewMode');
 const deepSeekRiskThreshold = document.getElementById('deepSeekRiskThreshold');
 const clearDeepSeekKey = document.getElementById('clearDeepSeekKey');
+const nmtEnabled = document.getElementById('nmtEnabled');
+const webhookUrlInput = document.getElementById('webhookUrlInput');
+const webhookEnabled = document.getElementById('webhookEnabled');
+const webhookTestBtn = document.getElementById('webhookTestBtn');
+const webhookTestStatus = document.getElementById('webhookTestStatus');
+const inferenceMode = document.getElementById('inferenceMode');
+const layoutEngine = document.getElementById('layoutEngine');
+const loraEnabled = document.getElementById('loraEnabled');
+const loraAdapterPath = document.getElementById('loraAdapterPath');
+const regionUpperRatio = document.getElementById('regionUpperRatio');
+const regionUpperRatioValue = document.getElementById('regionUpperRatioValue');
+const regionMiddleRatio = document.getElementById('regionMiddleRatio');
+const regionMiddleRatioValue = document.getElementById('regionMiddleRatioValue');
+const stageTimeout = document.getElementById('stageTimeout');
+const stageTimeoutValue = document.getElementById('stageTimeoutValue');
 const notificationsBtn = document.getElementById('notificationsBtn');
 const notificationsPanel = document.getElementById('notificationsPanel');
 const notificationDot = document.getElementById('notificationDot');
@@ -124,6 +139,7 @@ const TRANSLATIONS = {
         'settings.active': 'Etkin',
         'settings.ready': 'Hazır',
         'settings.notReady': 'Hazır değil',
+        'settings.loraActive': 'LoRA aktif',
         'settings.serverApiKey': 'Cerberus sunucu API anahtarı',
         'settings.deepSeekApiKey': 'DeepSeek API anahtarı',
         'settings.sessionOnly': 'Yalnızca bu tarayıcı oturumu',
@@ -135,6 +151,15 @@ const TRANSLATIONS = {
         'settings.modeRisk': 'Riske göre',
         'settings.modeAlways': 'Her zaman',
         'settings.clearKey': 'Kayıtlı DeepSeek anahtarını kaldır',
+        'settings.nmt': 'NMT çeviri (MarianMT, daha hızlı)',
+        'settings.webhook': 'Webhook Entegrasyonu',
+        'settings.webhookUrl': 'Hedef URL',
+        'settings.webhookPlaceholder': 'https://erp-sisteminiz.com/api/dcsa-webhook',
+        'settings.webhookEnable': 'Etkin',
+        'settings.webhookTest': 'Test Et',
+        'settings.webhookTesting': 'Test ediliyor...',
+        'settings.webhookTestOk': 'Bağlantı başarılı (HTTP 200)',
+        'settings.webhookTestFail': 'Bağlantı başarısız',
         'settings.save': 'Ayarları Kaydet',
         'settings.loading': 'Model bilgileri yükleniyor...',
         'settings.saving': 'Ayarlar kaydediliyor...',
@@ -142,6 +167,22 @@ const TRANSLATIONS = {
         'settings.configured': 'yapılandırıldı',
         'settings.notConfigured': 'yapılandırılmadı',
         'settings.loadFailed': 'Ayarlar alınamadı',
+        'settings.inferenceHeading': 'Çıkarım Motoru',
+        'settings.inferenceMode': 'Çıkarım Modu',
+        'settings.modeMultiStage': '3 Aşamalı Modüler (Önerilen - %95 Doğruluk)',
+        'settings.modeSinglePass': 'Tek Geçişli (Hızlı / Legacy)',
+        'settings.layoutEngine': 'Mizanpaj Algılama Yöntemi',
+        'settings.engineYRatio': 'Y-Oranı Ayrıştırması (%35 / %65 Statik)',
+        'settings.engineHybrid': 'Hibrit (Florence-2 VLM + Akıllı Fallback)',
+        'settings.engineOff': 'Kapalı (Düz OCR)',
+        'settings.loraHeading': 'LoRA İnce Ayar',
+        'settings.loraEnable': 'LoRA İnce Ayarını Etkinleştir',
+        'settings.loraAdapter': 'LoRA Adapter Seçimi',
+        'settings.loraNone': 'Yüklü adapter yok',
+        'settings.advancedHeading': 'Gelişmiş Parametreler',
+        'settings.upperBoundary': 'Üst Bölge Sınırı',
+        'settings.middleBoundary': 'Orta Bölge Sınırı',
+        'settings.stageTimeout': 'Aşama Zaman Aşımı',
         'notifications.title': 'Bildirimler',
         'notifications.empty': 'Henüz yeni bildirim yok.',
         'notifications.latest': 'Son durum',
@@ -256,6 +297,7 @@ const TRANSLATIONS = {
         'actions.saveDraft': 'Taslak Kaydet',
         'actions.approve': 'Verileri Onayla',
         'actions.startProcessing': 'Analizi Başlat',
+        'actions.exportAll': 'ZIP İndir',
         'actions.clearSelection': 'Seçimi Temizle',
         'validation.heading': 'Onay için düzeltilmesi gereken alanlar',
         'validation.xsdHeading': 'XML doğrulama sorunları',
@@ -302,6 +344,7 @@ const TRANSLATIONS = {
         'settings.active': 'Active',
         'settings.ready': 'Ready',
         'settings.notReady': 'Not ready',
+        'settings.loraActive': 'LoRA active',
         'settings.serverApiKey': 'Cerberus server API key',
         'settings.deepSeekApiKey': 'DeepSeek API key',
         'settings.sessionOnly': 'This browser session only',
@@ -313,6 +356,18 @@ const TRANSLATIONS = {
         'settings.modeRisk': 'Risk based',
         'settings.modeAlways': 'Always',
         'settings.clearKey': 'Remove the stored DeepSeek key',
+        'settings.nmt': 'NMT translation (MarianMT, faster)',
+        'settings.webhook': 'Webhook Integration',
+        'settings.webhookUrl': 'Target URL',
+        'settings.webhookPlaceholder': 'https://your-erp.com/api/dcsa-webhook',
+        'settings.webhookEnable': 'Enabled',
+        'settings.webhookTest': 'Test',
+        'settings.webhookTesting': 'Testing...',
+        'settings.webhookTestOk': 'Connection successful (HTTP 200)',
+        'settings.webhookTestFail': 'Connection failed',
+        'audit.refinementUsed': '2. geçiş düzeltmesi uygulandı',
+        'audit.deepSeek': 'DeepSeek',
+        'audit.local': 'Yerel',
         'settings.save': 'Save Settings',
         'settings.loading': 'Loading model information...',
         'settings.saving': 'Saving settings...',
@@ -320,6 +375,22 @@ const TRANSLATIONS = {
         'settings.configured': 'configured',
         'settings.notConfigured': 'not configured',
         'settings.loadFailed': 'Could not load settings',
+        'settings.inferenceHeading': 'Inference Engine',
+        'settings.inferenceMode': 'Inference Mode',
+        'settings.modeMultiStage': '3-Stage Modular (Recommended - 95% Accuracy)',
+        'settings.modeSinglePass': 'Single-Pass (Fast / Legacy)',
+        'settings.layoutEngine': 'Layout Detection Method',
+        'settings.engineYRatio': 'Y-Ratio Segmentation (35% / 65% Static)',
+        'settings.engineHybrid': 'Hybrid (Florence-2 VLM + Smart Fallback)',
+        'settings.engineOff': 'Off (Plain OCR)',
+        'settings.loraHeading': 'LoRA Fine-Tuning',
+        'settings.loraEnable': 'Enable LoRA Fine-Tuning',
+        'settings.loraAdapter': 'LoRA Adapter Selection',
+        'settings.loraNone': 'No adapters installed',
+        'settings.advancedHeading': 'Advanced Parameters',
+        'settings.upperBoundary': 'Upper Region Boundary',
+        'settings.middleBoundary': 'Middle Region Boundary',
+        'settings.stageTimeout': 'Stage Timeout',
         'notifications.title': 'Notifications',
         'notifications.empty': 'No new notifications yet.',
         'notifications.latest': 'Latest status',
@@ -434,6 +505,7 @@ const TRANSLATIONS = {
         'actions.saveDraft': 'Save Draft',
         'actions.approve': 'Approve Data',
         'actions.startProcessing': 'Start Analysis',
+        'actions.exportAll': 'Download ZIP',
         'actions.clearSelection': 'Clear Selection',
         'validation.heading': 'Fields that must be corrected before approval',
         'validation.xsdHeading': 'XML validation issues',
@@ -472,6 +544,12 @@ async function apiFetch(resource, options = {}, allowCredentialRetry = true) {
     const suppliedKey = window.prompt(t('auth.apiKeyPrompt'));
     if (!suppliedKey) return response;
     sessionStorage.setItem('cerberus-api-key', suppliedKey.trim());
+    if (options.body instanceof FormData) {
+        const originalForm = options.body;
+        const yeniForm = new FormData();
+        for (const [key, value] of originalForm.entries()) { yeniForm.append(key, value); }
+        return apiFetch(resource, { ...options, body: yeniForm }, false);
+    }
     return apiFetch(resource, options, false);
 }
 
@@ -506,10 +584,35 @@ function renderRuntimeSettings(data) {
     modelDeviceValue.textContent = localModel.device || '--';
     modelTokensValue.textContent = localModel.max_new_tokens ?? '--';
     modelKvValue.textContent = localModel.kv_cache_precision || '--';
-    modelReadyBadge.textContent = t(localModel.ready ? 'settings.ready' : 'settings.notReady');
-    modelReadyBadge.className = localModel.ready
-        ? 'rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700 dark:bg-teal-950 dark:text-teal-300'
-        : 'rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300';
+    const inferenceConfig = data.inference || {};
+    const loraActive = inferenceConfig.lora_enabled || localModel.lora_available;
+    if (loraActive) {
+        modelReadyBadge.textContent = t('settings.loraActive');
+        modelReadyBadge.className = 'rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-950 dark:text-violet-300';
+    } else {
+        modelReadyBadge.textContent = t(localModel.ready ? 'settings.ready' : 'settings.notReady');
+        modelReadyBadge.className = localModel.ready
+            ? 'rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700 dark:bg-teal-950 dark:text-teal-300'
+            : 'rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300';
+    }
+    inferenceMode.value = inferenceConfig.mode || 'multi_stage';
+    layoutEngine.value = inferenceConfig.layout_engine || 'y_ratio';
+    loraEnabled.checked = inferenceConfig.lora_enabled || false;
+    const adapterList = inferenceConfig.lora_adapters || [];
+    loraAdapterPath.innerHTML = adapterList.length
+        ? adapterList.map(function (a) { return '<option value="' + escapeHtml(a.path || '') + '">' + escapeHtml(a.name || a.path || '') + '</option>'; }).join('')
+        : '<option value="">' + t('settings.loraNone') + '</option>';
+    if (inferenceConfig.lora_adapter_path && adapterList.some(function (a) { return a.path === inferenceConfig.lora_adapter_path; })) {
+        loraAdapterPath.value = inferenceConfig.lora_adapter_path;
+    }
+    var upperPct = Math.round((inferenceConfig.region_upper_ratio || 0.35) * 100);
+    var middlePct = Math.round((inferenceConfig.region_middle_ratio || 0.65) * 100);
+    regionUpperRatio.value = upperPct;
+    regionUpperRatioValue.textContent = '%' + upperPct;
+    regionMiddleRatio.value = middlePct;
+    regionMiddleRatioValue.textContent = '%' + middlePct;
+    stageTimeout.value = inferenceConfig.stage_timeout_seconds || 300;
+    stageTimeoutValue.textContent = (inferenceConfig.stage_timeout_seconds || 300) + ' sn';
     deepSeekReviewMode.value = data.deepseek?.review_mode || 'risk';
     deepSeekRiskThreshold.value = data.deepseek?.risk_threshold ?? 30;
     renderDetectedModels(data.installed_models || []);
@@ -565,6 +668,14 @@ async function saveRuntimeSettings() {
         document_language: documentLanguage.value,
         output_language: outputLanguage.value,
         translation_enabled: translationEnabled.checked,
+        nmt_enabled: nmtEnabled.checked,
+        inference_mode: inferenceMode.value,
+        layout_engine: layoutEngine.value,
+        lora_enabled: loraEnabled.checked,
+        lora_adapter_path: loraEnabled.checked ? loraAdapterPath.value : '',
+        region_upper_ratio: Number(regionUpperRatio.value) / 100,
+        region_middle_ratio: Number(regionMiddleRatio.value) / 100,
+        stage_timeout_seconds: Number(stageTimeout.value),
     };
     if (selectedModelPath.value) payload.local_model_path = selectedModelPath.value;
     const deepSeekKey = deepSeekApiKeyInput.value.trim();
@@ -972,23 +1083,27 @@ async function togglePdfFullscreen() {
     }
 }
 
-function updateAuditDisplay(score, cloudReviewUsed, localRiskScore, summary, suspiciousFields = []) {
+function updateAuditDisplay(score, cloudReviewUsed, localRiskScore, summary, suspiciousFields = [], refinementUsed = false) {
     if (typeof score !== 'number') {
         currentAuditState = null;
         auditScoreBadge.classList.add('hidden');
         auditReviewPanel.classList.add('hidden');
         return;
     }
-    currentAuditState = { score, cloudReviewUsed, localRiskScore, summary, suspiciousFields };
+    currentAuditState = { score, cloudReviewUsed, localRiskScore, summary, suspiciousFields, refinementUsed };
     const colorClass = score >= 90
         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
         : score >= 75
             ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
             : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300';
     auditScoreBadge.className = `px-3 py-1 text-xs font-semibold rounded-full ${colorClass}`;
-    auditScoreBadge.textContent = `${cloudReviewUsed ? t('audit.deepSeek') : t('audit.local')}: ${score.toFixed(2)}%`;
+    let badgeText = `${cloudReviewUsed ? t('audit.deepSeek') : t('audit.local')}: ${score.toFixed(2)}%`;
+    if (refinementUsed) badgeText += ' · 2P';
+    auditScoreBadge.textContent = badgeText;
     auditScoreBadge.title = `${t('audit.localRisk')}: ${typeof localRiskScore === 'number' ? localRiskScore.toFixed(2) : '--'}%; ${t('audit.suspiciousCount', { count: suspiciousFields.length })}`;
-    auditReviewSource.textContent = cloudReviewUsed ? t('audit.deepSeekSource') : t('audit.localSource');
+    let kaynakMetin = cloudReviewUsed ? t('audit.deepSeekSource') : t('audit.localSource');
+    if (refinementUsed) kaynakMetin += ' (' + t('audit.refinementUsed') + ')';
+    auditReviewSource.textContent = kaynakMetin;
     auditReviewSummary.textContent = translateServerMessage(summary) || t('audit.completed');
     auditReviewPanel.classList.remove('hidden');
 }
@@ -1213,12 +1328,19 @@ function renderDocumentQueue() {
     selectionActions.classList.add('flex');
     startProcessingBtn.disabled = selectionProcessing || !documentQueue.some((job) => job.status === 'PENDING');
     clearSelectionBtn.disabled = selectionProcessing;
+    exportAllBtn.disabled = !documentQueue.some((job) => ['COMPLETED', 'DRAFT'].includes(job.status) && job.sessionId);
     fileQueue.innerHTML = `
         <p class="px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">${escapeHtml(t('upload.queue', { done: completeCount, total: documentQueue.length }))}</p>
         ${documentQueue.map((job) => {
             const status = STATUS_BADGE_MAP[job.status] ? job.status : 'PENDING';
+            let ekBilgi = '';
+            if (job.riskScore !== undefined && job.riskScore !== null) ekBilgi += ` · risk:${job.riskScore}`;
+            if (job.elapsedSeconds) ekBilgi += ` · ${job.elapsedSeconds}s`;
             return `<div class="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs dark:bg-slate-900">
-                <span class="truncate text-slate-700 dark:text-slate-200" title="${escapeHtml(job.file.name)}">${escapeHtml(job.file.name)}</span>
+                <div class="min-w-0 flex-1">
+                    <span class="truncate block text-slate-700 dark:text-slate-200" title="${escapeHtml(job.file.name)}">${escapeHtml(job.file.name)}</span>
+                    ${job.sessionId ? `<span class="block text-[10px] text-slate-400 dark:text-slate-500 truncate">${escapeHtml(job.sessionId)}${escapeHtml(ekBilgi)}</span>` : ''}
+                </div>
                 <span class="shrink-0 rounded-full px-2 py-0.5 font-semibold ${STATUS_BADGE_MAP[status]}">${escapeHtml(t(`status.${status}`))}</span>
             </div>`;
         }).join('')}`;
@@ -1422,6 +1544,10 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
     if (job && event.data) job.result = event.data;
     if (job && event.status && event.status !== 'COMPLETE') {
         job.status = event.status === 'TIMEOUT' ? 'ERROR' : event.status;
+        if (event.data) {
+            if (event.data.local_risk_score !== undefined) job.riskScore = event.data.local_risk_score;
+            if (event.data.elapsed_seconds) job.elapsedSeconds = event.data.elapsed_seconds;
+        }
         renderDocumentQueue();
     }
     if (event.session_id) {
@@ -1477,6 +1603,8 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
                 currentStructuredData = normalizeEditableStructure(event.data.structured_data);
                 populateFormFields(currentStructuredData);
                 populateItemsTable(currentStructuredData.cargo_items);
+                setupOcrHighlightListeners();
+                if (event.session_id) { loadOcrBoxes(event.session_id); currentOcrText = event.data.raw_ocr_text || ''; }
                 updateResultActionAvailability();
             } else if (event.data.raw_llm_json) {
                 try {
@@ -1484,6 +1612,8 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
                     currentStructuredData = normalizeEditableStructure(parsed);
                     populateFormFields(currentStructuredData);
                     populateItemsTable(currentStructuredData.cargo_items);
+                    setupOcrHighlightListeners();
+                    if (event.session_id) { loadOcrBoxes(event.session_id); currentOcrText = event.data.raw_ocr_text || ''; }
                     updateResultActionAvailability();
                 } catch (e) {
                     console.error('JSON parse error:', e);
@@ -1496,6 +1626,7 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
                 event.data.local_risk_score,
                 event.data.audit_summary,
                 currentSuspiciousFields,
+                event.data.local_refinement_used || false,
             );
             highlightSuspiciousFields(currentSuspiciousFields);
             currentCloudReviewAvailable = Boolean(event.data.cloud_review_available);
@@ -1677,6 +1808,97 @@ function highlightSuspiciousFields(suspiciousFields) {
     });
 }
 
+let currentOcrBoxes = null;
+let currentOcrText = '';
+const ocrOverlay = document.getElementById('ocrHighlightOverlay');
+
+async function loadOcrBoxes(sessionId) {
+    try {
+        const response = await apiFetch(`/api/sessions/${sessionId}/ocr-boxes`);
+        if (!response.ok) { currentOcrBoxes = null; return; }
+        const data = await response.json();
+        currentOcrBoxes = data.pages || [];
+    } catch { currentOcrBoxes = null; }
+}
+
+function clearOcrHighlight() {
+    if (ocrOverlay) ocrOverlay.innerHTML = '';
+    ocrOverlay.classList.add('hidden');
+}
+
+function showOcrHighlightForField(fieldPath) {
+    clearOcrHighlight();
+    if (!currentOcrBoxes || !currentOcrBoxes.length) return;
+    if (!currentOcrText && currentStructuredData) {
+        currentOcrText = (currentStructuredData.raw_ocr_text || '').toLowerCase();
+    }
+
+    const keywords = {
+        'shipping_instruction_reference': ['si no', 'si reference', 'talimat no', 'sevkiyat talimati'],
+        'carrier_booking_reference': ['booking', 'bkg ref', 'rezervasyon'],
+        'issue_date': ['issue date', 'date of issue', 'tarih', 'düzenleme'],
+        'parties': ['shipper', 'consignee', 'gönderici', 'alici'],
+        'shipper': ['shipper', 'exporter', 'gönderici', 'ihracatçi'],
+        'consignee': ['consignee', 'buyer', 'receiver', 'alici', 'ithalatçi'],
+        'port_of_loading': ['port of loading', 'pol', 'yükleme limani'],
+        'port_of_discharge': ['port of discharge', 'pod', 'boşaltma limani'],
+        'equipment_reference': ['container', 'equipment', 'konteyner'],
+        'cargo_gross_weight': ['gross weight', 'brüt'],
+        'description_of_goods': ['description of goods', 'cargo', 'goods', 'mal', 'esya'],
+    };
+
+    let matchedKeywords = [];
+    for (const [key, words] of Object.entries(keywords)) {
+        if (fieldPath.includes(key)) { matchedKeywords = words; break; }
+    }
+    if (!matchedKeywords.length) return;
+
+    const bestPage = 0;
+    const pageBoxes = currentOcrBoxes[bestPage] || [];
+    if (!pageBoxes.length) return;
+
+    const matchedBoxes = [];
+    for (const box of pageBoxes) {
+        const boxText = (box.text || '').toLowerCase();
+        if (matchedKeywords.some(kw => boxText.includes(kw))) {
+            matchedBoxes.push(box);
+        }
+    }
+    if (!matchedBoxes.length) return;
+
+    const overlay = ocrOverlay;
+    const displayArea = document.getElementById('pdfDisplayArea');
+    const areaRect = displayArea.getBoundingClientRect();
+
+    overlay.classList.remove('hidden');
+    overlay.style.width = areaRect.width + 'px';
+    overlay.style.height = areaRect.height + 'px';
+
+    const dpi = 200;
+    const scaleX = areaRect.width / (pageBoxes[0]?.x_max || 2480) * 0.5;
+    const scaleY = areaRect.height / (pageBoxes[0]?.y_max || 3508) * 0.5;
+
+    for (const box of matchedBoxes.slice(0, 3)) {
+        const div = document.createElement('div');
+        div.className = 'ocr-highlight-box';
+        div.style.left = (box.x_min * scaleX) + 'px';
+        div.style.top = (box.y_min * scaleY) + 'px';
+        div.style.width = ((box.x_max - box.x_min) * scaleX) + 'px';
+        div.style.height = ((box.y_max - box.y_min) * scaleY) + 'px';
+        overlay.appendChild(div);
+    }
+}
+
+function setupOcrHighlightListeners() {
+    document.querySelectorAll('[data-field]').forEach(input => {
+        input.addEventListener('focus', () => {
+            const fieldPath = input.getAttribute('data-field');
+            if (fieldPath) showOcrHighlightForField(fieldPath);
+        });
+        input.addEventListener('blur', clearOcrHighlight);
+    });
+}
+
 function refreshSuspiciousFieldTitles() {
     document.querySelectorAll('[data-audit-suspicious="true"]').forEach((input) => {
         input.title = t('audit.suspiciousField');
@@ -1728,6 +1950,8 @@ async function persistInstruction(approve) {
         currentStructuredData = normalizeEditableStructure(result.structured_data);
         populateFormFields(currentStructuredData);
         populateItemsTable(currentStructuredData.cargo_items);
+        setupOcrHighlightListeners();
+        if (result.session_id) { loadOcrBoxes(result.session_id); }
         currentXmlContent = result.xml_content;
         xmlOutput.removeAttribute('data-i18n');
         xmlOutput.textContent = currentXmlContent;
@@ -1880,6 +2104,42 @@ clearDeepSeekKey.addEventListener('change', () => {
     deepSeekApiKeyInput.disabled = clearDeepSeekKey.checked;
 });
 
+webhookTestBtn.addEventListener('click', async () => {
+    webhookTestStatus.textContent = t('settings.webhookTesting');
+    webhookTestStatus.className = 'mt-1 min-h-3 text-[10px] text-slate-400';
+    try {
+        const response = await apiFetch('/api/runtime-settings/webhook-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: webhookUrlInput.value.trim(),
+                enabled: webhookEnabled.checked,
+            }),
+        });
+        if (response.ok) {
+            webhookTestStatus.textContent = t('settings.webhookTestOk');
+            webhookTestStatus.className = 'mt-1 min-h-3 text-[10px] text-teal-600 dark:text-teal-400';
+        } else {
+            const err = await response.json().catch(() => ({}));
+            webhookTestStatus.textContent = `${t('settings.webhookTestFail')}: ${err.error || response.status}`;
+            webhookTestStatus.className = 'mt-1 min-h-3 text-[10px] text-red-500';
+        }
+    } catch (e) {
+        webhookTestStatus.textContent = `${t('settings.webhookTestFail')}: ${e.message}`;
+        webhookTestStatus.className = 'mt-1 min-h-3 text-[10px] text-red-500';
+    }
+});
+
+regionUpperRatio.addEventListener('input', function () {
+    regionUpperRatioValue.textContent = '%' + regionUpperRatio.value;
+});
+regionMiddleRatio.addEventListener('input', function () {
+    regionMiddleRatioValue.textContent = '%' + regionMiddleRatio.value;
+});
+stageTimeout.addEventListener('input', function () {
+    stageTimeoutValue.textContent = stageTimeout.value + ' sn';
+});
+
 documentLanguage.addEventListener('change', () => {
     localStorage.setItem('cerberus-document-language', documentLanguage.value);
 });
@@ -1897,6 +2157,34 @@ document.getElementById('formContainer').addEventListener('input', updateResultA
 
 startProcessingBtn.addEventListener('click', startSelectedFiles);
 clearSelectionBtn.addEventListener('click', clearFileSelection);
+
+const exportAllBtn = document.getElementById('exportAllBtn');
+exportAllBtn.addEventListener('click', exportApprovedSessions);
+
+async function exportApprovedSessions() {
+    const approvedJobs = documentQueue.filter(
+        (job) => ['COMPLETED', 'DRAFT'].includes(job.status) && job.sessionId
+    );
+    if (!approvedJobs.length) return;
+    const sessionIds = approvedJobs.map((job) => job.sessionId);
+    try {
+        const response = await apiFetch('/api/sessions/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_ids: sessionIds }),
+        });
+        if (!response.ok) throw new Error('Export failed');
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cerberus_export_${new Date().toISOString().slice(0, 10)}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error('Export error:', e);
+    }
+}
 
 notificationsBtn.addEventListener('click', () => {
     if (toggleTopPanel(notificationsPanel, notificationsBtn)) {

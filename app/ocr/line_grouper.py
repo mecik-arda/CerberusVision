@@ -121,3 +121,62 @@ def process_ocr_results_to_layout_text(
     boxes = parse_ocr_boxes(raw_results)
     layout_text = reconstruct_layout_text(boxes, y_threshold, space_factor)
     return layout_text, boxes
+
+
+def segment_boxes_by_region(
+    boxes: List[TextBox],
+    page_height: float,
+    upper_ratio: float = None,
+    middle_ratio: float = None,
+) -> Tuple[List[TextBox], List[TextBox], List[TextBox]]:
+    if not boxes or page_height <= 0:
+        return [], [], []
+    if upper_ratio is None:
+        upper_ratio = settings.region_upper_ratio
+    if middle_ratio is None:
+        middle_ratio = settings.region_middle_ratio
+    upper_boundary = page_height * upper_ratio
+    middle_boundary = page_height * middle_ratio
+    upper_boxes: List[TextBox] = []
+    middle_boxes: List[TextBox] = []
+    lower_boxes: List[TextBox] = []
+    for box in boxes:
+        if box.y_min < upper_boundary:
+            upper_boxes.append(box)
+        elif box.y_min < middle_boundary:
+            middle_boxes.append(box)
+        else:
+            lower_boxes.append(box)
+    assert len(upper_boxes) + len(middle_boxes) + len(lower_boxes) == len(boxes), (
+        f"Bolge segmentasyonu kutu kaybina yol acti: "
+        f"ust={len(upper_boxes)} orta={len(middle_boxes)} alt={len(lower_boxes)} toplam={len(boxes)}"
+    )
+    return upper_boxes, middle_boxes, lower_boxes
+
+
+def reconstruct_region_texts(
+    boxes: List[TextBox],
+    page_height: float,
+    y_threshold: float = None,
+    space_factor: float = None,
+) -> Tuple[str, str, str]:
+    if not boxes or page_height <= 0:
+        return "", "", ""
+    upper_boxes, middle_boxes, lower_boxes = segment_boxes_by_region(boxes, page_height)
+    upper_text = reconstruct_layout_text(upper_boxes, y_threshold, space_factor)
+    middle_text = reconstruct_layout_text(middle_boxes, y_threshold, space_factor)
+    lower_text = reconstruct_layout_text(lower_boxes, y_threshold, space_factor)
+    all_words = set()
+    for box in boxes:
+        for word in box.text.split():
+            all_words.add(word.casefold())
+    region_words = set()
+    for text in (upper_text, middle_text, lower_text):
+        for word in text.split():
+            region_words.add(word.casefold())
+    missing = all_words - region_words
+    assert not missing, (
+        f"Bolge metinleri %d kelime kaybetti: ornek=%s"
+        % (len(missing), list(missing)[:5])
+    )
+    return upper_text, middle_text, lower_text

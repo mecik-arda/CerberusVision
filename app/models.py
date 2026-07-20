@@ -285,3 +285,11 @@ class RuntimeSettingsUpdate(BaseModel):
     document_language: Optional[Literal["auto", "tr", "en"]] = None
     output_language: Optional[Literal["tr", "en"]] = None
     translation_enabled: Optional[bool] = None
+    nmt_enabled: Optional[bool] = None
+    inference_mode: Optional[Literal["multi_stage", "single_pass"]] = None
+    layout_engine: Optional[Literal["hybrid", "y_ratio", "off"]] = None
+    lora_enabled: Optional[bool] = None
+    lora_adapter_path: Optional[str] = Field(default=None, max_length=2048)
+    region_upper_ratio: Optional[float] = Field(default=None, ge=0.10, le=0.45)
+    region_middle_ratio: Optional[float] = Field(default=None, ge=0.50, le=0.80)
+    stage_timeout_seconds: Optional[int] = Field(default=None, ge=60, le=1800)

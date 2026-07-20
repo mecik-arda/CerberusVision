@@ -44,17 +44,23 @@ _system_prompt = (
     "--- LOCATIONS --- "
     "Free-text port and place names belong in location_name; only populate un_location_code when the source "
     "contains a valid five-character UN/LOCODE. POL means port of loading and POD means port of discharge. "
-    "Clean OCR artifacts from port names: extract only the recognizable city/port name. "
+    "Clean OCR artifacts from port names. If a port name has a random prefix before a known city "
+    "(e.g. 'TCEGE ALIAGA' -> 'ALIAGA', 'COP RIO DE JANEIRO' -> 'RIO DE JANEIRO'), "
+    "keep only the city/port name. "
     "Only populate place_of_issue when the document explicitly labels a place of issue; V.DAIRESI, VERGI DAIRESI, "
     "and TAX OFFICE are tax-office labels and must never become place_of_issue. "
     "--- VESSEL --- "
     "vessel_imo_number is a 7-digit IMO number. A vessel name (e.g. 'JAZAN') is NOT an IMO number. "
     "--- WEIGHTS --- "
     "Values marked KG/KGM are weights; values marked M3/CBM are volumes. Gross "
-    "weight belongs in equipment cargo_gross_weight and net cargo weight belongs in cargo_items.weight. Parse "
-    "European-formatted quantities such as 26.080,00 as 26080.00 and 28,16 as 28.16. "
+    "weight belongs in equipment cargo_gross_weight and NET/net weight belongs in cargo_items.weight. "
+    "When OCR shows BRUT and NET together (e.g. 'BRUT:26.080,00 KG- NET: 24.776,00 KG'), "
+    "BRUT=gross=cargo_gross_weight, NET=net=cargo_items.weight. Never put gross in cargo_items. "
+    "Parse European-formatted quantities: 26.080,00 -> 26080.00, 28,16 -> 28.16, 24.776,00 -> 24776.00. "
     "--- CONTACT --- "
-    "A contact name must be a person's name; a telephone label or phone number belongs only in phone_number. "
+    "A contact name must be a person's name, never a telephone number or label. "
+    "If the OCR shows 'TELEPHONE:05325400708', put '05325400708' in phone_number and leave name null. "
+    "Do not put 'TELEPHONE:' or the phone number in the name field. "
     "--- TAX --- "
     "For a shipper, labels such as V.NO, VKN, VERGI NO, TAX ID, CPF, CNPJ, and VAT NO map to that party's party_id. "
     "Never copy party_name into party_id when an explicit tax or party identifier label is absent. "
@@ -79,6 +85,113 @@ _language_names = {
     "auto": "mixed Turkish and English",
     "tr": "Turkish",
     "en": "English",
+}
+
+_STAGE1_SYSTEM_PROMPT = (
+    "Sen bir konsimento belgesi ayristiricisin. "
+    "OCR metninden SADECE taraflar ve belge referans bilgilerini cikar. "
+    "Cikarilacak alanlar: shipping_instruction_reference, document_status_code, "
+    "carrier_booking_reference, issue_date, place_of_issue, export_declaration_number, "
+    "service_contract_reference, parties (SHI/CON/NTF rolleriyle; party_id, party_name, "
+    "address, contact_details, same_as_consignee), document_references, customs_information, remarks. "
+    "Diger tum alanlari bos (null) birak. "
+    "Return ONLY valid JSON matching the provided schema. "
+    "If a field is not present in the document, set it to null. Do not fabricate data. "
+    "--- TARAF KURALLARI --- "
+    "SHIPPER=ihracatçi/satici. CONSIGNEE=alici/ithalatçi. NOTIFY PARTY sirket veya kisi adi olmali, "
+    "referans numarasi veya dosya numarasi olmamali. "
+    "Antetli kagit uzerindeki tasiyici adresi (ornegin 'Hapag-Lloyd, Hamburg') SHIPPER adresi degildir. "
+    "--- REFERANS KURALLARI --- "
+    "shipping_instruction_reference: sadece SI No, SI Reference, Talimat No. "
+    "B/L No, konteyner numarasi, liman adi girilmemeli. Yoksa null. "
+    "carrier_booking_reference: sadece Booking No, BKG Ref, Rezervasyon No. B/L No buraya girilmemeli. "
+    "B/L numaralari document_references icine type_code='BL' ile eklenmeli. "
+    "--- TARIH KURALLARI --- "
+    "ISSUE DATE, DATE OF ISSUE, DATE, TARIH -> issue_date. "
+    "shipping_instruction_date_time sadece saat bilgisi de varsa doldurulmali. "
+    "--- VERGI KURALLARI --- "
+    "V.NO, VKN, VERGI NO, TAX ID, CPF, CNPJ, VAT NO -> party_id. "
+    "party_id ile party_name ayni olmamali. "
+    "--- KONUM KURALLARI --- "
+    "place_of_issue sadece belge duzenleme yeri oldugunda doldurulmali. "
+    "V.DAIRESI, VERGI DAIRESI, TAX OFFICE -> place_of_issue OLAMAZ. "
+    "--- ILETISIM KURALLARI --- "
+    "Contact name bir kisi adi olmali, telefon numarasi olmamali. "
+    "'TELEPHONE:05325400708' -> phone_number='05325400708', name=null. "
+    "Preserve company names, personal names, addresses, identifiers, codes, "
+    "port names, and numeric values exactly as found in the source."
+)
+
+_STAGE2_SYSTEM_PROMPT = (
+    "Sen bir konsimento belgesi ayristiricisin. "
+    "OCR metninden SADECE lojistik ve tasima bilgilerini cikar. "
+    "Cikarilacak alanlar: transport_document_type, freight_payment_term_code, "
+    "transport_plans (leg_sequence_number, transport_mode, port_of_loading, port_of_discharge, "
+    "place_of_receipt, place_of_delivery, carrier_voyage_number, vessel_imo_number). "
+    "Diger tum alanlari bos (null) birak. "
+    "Return ONLY valid JSON matching the provided schema. "
+    "If a field is not present in the document, set it to null. Do not fabricate data. "
+    "--- LIMAN KURALLARI --- "
+    "Serbest metin liman adlari location_name alanina; UN/LOCODE sadece kaynakta "
+    "5 karakterli gecerli bir kod varsa un_location_code alanina. "
+    "POL = port of loading (yukleme limani), POD = port of discharge (bosaltma limani). "
+    "OCR bozukluklarini liman adlarindan temizle: "
+    "'TCEGE ALIAGA' -> 'ALIAGA', 'COP RIO DE JANEIRO' -> 'RIO DE JANEIRO'. "
+    "--- GEMI KURALLARI --- "
+    "vessel_imo_number 7 haneli IMO numarasidir. Gemi adi (ornegin 'JAZAN') IMO numarasi DEGILDIR. "
+    "--- TASIMA TURU KURALLARI --- "
+    "transport_document_type: B/L veya SWB. freight_payment_term_code: PPD (prepaid) veya COL (collect). "
+    "FREIGHT PREPAID -> PPD, FREIGHT COLLECT -> COL. "
+    "Preserve identifiers, codes, port names, and numeric values exactly as found in the source."
+)
+
+_STAGE3_SYSTEM_PROMPT = (
+    "Sen bir konsimento belgesi ayristiricisin. "
+    "OCR metninden SADECE konteyner ve yuk bilgilerini cikar. "
+    "Cikarilacak alanlar: equipment_list (equipment_reference, iso_equipment_code, "
+    "is_shipper_owned, cargo_gross_weight, verified_gross_mass, seals, tare_weight), "
+    "cargo_items (package_quantity, package_kind_code, description_of_goods, "
+    "shipping_marks, commodity_code, weight, volume, equipment_references, "
+    "dangerous_goods_list). "
+    "Diger tum alanlari bos (null) birak. "
+    "Return ONLY valid JSON matching the provided schema. "
+    "If a field is not present in the document, set it to null. Do not fabricate data. "
+    "--- AGIRLIK KURALLARI --- "
+    "KG/KGM -> agirlik, M3/CBM -> hacim. "
+    "BRUT/ GROSS -> cargo_gross_weight (ekipman seviyesinde), NET -> cargo_items.weight. "
+    "Avrupa formatli sayilari ayristir: 26.080,00 -> 26080.00, 28,16 -> 28.16, 24.776,00 -> 24776.00. "
+    "--- KONTEYNER KURALLARI --- "
+    "Konteyner referanslari genellikle 4 harf + 7 rakam formatindadir. "
+    "ISO 6346 kontrol basamagini dogrula. equipment_reference alaninda sakla. "
+    "--- YUK KURALLARI --- "
+    "description_of_goods sadece mal aciklamasini icermeli; baslangictaki paket sayisi "
+    "ve paket turu (PALLETS, CARTONS, BOXES, CRATES) cikarilmali. "
+    "Ahsap ambalaj beyanlari, marks on ekleri ve navlun klozlari description_of_goods disinda tutulmali. "
+    "shipping_marks icinde markalar ve referanslar yer almali. "
+    "Eslesen kargo ekipman referanslari equipment_references altinda iliskilendirilmeli. "
+    "Preserve identifiers, codes, measurement units, and numeric values exactly as found in the source."
+)
+
+_STAGE_FIELD_OWNERSHIP = {
+    1: {
+        "shipping_instruction_reference", "carrier_booking_reference",
+        "shipping_instruction_date_time", "issue_date", "place_of_issue",
+        "export_declaration_number", "service_contract_reference",
+        "parties", "document_references", "customs_information", "remarks",
+    },
+    2: {
+        "transport_document_type", "freight_payment_term_code",
+        "transport_plans",
+    },
+    3: {
+        "equipment_list", "cargo_items",
+    },
+}
+
+_STAGE_PROMPTS = {
+    1: _STAGE1_SYSTEM_PROMPT,
+    2: _STAGE2_SYSTEM_PROMPT,
+    3: _STAGE3_SYSTEM_PROMPT,
 }
 
 
@@ -119,6 +232,154 @@ def reset_llm_pipeline() -> None:
 def get_json_schema() -> Dict[str, Any]:
     schema = ShippingInstruction.model_json_schema()
     return schema
+
+
+@lru_cache(maxsize=4)
+def get_stage_schema(stage: int) -> Dict[str, Any]:
+    full_schema = ShippingInstruction.model_json_schema()
+    owned_fields = _STAGE_FIELD_OWNERSHIP.get(stage, set())
+    if not owned_fields:
+        return full_schema
+    schema_copy = {
+        k: v for k, v in full_schema.items() if k != "properties"
+    }
+    schema_copy["properties"] = {}
+    for field_name in owned_fields:
+        if field_name in full_schema.get("properties", {}):
+            schema_copy["properties"][field_name] = full_schema["properties"][field_name]
+    assert schema_copy.get("properties"), (
+        f"Asama {stage} icin alan bulunamadi"
+    )
+    return schema_copy
+
+
+def build_stage_prompt(
+    ocr_text: str,
+    stage: int,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> str:
+    system_prompt = _STAGE_PROMPTS.get(stage, _system_prompt)
+    schema = get_stage_schema(stage)
+    schema_str = json.dumps(schema, indent=2, ensure_ascii=False)
+    source_language = _language_names.get(document_language, "English")
+    target_language = _language_names.get(output_language, "English")
+    prompt = (
+        f"System: {system_prompt}\n\n"
+        f"The document language is {source_language}. Interpret OCR labels in that language.\n"
+        f"The requested XML content language is {target_language}. Preserve all extracted values in their source "
+        "language during this extraction pass. A dedicated translation pass handles descriptive content later. "
+        "Never alter proper names, addresses, locations, identifiers, codes, measurement units, or enum values.\n\n"
+        f"JSON Schema:\n{schema_str}\n\n"
+        f"OCR Text (layout-preserved):\n{ocr_text}\n\n"
+        f"Extract the shipping instruction data as JSON:"
+    )
+    assert ocr_text.strip(), "OCR metni bos"
+    return prompt
+
+
+def run_stage_inference(
+    ocr_text: str,
+    stage: int,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> Tuple[ShippingInstruction, str]:
+    pipe = get_llm_pipeline()
+    prompt = build_stage_prompt(ocr_text, stage, document_language, output_language)
+    schema = get_stage_schema(stage)
+    config = _build_generation_config_for_schema(schema)
+    result = pipe.generate(prompt, config)
+    raw_output = str(result)
+    assert raw_output.strip(), f"Asama {stage} LLM ciktisi bos"
+    try:
+        cleaned = _extract_json(raw_output)
+        data = json.loads(cleaned)
+        instruction = ShippingInstruction.model_validate(data)
+    except Exception:
+        cleaned = _extract_json(raw_output)
+        data = _parse_json_with_fallback(cleaned)
+        instruction = ShippingInstruction.model_validate(data)
+    return instruction, raw_output
+
+
+def merge_stage_results(
+    stage1: ShippingInstruction,
+    stage2: ShippingInstruction,
+    stage3: ShippingInstruction,
+) -> ShippingInstruction:
+    merged = ShippingInstruction()
+    merged.document_status_code = (
+        stage1.document_status_code
+        or stage2.document_status_code
+        or stage3.document_status_code
+        or DocumentStatusCode.DRAFT
+    )
+    merged.shipping_instruction_date_time = (
+        stage1.shipping_instruction_date_time
+        or stage2.shipping_instruction_date_time
+        or stage3.shipping_instruction_date_time
+    )
+    for field_name in _STAGE_FIELD_OWNERSHIP[1]:
+        value = getattr(stage1, field_name)
+        if value is not None and value != []:
+            setattr(merged, field_name, value)
+    for field_name in _STAGE_FIELD_OWNERSHIP[2]:
+        value = getattr(stage2, field_name)
+        if value is not None and value != []:
+            setattr(merged, field_name, value)
+    for field_name in _STAGE_FIELD_OWNERSHIP[3]:
+        value = getattr(stage3, field_name)
+        if value is not None and value != []:
+            setattr(merged, field_name, value)
+    merged = ShippingInstruction.model_validate(merged.model_dump())
+    assert merged.parties == stage1.parties, "Birlesik parties, stage1'den farkli"
+    assert merged.transport_plans == stage2.transport_plans, (
+        "Birlesik transport_plans, stage2'den farkli"
+    )
+    assert merged.equipment_list == stage3.equipment_list, (
+        "Birlesik equipment_list, stage3'ten farkli"
+    )
+    assert merged.cargo_items == stage3.cargo_items, (
+        "Birlesik cargo_items, stage3'ten farkli"
+    )
+    return merged
+
+
+def run_threestage_extraction(
+    upper_text: str,
+    middle_text: str,
+    lower_text: str,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> Tuple[ShippingInstruction, Dict[int, str]]:
+    assert upper_text.strip() or middle_text.strip() or lower_text.strip(), (
+        "Tum bolge metinleri bos"
+    )
+    raw_outputs: Dict[int, str] = {}
+    stage1_instruction, stage1_raw = run_stage_inference(
+        upper_text if upper_text.strip() else middle_text,
+        1, document_language, output_language,
+    )
+    raw_outputs[1] = stage1_raw
+    stage1_normalized = normalize_extracted_instruction(stage1_instruction, upper_text)
+    stage2_instruction, stage2_raw = run_stage_inference(
+        middle_text if middle_text.strip() else lower_text,
+        2, document_language, output_language,
+    )
+    raw_outputs[2] = stage2_raw
+    stage2_normalized = normalize_extracted_instruction(stage2_instruction, middle_text)
+    stage3_instruction, stage3_raw = run_stage_inference(
+        lower_text if lower_text.strip() else middle_text,
+        3, document_language, output_language,
+    )
+    raw_outputs[3] = stage3_raw
+    stage3_normalized = normalize_extracted_instruction(stage3_instruction, lower_text)
+    merged = merge_stage_results(
+        stage1_normalized, stage2_normalized, stage3_normalized
+    )
+    for stage_num, raw in raw_outputs.items():
+        assert raw.strip(), f"Asama {stage_num} ham cikti bos"
+    return merged, raw_outputs
 
 
 def build_prompt(
@@ -247,6 +508,38 @@ def _extract_labeled_date(
     return _normalize_date_value(value, require_time) if value else None
 
 
+_PORT_PREFIX_PATTERN = re.compile(
+    r"^([A-Z]{2,6})\s+(?=[A-Z]{2,})"
+)
+_KNOWN_PORTS = frozenset({
+    "ALIAGA", "ISTANBUL", "IZMIR", "MERSIN", "ANTALYA", "SAMSUN", "TRABZON",
+    "KARACHI", "HAMBURG", "ROTTERDAM", "ANTWERP", "SINGAPORE", "SHANGHAI",
+    "HONG KONG", "BUSAN", "TOKYO", "NEW YORK", "LOS ANGELES", "MIAMI",
+    "RIO DE JANEIRO", "SANTOS", "DUBAI", "JEBEL ALI", "HO CHI MINH",
+    "HAI PHONG", "COLOMBO", "CHENNAI", "MUMBAI", "LONDON", "FELIXSTOWE",
+    "GENOA", "BARCELONA", "VALENCIA", "PIRAEUS", "GDANSK", "GDYNIA",
+})
+
+
+def _clean_location_name(location) -> None:
+    if location is None or not location.location_name:
+        return
+    name = location.location_name.strip()
+    if not name:
+        return
+    match = _PORT_PREFIX_PATTERN.match(name)
+    if match:
+        remainder = name[match.end():].strip()
+        words = remainder.split()
+        for i in range(len(words), 0, -1):
+            candidate = " ".join(words[:i])
+            if candidate.upper() in _KNOWN_PORTS:
+                location.location_name = candidate
+                return
+        if remainder:
+            location.location_name = remainder
+
+
 def normalize_extracted_instruction(
     instruction: ShippingInstruction,
     ocr_text: str = "",
@@ -351,6 +644,24 @@ def normalize_extracted_instruction(
     ):
         normalized.issue_date = date_match.group(1)
         normalized.shipping_instruction_date_time = None
+    for party in normalized.parties:
+        contact = party.contact_details
+        if contact and contact.name:
+            name_val = contact.name.strip()
+            if re.match(r"(?i)^(?:tel|telefon|telephone)[\s:.\-]+\d", name_val):
+                phone_part = re.sub(r"(?i)^(?:tel|telefon|telephone)[\s:.\-]+", "", name_val)
+                if phone_part.isdigit() and not contact.phone_number:
+                    contact.phone_number = phone_part
+                contact.name = None
+            elif re.fullmatch(r"[\d\s\-()+./]+", name_val):
+                if not contact.phone_number:
+                    contact.phone_number = name_val
+                contact.name = None
+    for plan in normalized.transport_plans:
+        _clean_location_name(plan.port_of_loading)
+        _clean_location_name(plan.port_of_discharge)
+        _clean_location_name(plan.place_of_receipt)
+        _clean_location_name(plan.place_of_delivery)
     return normalized
 
 
@@ -383,7 +694,19 @@ def run_inference_with_fallback(
     ocr_text: str,
     document_language: str = "en",
     output_language: str = "en",
+    segmented_ocr: Optional[Tuple[str, str, str]] = None,
 ) -> Tuple[ShippingInstruction, str]:
+    if segmented_ocr is not None:
+        upper_text, middle_text, lower_text = segmented_ocr
+        merged, raw_outputs = run_threestage_extraction(
+            upper_text, middle_text, lower_text,
+            document_language, output_language,
+        )
+        combined_raw = json.dumps(
+            {str(k): v for k, v in raw_outputs.items()},
+            ensure_ascii=False,
+        )
+        return merged, combined_raw
     raw_output = run_guided_inference(ocr_text, document_language, output_language)
     try:
         return normalize_extracted_instruction(
@@ -399,6 +722,55 @@ def run_inference_with_fallback(
         ), raw_output
 
 
+def _extract_targeted_ocr_excerpt(
+    ocr_text: str, findings: list[dict[str, Any]], context_lines: int = 3
+) -> str:
+    """Extract only OCR lines relevant to the findings, not the full text."""
+    if not findings:
+        return ocr_text
+
+    # Keywords associated with common field paths
+    keyword_map = {
+        "shipper": ("shipper", "exporter", "seller", "gönderici", "ihracatçı"),
+        "consignee": ("consignee", "buyer", "receiver", "alıcı", "ithalatçı"),
+        "party": ("party", "shipper", "consignee", "notify"),
+        "port_of_loading": ("port of loading", "loading", "pol", "yükleme"),
+        "port_of_discharge": ("port of discharge", "discharge", "pod", "boşaltma"),
+        "equipment": ("container", "equipment", "seal", "konteyner"),
+        "weight": ("weight", "gross", "kg", "kgs", "kgm", "ağırlık"),
+        "cargo": ("cargo", "goods", "description", "package", "mal"),
+        "reference": ("reference", "booking", "no", "number", "referans"),
+        "date": ("date", "issue", "tarih"),
+        "vessel": ("vessel", "voyage", "imo", "ship", "gemi"),
+    }
+
+    terms: set[str] = set()
+    for finding in findings:
+        path = finding.get("field_path", "").casefold()
+        for key, keywords in keyword_map.items():
+            if key in path:
+                terms.update(keywords)
+
+    if not terms:
+        return ocr_text
+
+    lines = ocr_text.splitlines()
+    matched_indices: set[int] = set()
+    for i, line in enumerate(lines):
+        lowered = line.casefold()
+        if any(term in lowered for term in terms):
+            for offset in range(-context_lines, context_lines + 1):
+                idx = i + offset
+                if 0 <= idx < len(lines):
+                    matched_indices.add(idx)
+
+    if not matched_indices:
+        return ocr_text
+
+    selected = [lines[i] for i in sorted(matched_indices)]
+    return "\n".join(selected)
+
+
 def build_refinement_prompt(
     ocr_text: str,
     initial_result: ShippingInstruction,
@@ -409,6 +781,13 @@ def build_refinement_prompt(
     schema = json.dumps(get_json_schema(), ensure_ascii=False)
     initial_json = initial_result.model_dump_json(exclude_none=False)
     findings_json = json.dumps(findings, ensure_ascii=False)
+
+    # Use targeted OCR excerpt to reduce token usage
+    targeted_ocr = _extract_targeted_ocr_excerpt(ocr_text, findings)
+    if len(targeted_ocr) * 4 > len(ocr_text) * 3:
+        # Targeted excerpt isn't significantly smaller; use full text
+        targeted_ocr = ocr_text
+
     return (
         f"System: {_system_prompt}\n\n"
         f"The source is {source_language}. Recheck the initial extraction against the OCR text. "
@@ -418,7 +797,7 @@ def build_refinement_prompt(
         f"Validation findings:\n{findings_json}\n\n"
         f"Initial extraction:\n{initial_json}\n\n"
         f"JSON Schema:\n{schema}\n\n"
-        f"OCR Text:\n{ocr_text}\n\n"
+        f"OCR Text:\n{targeted_ocr}\n\n"
         "Return the verified shipping instruction as JSON:"
     )
 

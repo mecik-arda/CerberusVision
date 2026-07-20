@@ -152,8 +152,23 @@ class Settings:
     server: ServerConfig = field(default_factory=ServerConfig)
     interface: InterfacePreferences = field(default_factory=InterfacePreferences)
     ocr_lang: str = field(default_factory=lambda: os.environ.get("OCR_LANG", "en"))
+    nmt_enabled: bool = os.environ.get("NMT_ENABLED", "1") == "1"
+    nmt_fallback_to_llm: bool = os.environ.get("NMT_FALLBACK_TO_LLM", "1") == "1"
     line_grouping_y_threshold: float = 15.0
     horizontal_space_factor: float = 0.15
+    region_segmentation_enabled: bool = (
+        os.environ.get("REGION_SEGMENTATION_ENABLED", "1") == "1"
+    )
+    florence_enabled: bool = (
+        os.environ.get("FLORENCE_ENABLED", "0") == "1"
+    )
+    inference_mode: str = os.environ.get("INFERENCE_MODE", "multi_stage")
+    layout_engine: str = os.environ.get("LAYOUT_ENGINE", "y_ratio")
+    lora_enabled: bool = os.environ.get("LORA_ENABLED", "0") == "1"
+    lora_adapter_path: str = os.environ.get("LORA_ADAPTER_PATH", "")
+    region_upper_ratio: float = _env_float("REGION_UPPER_RATIO", 0.35)
+    region_middle_ratio: float = _env_float("REGION_MIDDLE_RATIO", 0.65)
+    stage_timeout_seconds: int = _env_int("STAGE_TIMEOUT_SECONDS", 300)
     sse_timeout_seconds: int = max(30, _env_int("SSE_TIMEOUT_SECONDS", 1800))
 
 
@@ -197,6 +212,25 @@ def load_persistent_settings() -> None:
                 )
             ),
         )
+    inference_payload = payload.get("inference")
+    if isinstance(inference_payload, dict):
+        if inference_payload.get("mode") in {"multi_stage", "single_pass"}:
+            settings.inference_mode = inference_payload["mode"]
+        if inference_payload.get("layout_engine") in {"hybrid", "y_ratio", "off"}:
+            settings.layout_engine = inference_payload["layout_engine"]
+        if isinstance(inference_payload.get("lora_enabled"), bool):
+            settings.lora_enabled = inference_payload["lora_enabled"]
+        if isinstance(inference_payload.get("lora_adapter_path"), str):
+            settings.lora_adapter_path = inference_payload["lora_adapter_path"]
+        if isinstance(inference_payload.get("region_upper_ratio"), (int, float)):
+            val = inference_payload["region_upper_ratio"]
+            settings.region_upper_ratio = max(0.1, min(0.45, float(val)))
+        if isinstance(inference_payload.get("region_middle_ratio"), (int, float)):
+            val = inference_payload["region_middle_ratio"]
+            settings.region_middle_ratio = max(0.5, min(0.8, float(val)))
+        if isinstance(inference_payload.get("stage_timeout_seconds"), (int, float)):
+            val = inference_payload["stage_timeout_seconds"]
+            settings.stage_timeout_seconds = max(60, min(1800, int(val)))
 
 
 def save_persistent_settings() -> None:
@@ -210,6 +244,15 @@ def save_persistent_settings() -> None:
             "document_language": settings.interface.document_language,
             "output_language": settings.interface.output_language,
             "translation_enabled": settings.interface.translation_enabled,
+        },
+        "inference": {
+            "mode": settings.inference_mode,
+            "layout_engine": settings.layout_engine,
+            "lora_enabled": settings.lora_enabled,
+            "lora_adapter_path": settings.lora_adapter_path,
+            "region_upper_ratio": settings.region_upper_ratio,
+            "region_middle_ratio": settings.region_middle_ratio,
+            "stage_timeout_seconds": settings.stage_timeout_seconds,
         },
     }
     temporary_path = SETTINGS_FILE.with_suffix(".tmp")
