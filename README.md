@@ -99,18 +99,21 @@ kaydırma ve güvenli tampon temizleme işlevleri bulunur. Log endpoint'leri Cer
 API anahtarı korumasını kullanır; Bearer değerleri, API anahtarları, tokenlar ve
 secret kalıpları tarayıcıya gönderilmeden önce maskelenir.
 
-Arama simgesinin yanındaki ayarlar paneli etkin yerel model, OpenVINO aygıtı,
-azami çıktı token sayısı ve KV-cache bilgisini gösterir. Panel; proje `models/`
-dizini, `~/models`, Hugging Face önbelleği ve Ollama manifestlerinde bulunan WSL
-modellerini listeler ve etkin modeli işaretler. Cerberus sunucu API anahtarı yalnızca
-tarayıcı sekmesinin `sessionStorage` alanında, DeepSeek anahtarı ise yalnızca çalışan
-FastAPI sürecinin belleğinde tutulur. DeepSeek denetim modu ve risk eşiği aynı
-panelden çalışma zamanında değiştirilebilir; anahtar hiçbir API yanıtında geri
-döndürülmez.
+Arama simgesinin yanındaki ayarlar paneli genişletilmiş çıkarım kontrolleri sunar:
+- **Çıkarım Motoru:** 3 Aşamalı Modüler Çıkarım veya Tek Geçiş seçenekleri.
+- **Mizanpaj Algoritması:** Florence-2 VLM tabanlı Hibrit mod veya Y-Oranı (statik).
+- **LoRA İnce Ayar:** Kullanıcı tarafından eğitilmiş özel adaptörlerin (models/) seçimi.
+- **Cihaz & Model:** Etkin OpenVINO modeli, GPU/CPU aygıtı ve limitler.
 
-Seçili yerel model, DeepSeek denetim modu, risk eşiği, tema, arayüz dili, belge
-dili, XML çıktı dili ve çeviri tercihi `.cerberus-settings.json` içinde kalıcı
-tutulur. DeepSeek ve Cerberus API anahtarları bu dosyaya hiçbir zaman yazılmaz.
+Panel; proje `models/` dizini, `~/models`, Hugging Face önbelleği ve Ollama
+manifestlerinde bulunan WSL modellerini listeler ve etkin modeli işaretler. Cerberus
+sunucu API anahtarı yalnızca tarayıcı sekmesinin `sessionStorage` alanında, DeepSeek
+anahtarı ise yalnızca çalışan FastAPI sürecinin belleğinde tutulur. DeepSeek denetim
+modu ve risk eşiği panelden anlık değiştirilebilir.
+
+Seçili yerel model, mizanpaj algoritması, LoRA ayarları, bölge oranları, DeepSeek
+denetim modu, tema ve dil tercihleri `.cerberus-settings.json` içinde kalıcı tutulur.
+DeepSeek ve Cerberus API anahtarları bu dosyaya hiçbir zaman yazılmaz.
 
 Tailwind sınıfları geliştirme sırasında derlenip `static/app.css` içinde tutulur.
 Arayüz çalışma zamanında Tailwind CDN veya Google Fonts bağlantısı kurmaz. CSS'i

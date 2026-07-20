@@ -691,12 +691,16 @@ async def _process_document_pipeline_locked(
         logger.exception("session=%s pipeline hatasi: %s", session_id, e)
         try: ocr_len = len(ocr_text)
         except NameError: ocr_len = 0
-        if ocr_len > 100000:
+        
+        if isinstance(e, ImportError):
+            msg = f"Hata: Gerekli bir kutuphane eksik ({getattr(e, 'name', str(e))}). Lutfen 'einops', 'timm', 'torchvision' paketlerini yukleyin veya ayarlardan Y-Orani secin."
+        elif ocr_len > 100000:
             msg = f"Hata: Belge metni cok buyuk ({ocr_len // 1024} KB). Bu belge tek bir konşimento yerine cok sayfali bir dokuman olabilir. Lutfen tek sayfalik konşimento deneyin."
-        elif ocr_len < 50:
+        elif ocr_len < 50 and not isinstance(e, ValueError) and "paddle" not in str(e).lower():
             msg = "Hata: Belgede okunabilir metin bulunamadi. Lutfen daha net taranmis bir belge yukleyin."
         else:
-            msg = "Hata: Belge isleme sirasinda beklenmeyen bir sorun olustu."
+            msg = f"Hata: Belge isleme sirasinda beklenmeyen bir sorun olustu ({type(e).__name__})."
+            
         status_queue.put_nowait(_emit_status(
             session_id, ProcessingStatus.ERROR, msg,
         ))
