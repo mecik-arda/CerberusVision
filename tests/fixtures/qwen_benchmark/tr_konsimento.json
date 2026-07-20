@@ -1,0 +1,40 @@
+{
+  "case_name": "TR_Konsimento_Talimati",
+  "pdf": "veriler/konsimentotalimatornek3s.pdf",
+  "document_language": "tr",
+  "output_language": "tr",
+  "ocr_lang": "latin",
+  "expected": {
+    "document_status_code": "DRF",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "COL",
+    "parties": [
+      {
+        "party_role_code": "SHI",
+        "party_name": "FORENTIS GLOBAL ORMAN URUNLERI SAN. VE TIC.LTD.STI",
+        "party_id": "3881946820",
+        "address": {
+          "street": "YESILYURT MAH.4306 SOK. AYDIN APT. NO:3/5 KEPEZ/ANTALYA/TURKEY",
+          "country_code": "TR"
+        }
+      },
+      {
+        "party_role_code": "CON",
+        "party_name": "SHAHEEN PLASTIC",
+        "address": {
+          "country_code": "PK"
+        }
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ALIAGA"
+        },
+        "port_of_discharge": {
+          "location_name": "KARACHI"
+        }
+      }
+    ]
+  }
+}
