@@ -52,3 +52,6 @@ veriler/
 
 .env
 .cerberus-settings.json
+.claude/
+image*.png
+ui_concept*.png
