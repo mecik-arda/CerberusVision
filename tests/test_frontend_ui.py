@@ -47,8 +47,9 @@ def test_dark_theme_is_class_based_and_persistent():
 def test_frontend_assets_are_local_and_precompiled():
     assert "cdn.tailwindcss.com" not in INDEX_HTML
     assert "fonts.googleapis.com" not in INDEX_HTML
-    assert '<link rel="stylesheet" href="/static/app.css?v=15">' in INDEX_HTML
-    assert '<script src="/static/app.js?v=15"></script>' in INDEX_HTML
+    assert '<link rel="stylesheet" href="/static/app.css?v=17">' in INDEX_HTML
+    assert '<link rel="stylesheet" href="/static/workspace.css?v=2">' in INDEX_HTML
+    assert '<script src="/static/app.js?v=17"></script>' in INDEX_HTML
     assert len(APP_CSS) > 10000
 
 
@@ -57,8 +58,12 @@ def test_multifile_multiformat_queue_is_available():
     assert 'id="fileQueue"' in INDEX_HTML
     assert "const MAX_BATCH_FILES = 10" in APP_JS
     assert "async function handleFiles(fileList)" in APP_JS
-    assert "for (const job of documentQueue)" in APP_JS
+    assert "const pendingJobs = documentQueue.filter" in APP_JS
+    assert "for (const job of pendingJobs)" in APP_JS
     assert "await processQueuedFile(job, controller, requestId)" in APP_JS
+    assert 'id="startProcessingBtn"' in INDEX_HTML
+    assert "startProcessingBtn.addEventListener('click', startSelectedFiles)" in APP_JS
+    assert "await previewSelectedFile(files[0])" in APP_JS
     assert "handleFiles(e.dataTransfer.files)" in APP_JS
     assert "handleFiles(e.target.files)" in APP_JS
 
@@ -75,6 +80,8 @@ def test_runtime_messages_and_generated_rows_use_translations():
 def test_every_static_button_has_an_explicit_behavior_contract():
     interactive_button_ids = {
         "globalSearchBtn",
+        "logsBtn",
+        "logsClearBtn",
         "settingsBtn",
         "settingsRefreshBtn",
         "settingsSaveBtn",
@@ -90,6 +97,8 @@ def test_every_static_button_has_an_explicit_behavior_contract():
         "runCloudReviewBtn",
         "saveDraftBtn",
         "approveDataBtn",
+        "startProcessingBtn",
+        "clearSelectionBtn",
     }
     for button_id in interactive_button_ids:
         assert f'id="{button_id}"' in INDEX_HTML
@@ -119,11 +128,25 @@ def test_header_search_notifications_and_profile_are_functional():
     assert "aria-expanded" in INDEX_HTML
 
 
+def test_live_log_terminal_is_streamed_and_bounded():
+    assert 'id="logsBtn"' in INDEX_HTML
+    assert 'id="logsPanel"' in INDEX_HTML
+    assert 'id="logsOutput"' in INDEX_HTML
+    assert "'/api/logs/stream'" in APP_JS
+    assert "'Last-Event-ID'" in APP_JS
+    assert "const MAX_RENDERED_LOGS = 500" in APP_JS
+    assert "logsOutput.children.length > MAX_RENDERED_LOGS" in APP_JS
+    assert "logsAutoScroll.checked" in APP_JS
+
+
 def test_processing_languages_and_runtime_model_settings_are_functional():
     assert 'id="documentLanguage"' in INDEX_HTML
     assert 'id="outputLanguage"' in INDEX_HTML
+    assert '<option value="auto"' in INDEX_HTML
+    assert 'id="translationEnabled"' in INDEX_HTML
     assert "formData.append('document_language', documentLanguage.value)" in APP_JS
     assert "formData.append('output_language', outputLanguage.value)" in APP_JS
+    assert "formData.append('translation_enabled', String(translationEnabled.checked))" in APP_JS
     assert "cerberus-document-language" in APP_JS
     assert "cerberus-output-language" in APP_JS
     assert 'id="deepSeekApiKeyInput"' in INDEX_HTML
@@ -131,6 +154,38 @@ def test_processing_languages_and_runtime_model_settings_are_functional():
     assert 'id="detectedModelsList"' in INDEX_HTML
     assert "'/api/runtime-settings'" in APP_JS
     assert "renderDetectedModels" in APP_JS
+    assert 'name="local-model"' in APP_JS
+    assert "payload.local_model_path" in APP_JS
+
+
+def test_all_mandatory_approval_fields_are_editable():
+    required_paths = {
+        "shipping_instruction_reference",
+        "shipping_instruction_date_time",
+        "carrier_booking_reference",
+        "issue_date",
+        "place_of_issue.location_name",
+        "parties[0].party_name",
+        "parties[0].address.street",
+        "parties[0].address.city",
+        "parties[0].address.country_code",
+        "parties[1].party_name",
+        "parties[1].address.street",
+        "parties[1].address.city",
+        "parties[1].address.country_code",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].weight.weight_value",
+    }
+    for path in required_paths:
+        assert f'data-field="{path}"' in INDEX_HTML
+        assert f"'{path}'" in APP_JS
+    assert 'id="validationSummary"' in INDEX_HTML
+    assert "renderValidationSummary" in APP_JS
 
 
 def test_pdf_toolbar_supports_copy_zoom_fullscreen_and_pages():

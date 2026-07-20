@@ -19,12 +19,12 @@ hakemi olarak kullanılır.
 
 ```mermaid
 graph LR
-    A[📄 PDF / PNG / JPEG] --> B[👁️ Spatial OCR]
-    T[📝 DOCX / XML] --> C
-    B --> C[🧠 Yerel Qwen]
-    C --> D[⚙️ DCSA XML / XSD]
-    D --> E[🛡️ Yerel Risk Kontrolleri]
-    E -.->|Gerekirse| F[☁️ Kısa DeepSeek Yorumu]
+    A[PDF / PNG / JPEG] --> B[Spatial OCR]
+    T[DOCX / XML] --> C
+    B --> C[Yerel Qwen]
+    C --> D[DCSA XML / XSD]
+    D --> E[Yerel Risk Kontrolleri]
+    E -.->|Gerekirse| F[Kısa DeepSeek Yorumu]
 
     style A fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
     style B fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
@@ -44,7 +44,7 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
-- Test sonucu: `135 passed` (Ubuntu WSL2)
+- Test sonucu: `151 passed` (Ubuntu WSL2)
 
 Kod düzenleme, Git işlemleri, testler ve sunucu doğrudan WSL ext4 dosya sistemi
 içinde yürütülür. Windows tarafında ikinci bir kaynak kopya veya senkronizasyon
@@ -82,6 +82,13 @@ kopyalama, `%100 / %125 / %150 / %200` yakınlaştırma, tam ekran, sayfa sayım
 sayfa düğmeleri ve önceki/sonraki gezinme işlevlerini sunar. Sonuç eylemleri,
 gerekli veri oluşana kadar açıkça devre dışı tutulur.
 
+Arama düğmesinin yanındaki terminal düğmesi Python, Uvicorn, HTTP ve belge işleme
+olaylarını sunucudan SSE ile canlı gösterir. Sunucu ve tarayıcı en fazla 500 kaydı
+tutar; bağlantı koptuğunda son olay kimliğinden devam eder. Panelde otomatik
+kaydırma ve güvenli tampon temizleme işlevleri bulunur. Log endpoint'leri Cerberus
+API anahtarı korumasını kullanır; Bearer değerleri, API anahtarları, tokenlar ve
+secret kalıpları tarayıcıya gönderilmeden önce maskelenir.
+
 Arama simgesinin yanındaki ayarlar paneli etkin yerel model, OpenVINO aygıtı,
 azami çıktı token sayısı ve KV-cache bilgisini gösterir. Panel; proje `models/`
 dizini, `~/models`, Hugging Face önbelleği ve Ollama manifestlerinde bulunan WSL
@@ -90,6 +97,10 @@ tarayıcı sekmesinin `sessionStorage` alanında, DeepSeek anahtarı ise yalnız
 FastAPI sürecinin belleğinde tutulur. DeepSeek denetim modu ve risk eşiği aynı
 panelden çalışma zamanında değiştirilebilir; anahtar hiçbir API yanıtında geri
 döndürülmez.
+
+Seçili yerel model, DeepSeek denetim modu, risk eşiği, tema, arayüz dili, belge
+dili, XML çıktı dili ve çeviri tercihi `.cerberus-settings.json` içinde kalıcı
+tutulur. DeepSeek ve Cerberus API anahtarları bu dosyaya hiçbir zaman yazılmaz.
 
 Tailwind sınıfları geliştirme sırasında derlenip `static/app.css` içinde tutulur.
 Arayüz çalışma zamanında Tailwind CDN veya Google Fonts bağlantısı kurmaz. CSS'i
@@ -154,27 +165,17 @@ aynı içerik yeniden indirilmez. Üçüncü taraf belgelerin kullanım/lisans h
 sonucuyla birlikte verilmiş sayılmaz; veri kümesine almadan önce kaynak koşulları
 kontrol edilmelidir.
 
-## Model profilleri
+## Yerel model
 
-| Profil | Model | Aygıt | Kullanım |
-|---|---|---|---|
-| `gpu` (varsayılan) | Qwen2.5-7B-Instruct INT4 OpenVINO | Arc 140V GPU | Hızlı günlük işleme |
-| `quality` / `14b` | Qwen2.5-14B-Instruct INT4 OpenVINO | CPU | Opsiyonel daha büyük yerel model |
+CerberusVision tek genel amaçlı yerel model kullanır: Qwen2.5-7B-Instruct INT4
+OpenVINO. Varsayılan aygıt Intel Arc 140V GPU'dur. İkinci bir genel amaçlı model
+aynı anda veya alternatif kalite profili olarak çalıştırılmaz; bellek ve bakım
+bütçesi 7B çıkarım, deterministik normalizasyon ve gerektiğinde yine aynı modelle
+yapılan düşük güvenli alan doğrulamasına ayrılır.
 
-Profiller aynı anda yüklenmez. 7B GPU profili ana modeldir; 14B modeli silinmeden
-opsiyonel CPU profili olarak tutulur.
-
-Arc 140V üzerinde 14B model dosyası yaklaşık 7.9 GiB'dir. WSL/OpenVINO GPU
-derlemesinde bu ağırlıklar USM grafik bellek havuzunu doldurduğu için ek çalışma
-tamponu ayrılamamıştır. WSL RAM'i 24 GiB'ye yükseltildiğinde dahi süreç yaklaşık
-9.54 GiB RSS'de GPU USM tahsis hatası vermiştir; dolayısıyla sorun normal WSL RAM
-tükenmesi değildir. Aynı model CPU'da, 4.2 GiB büyüklüğündeki 7B profil ise GPU'da
-başarıyla çalışır.
-
-Örnek PDF ile yapılan gerçek denetimde 7B GPU hattı yaklaşık 74–81 saniyede,
-14B CPU hattı yaklaşık 10 dakikada tamamlanmıştır. Son sıkılaştırılmış 7B sonucu;
-konteyner, brüt/net ağırlık, hacim, liman ve taraf şehirlerini 14B sonucu ile aynı
-kritik değerlere eşleştirmiştir. Model çıktıları yine de insan onayından geçmelidir.
+Model seçici yalnızca doğrudan çalıştırılabilen OpenVINO dizinlerini etkinleştirir.
+Model değiştirildiğinde mevcut çıkarım hattı sıfırlanır ve yeni model ilk istekte
+yüklenir. Tüm model sonuçları kullanıcı onayından geçmelidir.
 
 ## İlk WSL2 kurulumu
 
@@ -235,7 +236,7 @@ Betik kullanıcı hesabına sabitlenmiş `uv 0.11.28` ve yönetilen Python 3.12 
 sistem Python'una ve `apt` paketlerine dokunmaz. Tekrar çalıştırılabilir ve mevcut
 `.venv` ortamını koruyarak bağımlılıkları günceller.
 
-### 5. Varsayılan GPU modelini indir
+### 5. Yerel GPU modelini indir
 
 ```bash
 ./scripts/wsl_model_setup.sh
@@ -245,23 +246,11 @@ Varsayılan depo
 [`OpenVINO/Qwen2.5-7B-Instruct-int4-ov`](https://huggingface.co/OpenVINO/Qwen2.5-7B-Instruct-int4-ov)
 ve hedef `models/Qwen-2.5-7B-Instruct-INT4` dizinidir.
 
-Opsiyonel 14B CPU modelini kurmak için:
+### 6. Model profilini doğrula
 
 ```bash
-QWEN_MODEL_ID='OpenVINO/Qwen2.5-14B-Instruct-int4-ov' \
-QWEN_MODEL_PATH="$PWD/models/Qwen-2.5-14B-Instruct-INT4" \
-./scripts/wsl_model_setup.sh
-```
-
-Hazır OpenVINO 14B modelinin kaynağı:
-[`OpenVINO/Qwen2.5-14B-Instruct-int4-ov`](https://huggingface.co/OpenVINO/Qwen2.5-14B-Instruct-int4-ov).
-
-### 6. Model profilini seç
-
-```bash
-./scripts/wsl_profile.sh gpu      # 7B + GPU (varsayılan)
-./scripts/wsl_profile.sh quality  # 14B + CPU
-./scripts/wsl_profile.sh show     # etkin yolu ve aygıtı göster
+./scripts/wsl_profile.sh gpu
+./scripts/wsl_profile.sh show
 ```
 
 Profil değişikliğinden sonra çalışan sunucuyu yeniden başlatın.
@@ -395,7 +384,10 @@ Audit CLI:
 | `POST` | `/api/upload` | En fazla 50 MB PDF/DOCX/XML/PNG/JPEG yükler ve session ID döndürür |
 | `POST` | `/api/upload-and-stream` | Desteklenen belgeyi yükler ve SSE durum akışını başlatır |
 | `GET` | `/api/runtime-settings` | Model, aygıt, WSL model keşfi ve güvenli yapılandırma durumunu döndürür |
-| `PUT` | `/api/runtime-settings` | DeepSeek anahtarı, denetim modu ve risk eşiğini süreç belleğinde günceller |
+| `PUT` | `/api/runtime-settings` | Kalıcı kullanıcı tercihlerini ve süreç içi DeepSeek anahtarını günceller |
+| `GET` | `/api/logs` | Maskelenmiş son sistem loglarını döndürür |
+| `DELETE` | `/api/logs` | Bellekteki canlı log tamponunu temizler |
+| `GET` | `/api/logs/stream` | Maskelenmiş sistem loglarını SSE ile canlı yayınlar |
 | `GET` | `/api/stream/{session_id}` | SSE işlem durumları |
 | `GET` | `/api/status/{session_id}` | Son işlem durumu |
 | `PUT` | `/api/sessions/{session_id}/draft` | Düzenlenmiş taslağı ve XML'i kaydeder |
@@ -418,6 +410,10 @@ Oturum biçimine uyan ve `LOG_RETENTION_DAYS` süresini aşan dizinler günde en
 bir kez güvenli biçimde temizlenir. `logs/`, `uploads/`, `models/`, `.env` ve
 OpenVINO önbelleği Git'e eklenmez.
 
+Canlı terminal bu audit dosyalarının içeriğini yayınlamaz; yalnızca çalışma zamanı
+olaylarını sınırlı bellek tamponundan gösterir. Hassas anahtar kalıpları yayın
+öncesinde maskelenir.
+
 ## Proje yapısı
 
 ```text
@@ -425,10 +421,12 @@ app/
   document_ingestion.py  Format/imza doğrulama ve DOCX/XML metin çıkarımı
   security.py           Opsiyonel API anahtarı ve kayan pencere yükleme limiti
   llm/                 Yerel Qwen, yerel risk ve kısa DeepSeek hakemi
+  llm/evaluation.py   Alan bazlı Qwen benchmark değerlendirmesi
   llm/document_relevance.py  Keşif için yalnızca konu ve İngilizce filtresi
   ocr/                 PaddleOCR ve uzamsal satır gruplama
   utils/model_discovery.py  WSL içindeki bilinen yerel model depolarını tarar
-  routes/              Upload, SSE, taslak, onay ve cloud-review API'leri
+  utils/live_logs.py  Sınırlı, maskelenmiş canlı log tamponu
+  routes/              Upload, SSE, canlı log, taslak, onay ve cloud-review API'leri
   search/              Resmî arama API'leri, güvenli indirme ve yerel ön eleme
   xml/                 DCSA XML dönüştürme ve XSD doğrulama
 scripts/
@@ -436,15 +434,43 @@ scripts/
   wsl_sync.sh          WSL-native kaynak/Git çalışma dizimini doğrular
   wsl_setup.sh         uv, Python ve bağımlılık kurulumu
   wsl_model_setup.sh   OpenVINO modelini indirir
-  wsl_profile.sh       7B GPU / 14B CPU profilini seçer
+  wsl_profile.sh       7B GPU profilini uygular ve doğrular
   wsl_run.sh           FastAPI sunucusunu başlatır
   wsl_smoke.py         Bağımlılık, OCR ve model probu
   wsl_api_smoke.sh     Readiness ve tam HTTP/SSE denetimi
   wsl_gpu_info.py      OpenVINO GPU özellik raporu
+  evaluate_qwen.py     Alan bazlı Qwen benchmark raporu
 static/
   app.css              Yerel, minify edilmiş Tailwind çıktısı
-tests/                 135 otomatik regresyon testi
+tests/                 151 otomatik regresyon testi
 ```
+
+## Qwen 7B doğruluk ölçümü
+
+Sabit değerlendirme örnekleri `tests/fixtures/qwen_benchmark/` altında tutulur.
+Her örnek OCR metnini ve yalnızca doğrulanacak beklenen alanları içerir. Alan bazlı
+doğruluk, eksik değerler ve uyuşmayan değerler aşağıdaki komutla raporlanır:
+
+```bash
+python scripts/evaluate_qwen.py --output logs/qwen_benchmark.json
+```
+
+Yeni belge türleri bu veri kümesine eklendiğinde istem, doğrulama ve yeniden işleme
+değişiklikleri aynı alanlar üzerinden karşılaştırılabilir. İşleme hattı düşük güvenli
+sonuçlarda yalnızca aynı Qwen 7B modelini ikinci bir doğrulama geçişinde kullanır ve
+risk puanı düşmeyen adayı kabul etmez. Çeviri açıksa tanımlayıcılar ve sayısal alanlar
+korunarak yalnızca açıklayıcı XML değerleri yine aynı modelle ayrı bir geçişte çevrilir.
+
+20 Temmuz 2026 tarihinde gerçek Qwen2.5-7B-Instruct INT4 hattıyla iki sabit örnek
+üzerinde yapılan son ölçümde 25 alanın 25'i eşleşmiş, eksik ve uyuşmayan alan
+oluşmamıştır. Bu yüzde 100 sonucu yalnızca mevcut küçük ve kontrollü regresyon
+kümesini ifade eder; genel belge doğruluğu garantisi değildir.
+
+`Document Status Code` çıkarım sırasında uygulama tarafından `DRF`, başarılı onayda
+`FNL` yapılır. `SI NO`, `TALİMAT NO`, `BOOKING NO`, `BKG REF`, `REZERVASYON NO`,
+`ISSUE DATE`, `DATE OF ISSUE` ve tarih/saat varyasyonları model çıktısından sonra
+deterministik olarak doğrulanır. Yerel XSD'de opsiyonel olan ve kaynak belgede
+bulunmayan referans/tarih alanları uydurulmaz ve tek başına onayı engellemez.
 
 ## Lisans
 

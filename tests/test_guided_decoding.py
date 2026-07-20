@@ -7,6 +7,7 @@ from app.llm.inference import (
     _parse_json_with_fallback,
     get_json_schema,
     build_prompt,
+    normalize_extracted_instruction,
     parse_llm_output,
 )
 
@@ -204,6 +205,85 @@ def test_prompt_applies_document_and_output_languages_without_translating_identi
     prompt = build_prompt("V.NO: 3881946820", "tr", "en")
     assert "document language is Turkish" in prompt
     assert "requested XML content language is English" in prompt
-    assert "Never translate proper names" in prompt
+    assert "Never alter proper names" in prompt
+    assert "dedicated translation pass" in prompt
     assert "V.NO" in prompt
     assert "party_id" in prompt
+
+
+def test_deterministic_normalization_moves_plain_date_and_removes_name_as_id():
+    instruction = ShippingInstruction.model_validate(VALID_LLM_OUTPUT)
+    instruction.issue_date = None
+    instruction.shipping_instruction_date_time = "2026-01-15"
+    instruction.parties[0].party_id = instruction.parties[0].party_name
+
+    normalized = normalize_extracted_instruction(
+        instruction,
+        "DATE: 2026-01-15",
+    )
+
+    assert normalized.issue_date == "2026-01-15"
+    assert normalized.shipping_instruction_date_time is None
+    assert normalized.parties[0].party_id is None
+    assert instruction.parties[0].party_id == instruction.parties[0].party_name
+
+
+def test_deterministic_normalization_extracts_labeled_control_fields():
+    instruction = ShippingInstruction.model_validate(
+        {
+            "place_of_issue": {"location_name": "ANTALYA KURUMLAR"},
+            "parties": [],
+            "transport_plans": [],
+            "equipment_list": [],
+            "cargo_items": [],
+        }
+    )
+    ocr_text = (
+        "SI NO: SI/TR-900\n"
+        "BKG REF: BK-12345\n"
+        "SHIPPING INSTRUCTION DATE/TIME: 20.07.2026 14:35\n"
+        "ISSUE DATE: 19/07/2026\n"
+        "V.DAIRESI: ANTALYA KURUMLAR"
+    )
+
+    normalized = normalize_extracted_instruction(instruction, ocr_text)
+
+    assert normalized.shipping_instruction_reference == "SI/TR-900"
+    assert normalized.document_status_code == "DRF"
+    assert normalized.carrier_booking_reference == "BK-12345"
+    assert normalized.shipping_instruction_date_time == "2026-07-20T14:35:00"
+    assert normalized.issue_date == "2026-07-19"
+    assert normalized.place_of_issue is None
+
+
+def test_deterministic_normalization_does_not_invent_absent_references_or_dates():
+    instruction = ShippingInstruction()
+
+    normalized = normalize_extracted_instruction(
+        instruction,
+        "POL: ALIAGA\nPOD: KARACHI\nCONTAINER: MSKU1875698",
+    )
+
+    assert normalized.document_status_code == "DRF"
+    assert normalized.shipping_instruction_reference is None
+    assert normalized.carrier_booking_reference is None
+    assert normalized.shipping_instruction_date_time is None
+    assert normalized.issue_date is None
+
+
+def test_deterministic_normalization_removes_leading_package_words():
+    instruction = ShippingInstruction.model_validate(
+        {
+            "cargo_items": [
+                {
+                    "package_quantity": 32,
+                    "package_kind_code": "PALLET",
+                    "description_of_goods": "32 PALLETS MDF LAMINATE FLOOR",
+                }
+            ]
+        }
+    )
+
+    normalized = normalize_extracted_instruction(instruction)
+
+    assert normalized.cargo_items[0].description_of_goods == "MDF LAMINATE FLOOR"

@@ -17,6 +17,16 @@ from app.routes import processing
 from tests.test_validator import create_complete_si
 
 
+@pytest.fixture(autouse=True)
+def isolate_qwen_post_processing(monkeypatch):
+    monkeypatch.setattr(settings.model, "refinement_enabled", False)
+    monkeypatch.setattr(
+        processing,
+        "translate_instruction_content",
+        lambda instruction, output_language: (instruction, ""),
+    )
+
+
 def _docx_bytes(text: str) -> bytes:
     output = io.BytesIO()
     with ZipFile(output, "w") as archive:

@@ -257,12 +257,14 @@ class ProcessingResult(BaseModel):
     cloud_review_used: bool = False
     cloud_review_available: bool = False
     local_risk_score: Optional[float] = None
+    local_refinement_used: bool = False
     local_warnings: List[AuditFinding] = Field(default_factory=list)
     suspicious_fields: List[str] = Field(default_factory=list)
     validation_errors: List[str] = Field(default_factory=list)
     missing_fields: List[FieldValidation] = Field(default_factory=list)
-    document_language: Optional[Literal["tr", "en"]] = None
+    document_language: Optional[Literal["auto", "tr", "en"]] = None
     output_language: Optional[Literal["tr", "en"]] = None
+    translation_enabled: bool = True
     message: Optional[str] = None
 
 
@@ -277,3 +279,9 @@ class RuntimeSettingsUpdate(BaseModel):
     clear_deepseek_api_key: bool = False
     deepseek_review_mode: Optional[Literal["off", "manual", "risk", "always"]] = None
     deepseek_risk_threshold: Optional[int] = Field(default=None, ge=0, le=100)
+    local_model_path: Optional[str] = Field(default=None, max_length=2048)
+    theme: Optional[Literal["system", "light", "dark"]] = None
+    interface_language: Optional[Literal["tr", "en"]] = None
+    document_language: Optional[Literal["auto", "tr", "en"]] = None
+    output_language: Optional[Literal["tr", "en"]] = None
+    translation_enabled: Optional[bool] = None

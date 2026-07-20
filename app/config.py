@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 STATIC_DIR = BASE_DIR / "static"
 XSD_DIR = BASE_DIR / "app" / "xml" / "schemas"
 DATA_DIR = BASE_DIR / "veriler"
+SETTINGS_FILE = BASE_DIR / ".cerberus-settings.json"
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -41,7 +43,15 @@ class ModelConfig:
         "OPENVINO_CACHE_DIR", str(BASE_DIR / ".openvino_cache")
     )
     kv_cache_precision: str = os.environ.get("OPENVINO_KV_CACHE_PRECISION", "u8")
-    max_new_tokens: int = 2048
+    max_new_tokens: int = _env_int("QWEN_MAX_NEW_TOKENS", 2048)
+    refinement_enabled: bool = os.environ.get("QWEN_REFINEMENT_ENABLED", "1") == "1"
+    refinement_risk_threshold: int = _env_int("QWEN_REFINEMENT_RISK_THRESHOLD", 30)
+
+    def __post_init__(self):
+        self.max_new_tokens = min(8192, max(512, self.max_new_tokens))
+        self.refinement_risk_threshold = min(
+            100, max(0, self.refinement_risk_threshold)
+        )
 
 
 @dataclass
@@ -111,6 +121,25 @@ class ServerConfig:
 
 
 @dataclass
+class InterfacePreferences:
+    theme: str = "system"
+    interface_language: str = "tr"
+    document_language: str = "auto"
+    output_language: str = "en"
+    translation_enabled: bool = True
+
+    def __post_init__(self):
+        if self.theme not in {"system", "light", "dark"}:
+            self.theme = "system"
+        if self.interface_language not in {"tr", "en"}:
+            self.interface_language = "tr"
+        if self.document_language not in {"auto", "tr", "en"}:
+            self.document_language = "auto"
+        if self.output_language not in {"tr", "en"}:
+            self.output_language = "en"
+
+
+@dataclass
 class Settings:
     base_dir: Path = BASE_DIR
     logs_dir: Path = LOGS_DIR
@@ -121,6 +150,7 @@ class Settings:
     deepseek: DeepSeekConfig = field(default_factory=DeepSeekConfig)
     document_search: DocumentSearchConfig = field(default_factory=DocumentSearchConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
+    interface: InterfacePreferences = field(default_factory=InterfacePreferences)
     ocr_lang: str = field(default_factory=lambda: os.environ.get("OCR_LANG", "en"))
     line_grouping_y_threshold: float = 15.0
     horizontal_space_factor: float = 0.15
@@ -128,3 +158,66 @@ class Settings:
 
 
 settings = Settings()
+
+
+def load_persistent_settings() -> None:
+    try:
+        payload = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return
+    model_path = payload.get("local_model_path")
+    if (
+        isinstance(model_path, str)
+        and Path(model_path).is_dir()
+        and (Path(model_path) / "openvino_model.xml").is_file()
+    ):
+        settings.model.model_path = model_path
+    review_mode = payload.get("deepseek_review_mode")
+    if review_mode in {"off", "manual", "risk", "always"}:
+        settings.deepseek.review_mode = review_mode
+    risk_threshold = payload.get("deepseek_risk_threshold")
+    if isinstance(risk_threshold, int):
+        settings.deepseek.risk_threshold = min(100, max(0, risk_threshold))
+    interface_payload = payload.get("interface")
+    if isinstance(interface_payload, dict):
+        settings.interface = InterfacePreferences(
+            theme=interface_payload.get("theme", settings.interface.theme),
+            interface_language=interface_payload.get(
+                "interface_language", settings.interface.interface_language
+            ),
+            document_language=interface_payload.get(
+                "document_language", settings.interface.document_language
+            ),
+            output_language=interface_payload.get(
+                "output_language", settings.interface.output_language
+            ),
+            translation_enabled=bool(
+                interface_payload.get(
+                    "translation_enabled", settings.interface.translation_enabled
+                )
+            ),
+        )
+
+
+def save_persistent_settings() -> None:
+    payload = {
+        "local_model_path": settings.model.model_path,
+        "deepseek_review_mode": settings.deepseek.review_mode,
+        "deepseek_risk_threshold": settings.deepseek.risk_threshold,
+        "interface": {
+            "theme": settings.interface.theme,
+            "interface_language": settings.interface.interface_language,
+            "document_language": settings.interface.document_language,
+            "output_language": settings.interface.output_language,
+            "translation_enabled": settings.interface.translation_enabled,
+        },
+    }
+    temporary_path = SETTINGS_FILE.with_suffix(".tmp")
+    temporary_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temporary_path.replace(SETTINGS_FILE)
+
+
+load_persistent_settings()

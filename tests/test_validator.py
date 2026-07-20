@@ -112,7 +112,7 @@ class TestCheckMandatoryFields:
         missing = check_mandatory_fields(si)
         assert len(missing) > 0
         field_labels = [m.field_label for m in missing]
-        assert "Shipping Instruction Reference" in field_labels
+        assert "Document Status Code" in field_labels
         assert "Consignee Name" in field_labels
         assert "Port of Loading" in field_labels
         assert "Equipment Reference" in field_labels
@@ -124,6 +124,22 @@ class TestCheckMandatoryFields:
             assert field.is_required is True
             assert field.is_missing is True
             assert field.value is None
+
+    def test_optional_xsd_control_fields_do_not_block_approval(self):
+        si = create_complete_si()
+        si.shipping_instruction_reference = None
+        si.shipping_instruction_date_time = None
+        si.carrier_booking_reference = None
+        si.issue_date = None
+        si.place_of_issue = None
+
+        missing_paths = {field.field_path for field in check_mandatory_fields(si)}
+
+        assert "shipping_instruction_reference" not in missing_paths
+        assert "shipping_instruction_date_time" not in missing_paths
+        assert "carrier_booking_reference" not in missing_paths
+        assert "issue_date" not in missing_paths
+        assert "place_of_issue.location_name" not in missing_paths
 
     def test_party_order_is_resolved_by_role(self):
         si = create_complete_si()
@@ -204,5 +220,5 @@ class TestValidateAndGrade:
         status, errors, missing = validate_and_grade(si, xml_str)
         assert status == ProcessingStatus.DRAFT
         missing_labels = [m.field_label for m in missing]
-        assert "Shipping Instruction Reference" in missing_labels
+        assert "Shipping Instruction Reference" not in missing_labels
         assert "Consignee Address" in missing_labels

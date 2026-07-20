@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CerberusVision — Belge İşleme</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <script>
         (() => {
             const savedTheme = localStorage.getItem('cerberus-theme');
@@ -11,7 +12,8 @@
             document.documentElement.classList.toggle('dark', savedTheme ? savedTheme === 'dark' : prefersDark);
         })();
     </script>
-    <link rel="stylesheet" href="/static/app.css?v=15">
+    <link rel="stylesheet" href="/static/app.css?v=17">
+    <link rel="stylesheet" href="/static/workspace.css?v=2">
     <style>
         html.dark { color-scheme: dark; }
         html:not(.dark) { color-scheme: light; }
@@ -33,6 +35,11 @@
                 <button id="globalSearchBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Arama" aria-label="Arama" aria-expanded="false" aria-controls="globalSearchPanel" data-i18n-title="nav.search" data-i18n-aria-label="nav.search">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </button>
+                <button id="logsBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Canlı sistem logları" aria-label="Canlı sistem logları" aria-expanded="false" aria-controls="logsPanel" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/>
                     </svg>
                 </button>
                 <button id="settingsBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Model ayarları" aria-label="Model ayarları" aria-expanded="false" aria-controls="settingsPanel" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings">
@@ -70,6 +77,28 @@
                     <div id="globalSearchResults" class="mt-2 max-h-64 space-y-1 overflow-y-auto" aria-live="polite"></div>
                 </div>
 
+                <div id="logsPanel" class="live-log-panel hidden absolute right-0 top-12 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl" role="dialog" aria-label="Canlı sistem logları" data-i18n-aria-label="nav.logs">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 bg-slate-900 px-4 py-3">
+                        <div class="flex items-center gap-3">
+                            <span class="font-mono text-sm font-semibold text-slate-100" data-i18n="logs.title">CerberusVision Terminal</span>
+                            <span class="flex items-center gap-1.5 text-xs text-slate-400">
+                                <span id="logsConnectionDot" class="h-2 w-2 rounded-full bg-slate-500"></span>
+                                <span id="logsConnectionStatus" data-i18n="logs.disconnected">Bağlı değil</span>
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="flex items-center gap-2 text-xs text-slate-400">
+                                <input id="logsAutoScroll" type="checkbox" checked class="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500">
+                                <span data-i18n="logs.autoScroll">Otomatik kaydır</span>
+                            </label>
+                            <button id="logsClearBtn" type="button" class="rounded-md border border-slate-600 px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white" data-i18n="logs.clear">Temizle</button>
+                        </div>
+                    </div>
+                    <div id="logsOutput" class="live-log-output overflow-y-auto p-4 font-mono text-xs leading-5 text-slate-300" role="log" aria-live="off">
+                        <p id="logsEmptyState" class="text-slate-500" data-i18n="logs.empty">Log akışı açıldığında kayıtlar burada görünecek.</p>
+                    </div>
+                </div>
+
                 <div id="settingsPanel" class="hidden absolute right-0 top-12 max-h-[calc(100vh-4.5rem)] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900" role="dialog" aria-label="Model ayarları" data-i18n-aria-label="nav.settings">
                     <div class="flex items-center justify-between gap-3">
                         <div>
@@ -100,6 +129,7 @@
                                 <p class="text-xs text-slate-400" data-i18n="settings.noModels">Henüz taranmadı.</p>
                             </div>
                         </div>
+                        <input id="selectedModelPath" type="hidden">
                     </div>
                     <div class="mt-3 space-y-3">
                         <div>
@@ -150,9 +180,9 @@
         </div>
     </nav>
 
-    <main class="pt-16 h-screen flex gap-4 p-4">
+    <main class="workspace-shell pt-16 h-screen gap-4 p-4">
 
-        <div class="w-1/2 flex flex-col gap-4 overflow-hidden">
+        <div class="document-pane flex flex-col gap-4 overflow-hidden">
 
             <div class="bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-slate-200 p-5 dark:bg-slate-900/75 dark:border-slate-700">
                 <div class="flex items-center justify-between mb-4">
@@ -168,10 +198,15 @@
                     <div>
                         <label for="documentLanguage" class="block text-xs font-semibold text-slate-600 dark:text-slate-300" data-i18n="processing.documentLanguage">Belge dili</label>
                         <select id="documentLanguage" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                            <option value="auto" data-i18n="processing.languageAuto">Otomatik / Çok dilli</option>
                             <option value="tr" data-i18n="profile.turkish">Türkçe</option>
                             <option value="en" data-i18n="profile.english">İngilizce</option>
                         </select>
                     </div>
+                    <label class="col-span-2 flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        <input id="translationEnabled" type="checkbox" checked class="rounded border-slate-300 text-teal-600 focus:ring-teal-500">
+                        <span data-i18n="processing.translationEnabled">XML açıklama alanlarını hedef dile çevir</span>
+                    </label>
                     <div>
                         <label for="outputLanguage" class="block text-xs font-semibold text-slate-600 dark:text-slate-300" data-i18n="processing.outputLanguage">XML içerik dili</label>
                         <select id="outputLanguage" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
@@ -196,6 +231,10 @@
                     <span id="fileName" class="font-medium"></span>
                 </div>
                 <div id="fileQueue" class="mt-3 hidden max-h-32 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2 dark:border-slate-700 dark:bg-slate-950/40" aria-live="polite"></div>
+                <div id="selectionActions" class="mt-3 hidden items-center justify-end gap-2">
+                    <button id="clearSelectionBtn" type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" data-i18n="actions.clearSelection">Seçimi Temizle</button>
+                    <button id="startProcessingBtn" type="button" class="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800" data-i18n="actions.startProcessing">Analizi Başlat</button>
+                </div>
             </div>
 
             <div id="pdfViewerPanel" class="flex-1 bg-white/70 backdrop-blur-md rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden dark:bg-slate-900/75 dark:border-slate-700">
@@ -254,7 +293,7 @@
             </div>
         </div>
 
-        <div class="w-1/2 flex flex-col overflow-hidden">
+        <div class="review-pane flex flex-col overflow-hidden">
             <div class="flex-1 bg-white rounded-xl shadow-md border border-slate-200 flex flex-col overflow-hidden dark:bg-slate-900 dark:border-slate-700">
                 <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
                     <div class="flex items-center gap-3">
@@ -273,6 +312,7 @@
                 <div id="statusMessageBar" class="hidden px-5 py-2 bg-teal-50 border-b border-teal-100 dark:bg-teal-950/40 dark:border-teal-900">
                     <p id="statusMessage" class="text-sm text-teal-700 font-medium dark:text-teal-300"></p>
                 </div>
+                <div id="validationSummary" class="hidden border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-200" aria-live="polite"></div>
 
                 <div id="auditReviewPanel" class="hidden px-5 py-3 bg-violet-50 border-b border-violet-100 dark:bg-violet-950/35 dark:border-violet-900">
                     <p id="auditReviewSource" class="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300"></p>
@@ -294,6 +334,14 @@
                                     <input type="text" data-field="issue_date" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-500" placeholder="Otomatik çıkarıldı" data-i18n-placeholder="form.autoExtracted">
                                 </div>
                                 <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.instructionDateTime">Talimat Tarih/Saati</label>
+                                    <input type="text" data-field="shipping_instruction_date_time" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-500" placeholder="2026-01-15T10:00:00">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.placeOfIssue">Düzenlenme Yeri</label>
+                                    <input type="text" data-field="place_of_issue.location_name" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-500" placeholder="Otomatik çıkarıldı" data-i18n-placeholder="form.autoExtracted">
+                                </div>
+                                <div>
                                     <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.vendor">Satıcı</label>
                                     <input type="text" data-field="parties[0].party_name" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-500" placeholder="Otomatik çıkarıldı" data-i18n-placeholder="form.autoExtracted">
                                 </div>
@@ -308,6 +356,38 @@
                                 <div>
                                     <label class="flex items-center gap-1 text-xs font-medium text-slate-600 mb-1 dark:text-slate-400"><span data-i18n="form.totalAmount">Net Yük Ağırlığı</span> <span class="text-red-500 font-semibold" data-required-marker="true" data-i18n="form.required">(Zorunlu)</span></label>
                                     <input type="text" data-field="cargo_items[0].weight.weight_value" class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg bg-red-50 focus:ring-2 focus:ring-red-400 focus:border-transparent dark:bg-red-950/30 dark:border-red-700 dark:text-slate-100 dark:placeholder-red-400" placeholder="Boş" data-i18n-placeholder="form.empty">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.shipperCity">Gönderici Şehri</label>
+                                    <input type="text" data-field="parties[0].address.city" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.shipperCountry">Gönderici Ülke Kodu</label>
+                                    <input type="text" data-field="parties[0].address.country_code" maxlength="2" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.consigneeName">Alıcı Adı</label>
+                                    <input type="text" data-field="parties[1].party_name" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.consigneeAddress">Alıcı Adresi</label>
+                                    <input type="text" data-field="parties[1].address.street" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.consigneeCity">Alıcı Şehri</label>
+                                    <input type="text" data-field="parties[1].address.city" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.consigneeCountry">Alıcı Ülke Kodu</label>
+                                    <input type="text" data-field="parties[1].address.country_code" maxlength="2" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.packageQuantity">Paket Adedi</label>
+                                    <input type="number" min="1" data-field="cargo_items[0].package_quantity" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1 dark:text-slate-400" data-i18n="form.goodsDescription">Mal Açıklaması</label>
+                                    <input type="text" data-field="cargo_items[0].description_of_goods" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100">
                                 </div>
                             </div>
                         </div>
@@ -386,6 +466,6 @@
         </div>
     </main>
 
-    <script src="/static/app.js?v=15"></script>
+    <script src="/static/app.js?v=17"></script>
 </body>
 </html>

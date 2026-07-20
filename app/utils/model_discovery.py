@@ -105,6 +105,7 @@ def discover_local_models(base_dir: Path, active_model_path: str) -> list[dict]:
     unique: dict[str, dict] = {}
     for candidate in candidates:
         candidate["active"] = candidate["path"] == active_path
+        candidate["selectable"] = candidate["format"] == "OpenVINO"
         unique[candidate["path"]] = candidate
     if active_path not in unique and Path(active_model_path).exists():
         active = Path(active_model_path)
@@ -114,6 +115,7 @@ def discover_local_models(base_dir: Path, active_model_path: str) -> list[dict]:
             "source": "Configured",
             "format": _directory_format(active) or "Unknown",
             "active": True,
+            "selectable": _directory_format(active) == "OpenVINO",
         }
     return sorted(
         unique.values(),

@@ -6,7 +6,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from app.config import settings
+from app.routes.logs import router as logs_router
 from app.routes.processing import router as processing_router
+from app.utils.live_logs import install_live_log_handler, live_log_buffer
 
 
 app = FastAPI(
@@ -17,6 +19,10 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
+install_live_log_handler()
+live_log_buffer.publish("INFO", "cerberus", "CerberusVision log yayini hazir")
+
+app.include_router(logs_router)
 app.include_router(processing_router)
 
 

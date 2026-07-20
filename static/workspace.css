@@ -1,0 +1,63 @@
+.min-w-0 {
+    min-width: 0;
+}
+
+.shrink-0 {
+    flex-shrink: 0;
+}
+
+.list-disc {
+    list-style-type: disc;
+}
+
+.pl-5 {
+    padding-left: 1.25rem;
+}
+
+.workspace-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(28rem, .85fr);
+}
+
+.document-pane,
+.review-pane {
+    min-width: 0;
+    min-height: 0;
+}
+
+#pdfViewerPanel {
+    min-height: 24rem;
+}
+
+#pdfViewerPanel:fullscreen {
+    border-radius: 0;
+    background: rgb(15 23 42);
+}
+
+.live-log-panel {
+    width: min(56rem, calc(100vw - 2rem));
+}
+
+.live-log-output {
+    height: min(28rem, calc(100vh - 8rem));
+}
+
+@media (max-width: 1100px) {
+    body {
+        min-height: 100%;
+        height: auto;
+        overflow: auto;
+    }
+
+    .workspace-shell {
+        display: flex;
+        min-height: 100vh;
+        height: auto;
+        flex-direction: column;
+    }
+
+    .document-pane,
+    .review-pane {
+        min-height: 44rem;
+    }
+}

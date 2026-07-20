@@ -1,0 +1,52 @@
+{
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-2026-001\nDATE: 2026-01-15\nBOOKING: CBR-12345\nSHIPPER: FORENTIS GLOBAL, ANTALYA, TR\nCONSIGNEE: SHAHEEN PLASTIC, KARACHI, PK\nPORT OF LOADING: ALIAGA\nPORT OF DISCHARGE: KARACHI\nCONTAINER: MSKU1875698\n32 PALLETS MDF LAMINATE FLOOR\nGROSS WEIGHT: 26080 KGM\nVOLUME: 28.16 CBM",
+  "expected": {
+    "shipping_instruction_reference": "SI-2026-001",
+    "shipping_instruction_date_time": null,
+    "carrier_booking_reference": "CBR-12345",
+    "issue_date": "2026-01-15",
+    "parties": [
+      {
+        "party_role_code": "SHI",
+        "party_id": null,
+        "party_name": "FORENTIS GLOBAL"
+      },
+      {
+        "party_role_code": "CON",
+        "party_id": null,
+        "party_name": "SHAHEEN PLASTIC"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ALIAGA"
+        },
+        "port_of_discharge": {
+          "location_name": "KARACHI"
+        }
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MSKU1875698",
+        "cargo_gross_weight": {
+          "weight": 26080.0,
+          "unit": "KGM"
+        }
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 32,
+        "description_of_goods": "MDF LAMINATE FLOOR",
+        "volume": {
+          "volume_value": 28.16,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

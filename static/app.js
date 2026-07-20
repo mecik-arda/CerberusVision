@@ -33,6 +33,14 @@ const globalSearchBtn = document.getElementById('globalSearchBtn');
 const globalSearchPanel = document.getElementById('globalSearchPanel');
 const globalSearchInput = document.getElementById('globalSearchInput');
 const globalSearchResults = document.getElementById('globalSearchResults');
+const logsBtn = document.getElementById('logsBtn');
+const logsPanel = document.getElementById('logsPanel');
+const logsOutput = document.getElementById('logsOutput');
+let logsEmptyState = document.getElementById('logsEmptyState');
+const logsConnectionDot = document.getElementById('logsConnectionDot');
+const logsConnectionStatus = document.getElementById('logsConnectionStatus');
+const logsAutoScroll = document.getElementById('logsAutoScroll');
+const logsClearBtn = document.getElementById('logsClearBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 const settingsRefreshBtn = document.getElementById('settingsRefreshBtn');
@@ -45,6 +53,7 @@ const modelTokensValue = document.getElementById('modelTokensValue');
 const modelKvValue = document.getElementById('modelKvValue');
 const detectedModelCount = document.getElementById('detectedModelCount');
 const detectedModelsList = document.getElementById('detectedModelsList');
+const selectedModelPath = document.getElementById('selectedModelPath');
 const serverApiKeyInput = document.getElementById('serverApiKeyInput');
 const deepSeekApiKeyInput = document.getElementById('deepSeekApiKeyInput');
 const deepSeekReviewMode = document.getElementById('deepSeekReviewMode');
@@ -71,12 +80,18 @@ const currentPageLabel = document.getElementById('currentPage');
 const totalPagesLabel = document.getElementById('totalPages');
 const documentLanguage = document.getElementById('documentLanguage');
 const outputLanguage = document.getElementById('outputLanguage');
+const translationEnabled = document.getElementById('translationEnabled');
+const selectionActions = document.getElementById('selectionActions');
+const startProcessingBtn = document.getElementById('startProcessingBtn');
+const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+const validationSummary = document.getElementById('validationSummary');
 
 const TRANSLATIONS = {
     tr: {
         'page.title': 'CerberusVision — Belge İşleme',
         'nav.languageSelection': 'Dil seçimi',
         'nav.search': 'Arama',
+        'nav.logs': 'Canlı sistem logları',
         'nav.settings': 'Model ayarları',
         'nav.notifications': 'Bildirimler',
         'nav.profileMenu': 'Kullanıcı menüsü',
@@ -84,6 +99,15 @@ const TRANSLATIONS = {
         'search.placeholder': 'Alan veya bölüm ara...',
         'search.empty': 'Aramak için yazmaya başlayın.',
         'search.noResults': 'Eşleşen alan veya bölüm bulunamadı.',
+        'logs.title': 'CerberusVision Terminal',
+        'logs.connecting': 'Bağlanıyor',
+        'logs.connected': 'Canlı',
+        'logs.disconnected': 'Bağlı değil',
+        'logs.autoScroll': 'Otomatik kaydır',
+        'logs.clear': 'Temizle',
+        'logs.empty': 'Log akışı açıldığında kayıtlar burada görünecek.',
+        'logs.streamError': 'Log bağlantısı kesildi: {message}',
+        'logs.clearError': 'Loglar temizlenemedi: {message}',
         'settings.title': 'Model ve API Ayarları',
         'settings.memoryNotice': 'DeepSeek anahtarı yalnızca sunucu belleğinde tutulur.',
         'settings.refresh': 'Bilgileri yenile',
@@ -95,6 +119,8 @@ const TRANSLATIONS = {
         'settings.detectedModels': "WSL'de Bulunan Modeller",
         'settings.noModels': 'Yüklü yerel model bulunamadı.',
         'settings.modelsFound': '{count} model',
+        'settings.selectModel': 'Bu modeli etkinleştir',
+        'settings.notSelectable': 'Bu biçim doğrudan çalıştırılamaz',
         'settings.active': 'Etkin',
         'settings.ready': 'Hazır',
         'settings.notReady': 'Hazır değil',
@@ -139,7 +165,10 @@ const TRANSLATIONS = {
         'upload.queue': '{done}/{total} belge tamamlandı',
         'upload.previewUnavailable': 'Bu DOCX belgesi için tarayıcı önizlemesi kullanılamıyor.',
         'upload.uploading': 'Dosya yükleniyor...',
+        'upload.ready': 'Dosyalar hazır. Ayarları kontrol edip analizi başlatın.',
         'processing.documentLanguage': 'Belge dili',
+        'processing.languageAuto': 'Otomatik / Çok dilli',
+        'processing.translationEnabled': 'XML açıklama alanlarını hedef dile çevir',
         'processing.outputLanguage': 'XML içerik dili',
         'processing.outputHint': 'DCSA XML etiketleri standart gereği sabit kalır; açıklama ve not değerleri seçilen dilde üretilir.',
         'pdf.noneLoaded': 'Belge yüklenmedi',
@@ -190,6 +219,16 @@ const TRANSLATIONS = {
         'form.documentInfo': 'Belge Bilgileri',
         'form.documentId': 'Belge Kimliği',
         'form.date': 'Tarih',
+        'form.instructionDateTime': 'Talimat Tarih/Saati',
+        'form.placeOfIssue': 'Düzenlenme Yeri',
+        'form.shipperCity': 'Gönderici Şehri',
+        'form.shipperCountry': 'Gönderici Ülke Kodu',
+        'form.consigneeName': 'Alıcı Adı',
+        'form.consigneeAddress': 'Alıcı Adresi',
+        'form.consigneeCity': 'Alıcı Şehri',
+        'form.consigneeCountry': 'Alıcı Ülke Kodu',
+        'form.packageQuantity': 'Paket Adedi',
+        'form.goodsDescription': 'Mal Açıklaması',
         'form.vendor': 'Satıcı',
         'form.vendorAddress': 'Satıcı Adresi',
         'form.taxId': 'Vergi Kimlik No',
@@ -216,6 +255,10 @@ const TRANSLATIONS = {
         'actions.cloudReview': 'Bulut Denetimini Çalıştır',
         'actions.saveDraft': 'Taslak Kaydet',
         'actions.approve': 'Verileri Onayla',
+        'actions.startProcessing': 'Analizi Başlat',
+        'actions.clearSelection': 'Seçimi Temizle',
+        'validation.heading': 'Onay için düzeltilmesi gereken alanlar',
+        'validation.xsdHeading': 'XML doğrulama sorunları',
         'error.prefix': 'Hata',
         'error.uploadFailed': 'Yükleme başarısız',
         'error.requestFailed': 'İstek başarısız',
@@ -226,6 +269,7 @@ const TRANSLATIONS = {
         'page.title': 'CerberusVision — Document Processing',
         'nav.languageSelection': 'Language selection',
         'nav.search': 'Search',
+        'nav.logs': 'Live system logs',
         'nav.settings': 'Model settings',
         'nav.notifications': 'Notifications',
         'nav.profileMenu': 'User menu',
@@ -233,6 +277,15 @@ const TRANSLATIONS = {
         'search.placeholder': 'Search for a field or section...',
         'search.empty': 'Start typing to search.',
         'search.noResults': 'No matching field or section was found.',
+        'logs.title': 'CerberusVision Terminal',
+        'logs.connecting': 'Connecting',
+        'logs.connected': 'Live',
+        'logs.disconnected': 'Disconnected',
+        'logs.autoScroll': 'Auto-scroll',
+        'logs.clear': 'Clear',
+        'logs.empty': 'Logs will appear here when the stream opens.',
+        'logs.streamError': 'Log connection closed: {message}',
+        'logs.clearError': 'Could not clear logs: {message}',
         'settings.title': 'Model and API Settings',
         'settings.memoryNotice': 'The DeepSeek key is kept only in server memory.',
         'settings.refresh': 'Refresh information',
@@ -244,6 +297,8 @@ const TRANSLATIONS = {
         'settings.detectedModels': 'Models Detected in WSL',
         'settings.noModels': 'No installed local model was found.',
         'settings.modelsFound': '{count} model(s)',
+        'settings.selectModel': 'Activate this model',
+        'settings.notSelectable': 'This format cannot run directly',
         'settings.active': 'Active',
         'settings.ready': 'Ready',
         'settings.notReady': 'Not ready',
@@ -288,7 +343,10 @@ const TRANSLATIONS = {
         'upload.queue': '{done}/{total} documents completed',
         'upload.previewUnavailable': 'Browser preview is unavailable for this DOCX document.',
         'upload.uploading': 'Uploading file...',
+        'upload.ready': 'Files are ready. Check the settings and start analysis.',
         'processing.documentLanguage': 'Document language',
+        'processing.languageAuto': 'Automatic / Multilingual',
+        'processing.translationEnabled': 'Translate XML descriptive fields to the target language',
         'processing.outputLanguage': 'XML content language',
         'processing.outputHint': 'DCSA XML element names remain fixed by the standard; descriptions and remarks are generated in the selected language.',
         'pdf.noneLoaded': 'No document loaded',
@@ -339,6 +397,16 @@ const TRANSLATIONS = {
         'form.documentInfo': 'Document Info',
         'form.documentId': 'Document ID',
         'form.date': 'Date',
+        'form.instructionDateTime': 'Instruction Date/Time',
+        'form.placeOfIssue': 'Place of Issue',
+        'form.shipperCity': 'Shipper City',
+        'form.shipperCountry': 'Shipper Country Code',
+        'form.consigneeName': 'Consignee Name',
+        'form.consigneeAddress': 'Consignee Address',
+        'form.consigneeCity': 'Consignee City',
+        'form.consigneeCountry': 'Consignee Country Code',
+        'form.packageQuantity': 'Package Quantity',
+        'form.goodsDescription': 'Description of Goods',
         'form.vendor': 'Vendor',
         'form.vendorAddress': 'Vendor Address',
         'form.taxId': 'Tax ID',
@@ -365,6 +433,10 @@ const TRANSLATIONS = {
         'actions.cloudReview': 'Run Cloud Review',
         'actions.saveDraft': 'Save Draft',
         'actions.approve': 'Approve Data',
+        'actions.startProcessing': 'Start Analysis',
+        'actions.clearSelection': 'Clear Selection',
+        'validation.heading': 'Fields that must be corrected before approval',
+        'validation.xsdHeading': 'XML validation issues',
         'error.prefix': 'Error',
         'error.uploadFailed': 'Upload failed',
         'error.requestFailed': 'Request failed',
@@ -377,8 +449,11 @@ const savedLanguage = localStorage.getItem('cerberus-language');
 let currentLanguage = Object.hasOwn(TRANSLATIONS, savedLanguage) ? savedLanguage : 'tr';
 const savedDocumentLanguage = localStorage.getItem('cerberus-document-language');
 const savedOutputLanguage = localStorage.getItem('cerberus-output-language');
-documentLanguage.value = ['tr', 'en'].includes(savedDocumentLanguage) ? savedDocumentLanguage : 'tr';
+const savedTranslationEnabled = localStorage.getItem('cerberus-translation-enabled');
+documentLanguage.value = ['auto', 'tr', 'en'].includes(savedDocumentLanguage) ? savedDocumentLanguage : 'auto';
 outputLanguage.value = ['tr', 'en'].includes(savedOutputLanguage) ? savedOutputLanguage : 'en';
+translationEnabled.checked = savedTranslationEnabled === null ? true : savedTranslationEnabled === 'true';
+outputLanguage.disabled = !translationEnabled.checked;
 
 function t(key, values = {}) {
     const template = TRANSLATIONS[currentLanguage][key] || TRANSLATIONS.tr[key] || key;
@@ -407,14 +482,20 @@ function renderDetectedModels(models = []) {
         return;
     }
     detectedModelsList.innerHTML = models.map((model) => `
-        <div class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-950/60" title="${escapeHtml(model.path || '')}">
+        <label class="block rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-950/60 ${model.selectable ? 'cursor-pointer' : 'opacity-60'}" title="${escapeHtml(model.path || '')}">
             <div class="flex items-center justify-between gap-2">
-                <span class="truncate text-xs font-medium text-slate-700 dark:text-slate-200">${escapeHtml(model.name || '--')}</span>
+                <span class="flex min-w-0 items-center gap-2">
+                    <input type="radio" name="local-model" value="${escapeHtml(model.path || '')}" ${model.active ? 'checked' : ''} ${model.selectable ? '' : 'disabled'} class="border-slate-300 text-teal-600 focus:ring-teal-500">
+                    <span class="truncate text-xs font-medium text-slate-700 dark:text-slate-200">${escapeHtml(model.name || '--')}</span>
+                </span>
                 ${model.active ? `<span class="rounded-full bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 dark:bg-teal-950 dark:text-teal-300">${escapeHtml(t('settings.active'))}</span>` : ''}
             </div>
             <p class="mt-0.5 truncate text-[10px] text-slate-400">${escapeHtml(model.source || '')} · ${escapeHtml(model.format || '')}</p>
-        </div>
+            <p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(t(model.selectable ? 'settings.selectModel' : 'settings.notSelectable'))}</p>
+        </label>
     `).join('');
+    const activeModel = models.find((model) => model.active);
+    selectedModelPath.value = activeModel?.path || '';
 }
 
 function renderRuntimeSettings(data) {
@@ -433,13 +514,33 @@ function renderRuntimeSettings(data) {
     deepSeekRiskThreshold.value = data.deepseek?.risk_threshold ?? 30;
     renderDetectedModels(data.installed_models || []);
     settingsStatus.textContent = `DeepSeek: ${t(data.deepseek?.configured ? 'settings.configured' : 'settings.notConfigured')}`;
+    if (!runtimePreferencesHydrated) {
+        runtimePreferencesHydrated = true;
+        const preferences = data.interface || {};
+        if (!localStorage.getItem('cerberus-language') && preferences.interface_language) {
+            applyLanguage(preferences.interface_language, false);
+        }
+        if (!localStorage.getItem('cerberus-theme') && ['light', 'dark'].includes(preferences.theme)) {
+            applyTheme(preferences.theme, false);
+        }
+        if (!localStorage.getItem('cerberus-document-language') && preferences.document_language) {
+            documentLanguage.value = preferences.document_language;
+        }
+        if (!localStorage.getItem('cerberus-output-language') && preferences.output_language) {
+            outputLanguage.value = preferences.output_language;
+        }
+        if (!localStorage.getItem('cerberus-translation-enabled') && typeof preferences.translation_enabled === 'boolean') {
+            translationEnabled.checked = preferences.translation_enabled;
+            outputLanguage.disabled = !translationEnabled.checked;
+        }
+    }
 }
 
-async function loadRuntimeSettings() {
+async function loadRuntimeSettings(allowCredentialRetry = true) {
     settingsRefreshBtn.disabled = true;
     settingsStatus.textContent = t('settings.loading');
     try {
-        const response = await apiFetch('/api/runtime-settings');
+        const response = await apiFetch('/api/runtime-settings', {}, allowCredentialRetry);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || response.statusText);
         renderRuntimeSettings(data);
@@ -459,7 +560,13 @@ async function saveRuntimeSettings() {
         clear_deepseek_api_key: clearDeepSeekKey.checked,
         deepseek_review_mode: deepSeekReviewMode.value,
         deepseek_risk_threshold: Number(deepSeekRiskThreshold.value),
+        theme: getCurrentTheme(),
+        interface_language: currentLanguage,
+        document_language: documentLanguage.value,
+        output_language: outputLanguage.value,
+        translation_enabled: translationEnabled.checked,
     };
+    if (selectedModelPath.value) payload.local_model_path = selectedModelPath.value;
     const deepSeekKey = deepSeekApiKeyInput.value.trim();
     if (deepSeekKey && !clearDeepSeekKey.checked) payload.deepseek_api_key = deepSeekKey;
     try {
@@ -509,6 +616,38 @@ let activeUploadController = null;
 let activeUploadRequestId = 0;
 let latestNotification = null;
 let currentRuntimeSettings = null;
+let runtimePreferencesHydrated = false;
+let currentApprovalReady = false;
+let selectionProcessing = false;
+let liveLogAbortController = null;
+let liveLogReconnectTimer = null;
+let liveLogStreamingEnabled = false;
+let lastLiveLogEventId = 0;
+
+const MAX_RENDERED_LOGS = 500;
+
+const MANDATORY_EDITABLE_PATHS = [
+    'shipping_instruction_reference',
+    'shipping_instruction_date_time',
+    'carrier_booking_reference',
+    'issue_date',
+    'place_of_issue.location_name',
+    'parties[0].party_name',
+    'parties[0].address.street',
+    'parties[0].address.city',
+    'parties[0].address.country_code',
+    'parties[1].party_name',
+    'parties[1].address.street',
+    'parties[1].address.city',
+    'parties[1].address.country_code',
+    'transport_plans[0].port_of_loading.location_name',
+    'transport_plans[0].port_of_discharge.location_name',
+    'equipment_list[0].equipment_reference',
+    'equipment_list[0].cargo_gross_weight.weight',
+    'cargo_items[0].package_quantity',
+    'cargo_items[0].description_of_goods',
+    'cargo_items[0].weight.weight_value',
+];
 
 const STATUS_BADGE_MAP = {
     PENDING: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
@@ -543,6 +682,7 @@ const SEARCH_TARGETS = [
 function closeTopPanels(except = null) {
     [
         [globalSearchPanel, globalSearchBtn],
+        [logsPanel, logsBtn],
         [settingsPanel, settingsBtn],
         [notificationsPanel, notificationsBtn],
         [profilePanel, profileBtn],
@@ -552,6 +692,130 @@ function closeTopPanels(except = null) {
             button.setAttribute('aria-expanded', 'false');
         }
     });
+}
+
+function updateLiveLogConnectionState(state) {
+    const stateClasses = {
+        connecting: 'bg-amber-400',
+        connected: 'bg-teal-400',
+        disconnected: 'bg-slate-500',
+    };
+    logsConnectionDot.className = `h-2 w-2 rounded-full ${stateClasses[state] || stateClasses.disconnected}`;
+    logsConnectionStatus.textContent = t(`logs.${state}`);
+}
+
+function appendLiveLogEntry(entry) {
+    if (!entry || !Number.isFinite(Number(entry.id))) return;
+    lastLiveLogEventId = Math.max(lastLiveLogEventId, Number(entry.id));
+    if (logsEmptyState) {
+        logsEmptyState.remove();
+        logsEmptyState = null;
+    }
+    const level = String(entry.level || 'INFO').toUpperCase();
+    const levelClasses = {
+        ERROR: 'text-red-300',
+        CRITICAL: 'text-red-300',
+        WARNING: 'text-amber-300',
+        WARN: 'text-amber-300',
+        DEBUG: 'text-slate-500',
+        INFO: 'text-slate-300',
+    };
+    const timestamp = new Date(entry.timestamp);
+    const timeText = Number.isNaN(timestamp.getTime())
+        ? '--:--:--'
+        : timestamp.toLocaleTimeString(currentLanguage === 'tr' ? 'tr-TR' : 'en-US', { hour12: false });
+    const line = document.createElement('div');
+    line.className = levelClasses[level] || levelClasses.INFO;
+    line.textContent = `[${timeText}] ${level.padEnd(8)} ${entry.source || 'cerberus'}  ${entry.message || ''}`;
+    logsOutput.appendChild(line);
+    while (logsOutput.children.length > MAX_RENDERED_LOGS) {
+        logsOutput.firstElementChild.remove();
+    }
+    if (logsAutoScroll.checked) logsOutput.scrollTop = logsOutput.scrollHeight;
+}
+
+function appendLiveLogError(message, translationKey = 'logs.streamError') {
+    const line = document.createElement('div');
+    line.className = 'text-red-300';
+    line.textContent = t(translationKey, { message });
+    logsOutput.appendChild(line);
+    if (logsAutoScroll.checked) logsOutput.scrollTop = logsOutput.scrollHeight;
+}
+
+function processLiveLogEventBlock(block) {
+    const data = block.split(/\r?\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n');
+    if (!data) return;
+    try {
+        appendLiveLogEntry(JSON.parse(data));
+    } catch (error) {
+        appendLiveLogError(error.message);
+    }
+}
+
+async function connectLiveLogs() {
+    if (liveLogAbortController) return;
+    if (liveLogReconnectTimer) {
+        clearTimeout(liveLogReconnectTimer);
+        liveLogReconnectTimer = null;
+    }
+    const controller = new AbortController();
+    liveLogAbortController = controller;
+    updateLiveLogConnectionState('connecting');
+    try {
+        const headers = {};
+        if (lastLiveLogEventId > 0) headers['Last-Event-ID'] = String(lastLiveLogEventId);
+        const response = await apiFetch('/api/logs/stream', {
+            headers,
+            signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(response.statusText || String(response.status));
+        if (!response.body) throw new Error('Readable stream is unavailable');
+        updateLiveLogConnectionState('connected');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let bufferedText = '';
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            bufferedText += decoder.decode(value, { stream: true });
+            const blocks = bufferedText.split(/\r?\n\r?\n/);
+            bufferedText = blocks.pop() || '';
+            blocks.forEach(processLiveLogEventBlock);
+        }
+        bufferedText += decoder.decode();
+        if (bufferedText.trim()) processLiveLogEventBlock(bufferedText);
+        if (!controller.signal.aborted) throw new Error('Stream ended');
+    } catch (error) {
+        if (!controller.signal.aborted) appendLiveLogError(error.message);
+    } finally {
+        if (liveLogAbortController === controller) liveLogAbortController = null;
+        if (!controller.signal.aborted && liveLogStreamingEnabled) {
+            updateLiveLogConnectionState('disconnected');
+            liveLogReconnectTimer = setTimeout(connectLiveLogs, 2000);
+        }
+    }
+}
+
+async function clearLiveLogs() {
+    logsClearBtn.disabled = true;
+    try {
+        const response = await apiFetch('/api/logs', { method: 'DELETE' });
+        if (!response.ok) throw new Error(response.statusText || String(response.status));
+        logsOutput.replaceChildren();
+        const emptyState = document.createElement('p');
+        emptyState.id = 'logsEmptyState';
+        emptyState.className = 'text-slate-500';
+        emptyState.textContent = t('logs.empty');
+        logsOutput.appendChild(emptyState);
+        logsEmptyState = emptyState;
+    } catch (error) {
+        appendLiveLogError(error.message, 'logs.clearError');
+    } finally {
+        logsClearBtn.disabled = false;
+    }
 }
 
 function toggleTopPanel(panel, button) {
@@ -881,7 +1145,12 @@ function setUploadProgress(percent) {
 function updateResultActionAvailability() {
     const hasStructuredData = Boolean(currentStructuredData);
     saveDraftBtn.disabled = !hasStructuredData;
-    approveDataBtn.disabled = !hasStructuredData;
+    const formReady = MANDATORY_EDITABLE_PATHS.every((path) => {
+        const input = document.querySelector(`[data-field="${path}"]`);
+        return input && input.value.trim() !== '';
+    });
+    approveDataBtn.disabled = !hasStructuredData || !formReady;
+    currentApprovalReady = hasStructuredData && formReady;
     copyXmlBtn.disabled = !currentXmlContent;
 }
 
@@ -899,9 +1168,31 @@ function resetDocumentResults() {
     ]);
     populateItemsTable([]);
     currentXmlContent = '';
+    currentApprovalReady = false;
+    validationSummary.classList.add('hidden');
+    validationSummary.innerHTML = '';
     xmlOutput.dataset.i18n = 'xml.placeholder';
     xmlOutput.textContent = t('xml.placeholder');
     updateResultActionAvailability();
+}
+
+function renderValidationSummary(missingFields = [], validationErrors = []) {
+    const missingLabels = missingFields.map((field) => field.field_label || field.field_path).filter(Boolean);
+    const xmlErrors = validationErrors.filter(Boolean);
+    if (!missingLabels.length && !xmlErrors.length) {
+        validationSummary.classList.add('hidden');
+        validationSummary.innerHTML = '';
+        return;
+    }
+    const sections = [];
+    if (missingLabels.length) {
+        sections.push(`<div><p class="font-semibold">${escapeHtml(t('validation.heading'))}</p><ul class="mt-1 list-disc space-y-0.5 pl-5">${missingLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul></div>`);
+    }
+    if (xmlErrors.length) {
+        sections.push(`<div class="mt-2"><p class="font-semibold">${escapeHtml(t('validation.xsdHeading'))}</p><ul class="mt-1 list-disc space-y-0.5 pl-5">${xmlErrors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>`);
+    }
+    validationSummary.innerHTML = sections.join('');
+    validationSummary.classList.remove('hidden');
 }
 
 function documentExtension(file) {
@@ -912,10 +1203,16 @@ function renderDocumentQueue() {
     if (!documentQueue.length) {
         fileQueue.classList.add('hidden');
         fileQueue.innerHTML = '';
+        selectionActions.classList.add('hidden');
+        selectionActions.classList.remove('flex');
         return;
     }
     const completeCount = documentQueue.filter((job) => ['COMPLETED', 'DRAFT'].includes(job.status)).length;
     fileQueue.classList.remove('hidden');
+    selectionActions.classList.remove('hidden');
+    selectionActions.classList.add('flex');
+    startProcessingBtn.disabled = selectionProcessing || !documentQueue.some((job) => job.status === 'PENDING');
+    clearSelectionBtn.disabled = selectionProcessing;
     fileQueue.innerHTML = `
         <p class="px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">${escapeHtml(t('upload.queue', { done: completeCount, total: documentQueue.length }))}</p>
         ${documentQueue.map((job) => {
@@ -942,14 +1239,10 @@ async function handleFiles(fileList) {
     if (activeUploadController) activeUploadController.abort();
     const requestId = ++activeUploadRequestId;
     documentQueue = files.map((file, index) => ({ id: `${requestId}-${index}`, file, status: 'PENDING' }));
+    selectionProcessing = false;
     renderDocumentQueue();
-    for (const job of documentQueue) {
-        if (requestId !== activeUploadRequestId) return;
-        const controller = new AbortController();
-        activeUploadController = controller;
-        await processQueuedFile(job, controller, requestId);
-    }
-    if (requestId === activeUploadRequestId) activeUploadController = null;
+    await previewSelectedFile(files[0]);
+    showStatusMessage('', true, 'upload.ready', false);
     fileInput.value = '';
 }
 
@@ -957,8 +1250,7 @@ function handleFile(file) {
     return handleFiles(file ? [file] : []);
 }
 
-async function processQueuedFile(job, controller, requestId) {
-    const file = job.file;
+async function previewSelectedFile(file) {
     currentPreviewKind = documentExtension(file);
     pdfViewerFileName.removeAttribute('data-i18n');
     fileName.textContent = file.name;
@@ -999,7 +1291,7 @@ async function processQueuedFile(job, controller, requestId) {
         updatePdfControls();
     }
 
-    setUploadProgress(100);
+    setUploadProgress(0);
 
     const pageCountPromise = isPdf ? estimatePdfPageCount(file) : Promise.resolve(1);
     pageCountPromise.then((count) => {
@@ -1011,7 +1303,51 @@ async function processQueuedFile(job, controller, requestId) {
         updatePdfControls();
     });
 
-    await uploadAndStream(file, controller, requestId, job);
+}
+
+async function processQueuedFile(job, controller, requestId) {
+    await previewSelectedFile(job.file);
+    await uploadAndStream(job.file, controller, requestId, job);
+}
+
+async function startSelectedFiles() {
+    const pendingJobs = documentQueue.filter((job) => job.status === 'PENDING');
+    if (!pendingJobs.length || selectionProcessing) return;
+    const requestId = activeUploadRequestId;
+    selectionProcessing = true;
+    renderDocumentQueue();
+    for (const job of pendingJobs) {
+        if (requestId !== activeUploadRequestId) break;
+        const controller = new AbortController();
+        activeUploadController = controller;
+        await processQueuedFile(job, controller, requestId);
+    }
+    if (requestId === activeUploadRequestId) activeUploadController = null;
+    selectionProcessing = false;
+    renderDocumentQueue();
+}
+
+function clearFileSelection() {
+    if (activeUploadController) activeUploadController.abort();
+    activeUploadRequestId += 1;
+    documentQueue = [];
+    selectionProcessing = false;
+    currentPdfFile = null;
+    currentPreviewKind = null;
+    if (uploadedPdfUrl) URL.revokeObjectURL(uploadedPdfUrl);
+    uploadedPdfUrl = null;
+    pdfIframe.src = '';
+    pdfIframe.classList.add('hidden');
+    pdfPlaceholder.classList.remove('hidden');
+    thumbnailSidebar.classList.add('hidden');
+    pdfFooter.classList.add('hidden');
+    pdfFooter.classList.remove('flex');
+    fileInfo.classList.add('hidden');
+    pdfViewerFileName.setAttribute('data-i18n', 'pdf.noneLoaded');
+    pdfViewerFileName.textContent = t('pdf.noneLoaded');
+    renderDocumentQueue();
+    resetDocumentResults();
+    updatePdfControls();
 }
 
 async function uploadAndStream(file, controller, requestId, job = null) {
@@ -1023,6 +1359,7 @@ async function uploadAndStream(file, controller, requestId, job = null) {
     formData.append('file', file);
     formData.append('document_language', documentLanguage.value);
     formData.append('output_language', outputLanguage.value);
+    formData.append('translation_enabled', String(translationEnabled.checked));
 
     try {
         const response = await apiFetch('/api/upload-and-stream', {
@@ -1132,17 +1469,21 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
             if (event.data.missing_fields) {
                 highlightMissingFields(event.data.missing_fields);
             }
+            renderValidationSummary(
+                event.data.missing_fields || [],
+                event.data.validation_errors || [],
+            );
             if (event.data.structured_data) {
-                currentStructuredData = event.data.structured_data;
+                currentStructuredData = normalizeEditableStructure(event.data.structured_data);
                 populateFormFields(currentStructuredData);
                 populateItemsTable(currentStructuredData.cargo_items);
                 updateResultActionAvailability();
             } else if (event.data.raw_llm_json) {
                 try {
                     const parsed = JSON.parse(event.data.raw_llm_json);
-                    currentStructuredData = parsed;
-                    populateFormFields(parsed);
-                    populateItemsTable(parsed.cargo_items);
+                    currentStructuredData = normalizeEditableStructure(parsed);
+                    populateFormFields(currentStructuredData);
+                    populateItemsTable(currentStructuredData.cargo_items);
                     updateResultActionAvailability();
                 } catch (e) {
                     console.error('JSON parse error:', e);
@@ -1187,6 +1528,32 @@ function setNestedValue(obj, path, value) {
         current = current[part];
     }
     current[parts[parts.length - 1]] = value;
+}
+
+function normalizeEditableStructure(data) {
+    const normalized = JSON.parse(JSON.stringify(data || {}));
+    const parties = Array.isArray(normalized.parties) ? normalized.parties : [];
+    const shipper = parties.find((party) => party.party_role_code === 'SHI') || { party_role_code: 'SHI' };
+    const consignee = parties.find((party) => party.party_role_code === 'CON') || { party_role_code: 'CON' };
+    const remainingParties = parties.filter((party) => !['SHI', 'CON'].includes(party.party_role_code));
+    shipper.address = shipper.address || {};
+    consignee.address = consignee.address || {};
+    normalized.parties = [shipper, consignee, ...remainingParties];
+    normalized.place_of_issue = normalized.place_of_issue || {};
+    normalized.transport_plans = Array.isArray(normalized.transport_plans) && normalized.transport_plans.length
+        ? normalized.transport_plans
+        : [{ leg_sequence_number: 1 }];
+    normalized.transport_plans[0].port_of_loading = normalized.transport_plans[0].port_of_loading || {};
+    normalized.transport_plans[0].port_of_discharge = normalized.transport_plans[0].port_of_discharge || {};
+    normalized.equipment_list = Array.isArray(normalized.equipment_list) && normalized.equipment_list.length
+        ? normalized.equipment_list
+        : [{}];
+    normalized.equipment_list[0].cargo_gross_weight = normalized.equipment_list[0].cargo_gross_weight || { unit: 'KGM' };
+    normalized.cargo_items = Array.isArray(normalized.cargo_items) && normalized.cargo_items.length
+        ? normalized.cargo_items
+        : [{}];
+    normalized.cargo_items[0].weight = normalized.cargo_items[0].weight || { unit: 'KGM' };
+    return normalized;
 }
 
 function resetFieldValidationStyles() {
@@ -1323,7 +1690,7 @@ function collectEditedData() {
         const path = input.getAttribute('data-field');
         const oldValue = getNestedValue(edited, path);
         let value = input.value.trim() === '' ? null : input.value.trim();
-        if (value !== null && typeof oldValue === 'number') {
+        if (value !== null && (typeof oldValue === 'number' || input.type === 'number')) {
             const numericValue = Number(value);
             value = Number.isNaN(numericValue) ? value : numericValue;
         } else if (value !== null && typeof oldValue === 'boolean') {
@@ -1355,9 +1722,10 @@ async function persistInstruction(approve) {
         const result = await response.json();
         if (!response.ok) {
             if (result.missing_fields) highlightMissingFields(result.missing_fields);
+            renderValidationSummary(result.missing_fields || [], result.validation_errors || []);
             throw new Error(translateServerMessage(result.error) || `${t('error.requestFailed')} (${response.status})`);
         }
-        currentStructuredData = result.structured_data;
+        currentStructuredData = normalizeEditableStructure(result.structured_data);
         populateFormFields(currentStructuredData);
         populateItemsTable(currentStructuredData.cargo_items);
         currentXmlContent = result.xml_content;
@@ -1365,6 +1733,7 @@ async function persistInstruction(approve) {
         xmlOutput.textContent = currentXmlContent;
         copyXmlBtn.disabled = false;
         highlightMissingFields(result.missing_fields || []);
+        renderValidationSummary(result.missing_fields || [], result.validation_errors || []);
         updateStatusBadge(result.status);
         showStatusMessage(result.message, true);
         currentSuspiciousFields = result.suspicious_fields || [];
@@ -1383,8 +1752,8 @@ async function persistInstruction(approve) {
         updateStatusBadge(approve ? 'DRAFT' : 'ERROR');
         showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
     } finally {
-        button.disabled = false;
         button.classList.remove('opacity-60', 'cursor-not-allowed');
+        updateResultActionAvailability();
     }
 }
 
@@ -1486,12 +1855,26 @@ globalSearchResults.addEventListener('click', (event) => {
     if (resultButton) focusSearchTarget(resultButton.dataset.searchTarget);
 });
 
-settingsBtn.addEventListener('click', () => {
-    if (toggleTopPanel(settingsPanel, settingsBtn)) loadRuntimeSettings();
+logsBtn.addEventListener('click', () => {
+    if (toggleTopPanel(logsPanel, logsBtn)) {
+        liveLogStreamingEnabled = true;
+        connectLiveLogs();
+    }
 });
 
-settingsRefreshBtn.addEventListener('click', loadRuntimeSettings);
+logsClearBtn.addEventListener('click', clearLiveLogs);
+
+settingsBtn.addEventListener('click', () => {
+    if (toggleTopPanel(settingsPanel, settingsBtn) && !currentRuntimeSettings) loadRuntimeSettings();
+});
+
+settingsRefreshBtn.addEventListener('click', () => loadRuntimeSettings(true));
 settingsSaveBtn.addEventListener('click', saveRuntimeSettings);
+
+detectedModelsList.addEventListener('change', (event) => {
+    const modelInput = event.target.closest('input[name="local-model"]');
+    if (modelInput) selectedModelPath.value = modelInput.value;
+});
 
 clearDeepSeekKey.addEventListener('change', () => {
     deepSeekApiKeyInput.disabled = clearDeepSeekKey.checked;
@@ -1504,6 +1887,16 @@ documentLanguage.addEventListener('change', () => {
 outputLanguage.addEventListener('change', () => {
     localStorage.setItem('cerberus-output-language', outputLanguage.value);
 });
+
+translationEnabled.addEventListener('change', () => {
+    localStorage.setItem('cerberus-translation-enabled', String(translationEnabled.checked));
+    outputLanguage.disabled = !translationEnabled.checked;
+});
+
+document.getElementById('formContainer').addEventListener('input', updateResultActionAvailability);
+
+startProcessingBtn.addEventListener('click', startSelectedFiles);
+clearSelectionBtn.addEventListener('click', clearFileSelection);
 
 notificationsBtn.addEventListener('click', () => {
     if (toggleTopPanel(notificationsPanel, notificationsBtn)) {
@@ -1531,11 +1924,18 @@ document.addEventListener('fullscreenchange', updatePdfControls);
 
 document.addEventListener('click', (event) => {
     if (!event.target.closest('#globalSearchPanel') && !event.target.closest('#globalSearchBtn')
+        && !event.target.closest('#logsPanel') && !event.target.closest('#logsBtn')
         && !event.target.closest('#settingsPanel') && !event.target.closest('#settingsBtn')
         && !event.target.closest('#notificationsPanel') && !event.target.closest('#notificationsBtn')
         && !event.target.closest('#profilePanel') && !event.target.closest('#profileBtn')) {
         closeTopPanels();
     }
+});
+
+window.addEventListener('beforeunload', () => {
+    liveLogStreamingEnabled = false;
+    if (liveLogAbortController) liveLogAbortController.abort();
+    if (liveLogReconnectTimer) clearTimeout(liveLogReconnectTimer);
 });
 
 document.addEventListener('keydown', (event) => {
@@ -1555,3 +1955,4 @@ systemTheme.addEventListener('change', (event) => {
 applyLanguage(currentLanguage, false);
 updateThemeControl();
 updatePdfControls();
+loadRuntimeSettings(false);

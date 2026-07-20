@@ -1,0 +1,13 @@
+{
+  "document_language": "auto",
+  "output_language": "en",
+  "ocr_text": "SI NO: SI/TR-900\nBKG REF: BK-12345\nSHIPPING INSTRUCTION DATE/TIME: 20.07.2026 14:35\nISSUE DATE: 19/07/2026\nV.DAIRESI: ANTALYA KURUMLAR\nSHIPPER: SAMPLE EXPORTER, ANTALYA, TR\nCONSIGNEE: SAMPLE IMPORTER, KARACHI, PK\nPOL: ALIAGA\nPOD: KARACHI\nCONTAINER: MSKU1875698\n32 PALLETS SAMPLE GOODS\nGROSS WEIGHT: 26080 KGM",
+  "expected": {
+    "shipping_instruction_reference": "SI/TR-900",
+    "document_status_code": "DRF",
+    "shipping_instruction_date_time": "2026-07-20T14:35:00",
+    "carrier_booking_reference": "BK-12345",
+    "issue_date": "2026-07-19",
+    "place_of_issue": null
+  }
+}

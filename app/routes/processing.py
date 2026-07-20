@@ -1,13 +1,14 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path
 from time import monotonic
 from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse, JSONResponse
-from app.config import settings
+from app.config import save_persistent_settings, settings
 from app.security import enforce_upload_rate_limit, require_api_key
 from app.models import (
     DocumentStatusCode,
@@ -43,11 +44,18 @@ from app.ocr.spatial_ocr import (
     process_image_with_spatial_ocr,
     process_pdf_with_spatial_ocr,
 )
-from app.llm.inference import run_inference_with_fallback
+from app.llm.inference import (
+    reset_llm_pipeline,
+    run_inference_with_fallback,
+    run_refinement_with_fallback,
+)
+from app.llm.translation import translate_instruction_content
 from app.llm.cloud_inference import run_deepseek_review
 from app.llm.local_audit import assess_local_result, should_run_automatic_cloud_review
 from app.xml.converter import shipping_instruction_to_xml
 from app.xml.validator import check_mandatory_fields, validate_xml_against_xsd
+
+logger = logging.getLogger("cerberus.processing")
 
 router = APIRouter(
     prefix="/api",
@@ -72,7 +80,9 @@ _active_pipeline_lock = asyncio.Lock()
 
 _PROCESSING_STORE_MAX_SIZE = 100
 _MAX_UPLOAD_SIZE = 50 * 1024 * 1024
-_SUPPORTED_LANGUAGES = {"tr", "en"}
+_SUPPORTED_DOCUMENT_LANGUAGES = {"auto", "tr", "en"}
+_SUPPORTED_OUTPUT_LANGUAGES = {"tr", "en"}
+_OCR_LANGUAGE_MAP = {"auto": "latin", "tr": "tr", "en": "en"}
 
 
 UploadTooLargeError = UploadSizeLimitError
@@ -84,9 +94,9 @@ def _validate_processing_languages(
 ) -> tuple[str, str]:
     normalized_document_language = document_language.strip().lower()
     normalized_output_language = output_language.strip().lower()
-    if normalized_document_language not in _SUPPORTED_LANGUAGES:
-        raise ValueError("Document language must be 'tr' or 'en'.")
-    if normalized_output_language not in _SUPPORTED_LANGUAGES:
+    if normalized_document_language not in _SUPPORTED_DOCUMENT_LANGUAGES:
+        raise ValueError("Document language must be 'auto', 'tr', or 'en'.")
+    if normalized_output_language not in _SUPPORTED_OUTPUT_LANGUAGES:
         raise ValueError("Output language must be 'tr' or 'en'.")
     return normalized_document_language, normalized_output_language
 
@@ -124,8 +134,15 @@ def _runtime_settings_payload() -> dict:
             "api_key_required": bool(settings.server.api_key),
         },
         "languages": {
-            "document": sorted(_SUPPORTED_LANGUAGES),
-            "output": sorted(_SUPPORTED_LANGUAGES),
+            "document": sorted(_SUPPORTED_DOCUMENT_LANGUAGES),
+            "output": sorted(_SUPPORTED_OUTPUT_LANGUAGES),
+        },
+        "interface": {
+            "theme": settings.interface.theme,
+            "interface_language": settings.interface.interface_language,
+            "document_language": settings.interface.document_language,
+            "output_language": settings.interface.output_language,
+            "translation_enabled": settings.interface.translation_enabled,
         },
         "supported_formats": sorted(SUPPORTED_DOCUMENT_EXTENSIONS),
         "installed_models": discover_local_models(
@@ -156,6 +173,7 @@ def _emit_status(session_id: str, status: ProcessingStatus, message: str, data: 
     existing_data.update(store_kwargs)
     existing_data.update({"status": status, "message": message})
     _processing_store[session_id] = ProcessingResult.model_validate(existing_data)
+    logger.info("session=%s status=%s %s", session_id, status.value, message)
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -273,6 +291,7 @@ async def process_pdf_pipeline(
     status_queue: asyncio.Queue,
     document_language: str = "en",
     output_language: str = "en",
+    translation_enabled: bool = True,
 ):
     await process_document_pipeline(
         pdf_path,
@@ -281,6 +300,7 @@ async def process_pdf_pipeline(
         status_queue,
         document_language,
         output_language,
+        translation_enabled,
     )
 
 
@@ -291,6 +311,7 @@ async def process_document_pipeline(
     status_queue: asyncio.Queue,
     document_language: str = "en",
     output_language: str = "en",
+    translation_enabled: bool = True,
 ):
     async with _get_session_lock(session_id):
         await _process_document_pipeline_locked(
@@ -300,6 +321,7 @@ async def process_document_pipeline(
             status_queue,
             document_language,
             output_language,
+            translation_enabled,
         )
 
 
@@ -310,6 +332,7 @@ async def _process_document_pipeline_locked(
     status_queue: asyncio.Queue,
     document_language: str,
     output_language: str,
+    translation_enabled: bool,
 ):
     try:
         status_queue.put_nowait(_emit_status(
@@ -320,11 +343,15 @@ async def _process_document_pipeline_locked(
             extension = validate_supported_filename(filename)
             if extension == ".pdf":
                 ocr_text, boxes = await _run_blocking(
-                    process_pdf_with_spatial_ocr, document_path, document_language
+                    process_pdf_with_spatial_ocr,
+                    document_path,
+                    _OCR_LANGUAGE_MAP[document_language],
                 )
             elif extension in IMAGE_EXTENSIONS:
                 ocr_text, boxes = await _run_blocking(
-                    process_image_with_spatial_ocr, document_path, document_language
+                    process_image_with_spatial_ocr,
+                    document_path,
+                    _OCR_LANGUAGE_MAP[document_language],
                 )
             elif extension in TEXT_DOCUMENT_EXTENSIONS:
                 ocr_text = await _run_blocking(
@@ -350,7 +377,99 @@ async def _process_document_pipeline_locked(
                 document_language,
                 output_language,
             )
-        llm_path = log_llm_result(session_id, raw_llm_json)
+
+        initial_xml = await _run_blocking(shipping_instruction_to_xml, si_model)
+        initial_is_valid, initial_errors = await _run_blocking(
+            validate_xml_against_xsd,
+            initial_xml,
+        )
+        initial_missing_fields = check_mandatory_fields(si_model)
+        initial_assessment = assess_local_result(
+            si_model,
+            ocr_text,
+            initial_is_valid,
+            initial_errors,
+            initial_missing_fields,
+        )
+        refinement_raw_output = ""
+        local_refinement_used = False
+        if (
+            settings.model.refinement_enabled
+            and initial_assessment.risk_score
+            >= settings.model.refinement_risk_threshold
+        ):
+            try:
+                status_queue.put_nowait(_emit_status(
+                    session_id,
+                    ProcessingStatus.LLM_ANALYZING,
+                    "Dusuk guvenli alanlar Qwen 7B ile yeniden dogrulaniyor...",
+                ))
+                async with inference_semaphore:
+                    refined_model, refinement_raw_output = await _run_blocking(
+                        run_refinement_with_fallback,
+                        ocr_text,
+                        si_model,
+                        [
+                            finding.model_dump(mode="json")
+                            for finding in initial_assessment.findings
+                        ],
+                        document_language,
+                    )
+                refined_xml = await _run_blocking(
+                    shipping_instruction_to_xml,
+                    refined_model,
+                )
+                refined_is_valid, refined_errors = await _run_blocking(
+                    validate_xml_against_xsd,
+                    refined_xml,
+                )
+                refined_missing_fields = check_mandatory_fields(refined_model)
+                refined_assessment = assess_local_result(
+                    refined_model,
+                    ocr_text,
+                    refined_is_valid,
+                    refined_errors,
+                    refined_missing_fields,
+                )
+                if refined_assessment.risk_score < initial_assessment.risk_score:
+                    si_model = refined_model
+                    local_refinement_used = True
+            except Exception as refinement_error:
+                refinement_raw_output = json.dumps(
+                    {"error": str(refinement_error)},
+                    ensure_ascii=False,
+                )
+
+        translation_raw_output = ""
+        if translation_enabled and document_language != output_language:
+            try:
+                status_queue.put_nowait(_emit_status(
+                    session_id,
+                    ProcessingStatus.LLM_ANALYZING,
+                    "Aciklama alanlari hedef dile cevriliyor...",
+                ))
+                async with inference_semaphore:
+                    si_model, translation_raw_output = await _run_blocking(
+                        translate_instruction_content,
+                        si_model,
+                        output_language,
+                    )
+            except Exception as translation_error:
+                translation_raw_output = json.dumps(
+                    {"error": str(translation_error)},
+                    ensure_ascii=False,
+                )
+        llm_path = log_llm_result(
+            session_id,
+            json.dumps(
+                {
+                    "extraction": raw_llm_json,
+                    "refinement": refinement_raw_output,
+                    "translation": translation_raw_output,
+                },
+                ensure_ascii=False,
+            ),
+        )
         _session_models[session_id] = si_model
 
         status_queue.put_nowait(_emit_status(
@@ -441,6 +560,8 @@ async def _process_document_pipeline_locked(
             "missing_fields": [f.model_dump() for f in missing_fields],
             "document_language": document_language,
             "output_language": output_language,
+            "translation_enabled": translation_enabled,
+            "local_refinement_used": local_refinement_used,
             **review_data,
         }
 
@@ -589,6 +710,36 @@ async def update_runtime_settings(request: RuntimeSettingsUpdate):
         settings.deepseek.review_mode = request.deepseek_review_mode
     if request.deepseek_risk_threshold is not None:
         settings.deepseek.risk_threshold = request.deepseek_risk_threshold
+    if request.local_model_path is not None:
+        requested_model_path = str(Path(request.local_model_path).resolve())
+        installed_models = discover_local_models(
+            settings.base_dir,
+            settings.model.model_path,
+        )
+        selectable_paths = {
+            model["path"]
+            for model in installed_models
+            if model.get("selectable")
+        }
+        if requested_model_path not in selectable_paths:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "Selected model is not a usable OpenVINO model."},
+            )
+        if requested_model_path != str(Path(settings.model.model_path).resolve()):
+            settings.model.model_path = requested_model_path
+            reset_llm_pipeline()
+    if request.theme is not None:
+        settings.interface.theme = request.theme
+    if request.interface_language is not None:
+        settings.interface.interface_language = request.interface_language
+    if request.document_language is not None:
+        settings.interface.document_language = request.document_language
+    if request.output_language is not None:
+        settings.interface.output_language = request.output_language
+    if request.translation_enabled is not None:
+        settings.interface.translation_enabled = request.translation_enabled
+    save_persistent_settings()
     return JSONResponse(content=_runtime_settings_payload())
 
 
@@ -597,6 +748,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     document_language: str = Form("en"),
     output_language: str = Form("en"),
+    translation_enabled: bool = Form(True),
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
     try:
@@ -650,6 +802,7 @@ async def upload_pdf(
             status_queue,
             document_language,
             output_language,
+            translation_enabled,
         )
     )
 
@@ -879,6 +1032,7 @@ async def upload_and_stream(
     file: UploadFile = File(...),
     document_language: str = Form("en"),
     output_language: str = Form("en"),
+    translation_enabled: bool = Form(True),
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
     try:
@@ -932,6 +1086,7 @@ async def upload_and_stream(
             queue,
             document_language,
             output_language,
+            translation_enabled,
         )
     )
 

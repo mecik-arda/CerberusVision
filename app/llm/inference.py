@@ -1,5 +1,6 @@
 from __future__ import annotations
 import ast
+from datetime import datetime
 import json
 import logging
 from pathlib import Path
@@ -7,7 +8,7 @@ import re
 from functools import lru_cache
 from typing import Optional, Dict, Any, Tuple
 from app.config import settings
-from app.models import ShippingInstruction
+from app.models import DocumentStatusCode, ShippingInstruction
 
 
 _llm_pipeline = None
@@ -39,11 +40,23 @@ _system_prompt = (
     "Only populate place_of_issue when the document explicitly labels a place of issue; V.DAIRESI, VERGI DAIRESI, "
     "and TAX OFFICE are tax-office labels and must never become place_of_issue. A contact name must be a person's "
     "name; a telephone label or phone number belongs only in phone_number. For a shipper, labels such as V.NO, "
-    "VKN, VERGI NO, TAX ID, and VAT NO map to that party's party_id. Preserve company names, personal names, "
+    "VKN, VERGI NO, TAX ID, and VAT NO map to that party's party_id. Never copy party_name into party_id when an "
+    "explicit tax or party identifier label is absent. On a comma-separated SHIPPER or CONSIGNEE line, party_name "
+    "contains only the company or person before the first comma; city and two-letter country components belong in "
+    "address. SHIPPING INSTRUCTION NO, SI NO, and TALIMAT NO map to shipping_instruction_reference. BOOKING NO, "
+    "BKG REF, and REZERVASYON NO map to carrier_booking_reference. ISSUE DATE, DATE OF ISSUE, DATE, and TARIH map "
+    "to issue_date. Populate shipping_instruction_date_time only when the source "
+    "explicitly identifies an instruction date-time or includes a time. description_of_goods contains only the goods "
+    "description and must exclude leading package quantities and package-kind words such as PALLETS, CARTONS, BOXES, "
+    "or CRATES. Preserve company names, personal names, "
     "addresses, identifiers, codes, port names, and numeric values exactly as found in the source."
 )
 
-_language_names = {"tr": "Turkish", "en": "English"}
+_language_names = {
+    "auto": "mixed Turkish and English",
+    "tr": "Turkish",
+    "en": "English",
+}
 
 
 def get_llm_pipeline():
@@ -74,6 +87,11 @@ def get_llm_pipeline():
     return _llm_pipeline
 
 
+def reset_llm_pipeline() -> None:
+    global _llm_pipeline
+    _llm_pipeline = None
+
+
 @lru_cache(maxsize=1)
 def get_json_schema() -> Dict[str, Any]:
     schema = ShippingInstruction.model_json_schema()
@@ -92,9 +110,9 @@ def build_prompt(
     prompt = (
         f"System: {_system_prompt}\n\n"
         f"The document language is {source_language}. Interpret OCR labels in that language.\n"
-        f"The requested XML content language is {target_language}. Translate only translatable descriptive values "
-        f"such as description_of_goods and remarks into {target_language}. Never translate proper names, addresses, "
-        f"locations, identifiers, codes, measurement units, or enum values.\n\n"
+        f"The requested XML content language is {target_language}. Preserve all extracted values in their source "
+        "language during this extraction pass. A dedicated translation pass handles descriptive content later. "
+        "Never alter proper names, addresses, locations, identifiers, codes, measurement units, or enum values.\n\n"
         f"JSON Schema:\n{schema_str}\n\n"
         f"OCR Text (layout-preserved):\n{ocr_text}\n\n"
         f"Extract the shipping instruction data as JSON:"
@@ -115,6 +133,10 @@ def run_guided_inference(
 
 
 def _build_generation_config():
+    return _build_generation_config_for_schema(get_json_schema())
+
+
+def _build_generation_config_for_schema(schema: Dict[str, Any]):
     import openvino_genai
 
     config = openvino_genai.GenerationConfig()
@@ -123,7 +145,7 @@ def _build_generation_config():
     structured_output_mode = _configure_structured_output(
         config,
         openvino_genai,
-        json.dumps(get_json_schema()),
+        json.dumps(schema),
     )
     logger.debug("OpenVINO structured output mode: %s", structured_output_mode)
     return config
@@ -149,6 +171,164 @@ def parse_llm_output(raw_output: str) -> ShippingInstruction:
     cleaned = _extract_json(raw_output)
     data = json.loads(cleaned)
     return ShippingInstruction.model_validate(data)
+
+
+def _extract_labeled_value(ocr_text: str, patterns: tuple[str, ...]) -> Optional[str]:
+    for pattern in patterns:
+        match = re.search(pattern, ocr_text)
+        if match:
+            value = match.group("value").strip().rstrip(".")
+            if value:
+                return value
+    return None
+
+
+def _normalize_date_value(value: str, require_time: bool = False) -> Optional[str]:
+    match = re.fullmatch(
+        r"\s*(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*",
+        value,
+    )
+    if not match:
+        return None
+    first, second, third, hour, minute, second_value = match.groups()
+    if len(first) == 4:
+        year, month, day = int(first), int(second), int(third)
+    elif len(third) == 4:
+        day, month, year = int(first), int(second), int(third)
+    else:
+        return None
+    if require_time and hour is None:
+        return None
+    try:
+        parsed = datetime(
+            year,
+            month,
+            day,
+            int(hour or 0),
+            int(minute or 0),
+            int(second_value or 0),
+        )
+    except ValueError:
+        return None
+    if hour is None:
+        return parsed.strftime("%Y-%m-%d")
+    return parsed.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _extract_labeled_date(
+    ocr_text: str,
+    patterns: tuple[str, ...],
+    require_time: bool = False,
+) -> Optional[str]:
+    value = _extract_labeled_value(ocr_text, patterns)
+    return _normalize_date_value(value, require_time) if value else None
+
+
+def normalize_extracted_instruction(
+    instruction: ShippingInstruction,
+    ocr_text: str = "",
+) -> ShippingInstruction:
+    normalized = instruction.model_copy(deep=True)
+    if normalized.document_status_code is None:
+        normalized.document_status_code = DocumentStatusCode.DRAFT
+    if normalized.shipping_instruction_reference is None:
+        normalized.shipping_instruction_reference = _extract_labeled_value(
+            ocr_text,
+            (
+                r"(?im)^\s*shipping\s+instructions?(?:\s+(?:reference|ref|number|no\.?))?\s*[:#-]?\s*(?P<value>[A-Z0-9][A-Z0-9._/-]{2,})\s*$",
+                r"(?im)^\s*(?:s\s*/\s*i|si)\s+(?:reference|ref|number|no\.?)\s*[:#-]?\s*(?P<value>[A-Z0-9][A-Z0-9._/-]{2,})\s*$",
+                r"(?im)^\s*(?:sevkiyat\s+)?talimat[ıi]\s+(?:referans[ıi]|numaras[ıi]|no\.?)\s*[:#-]?\s*(?P<value>[A-Z0-9][A-Z0-9._/-]{2,})\s*$",
+            ),
+        )
+    if normalized.carrier_booking_reference is None:
+        normalized.carrier_booking_reference = _extract_labeled_value(
+            ocr_text,
+            (
+                r"(?im)^\s*(?:carrier\s+)?booking\s*(?:reference|ref|number|no\.?)?\s*[:#-]\s*(?P<value>[A-Z0-9][A-Z0-9._/-]{2,})\s*$",
+                r"(?im)^\s*bkg\s*(?:reference|ref|number|no\.?)?\s*[:#-]\s*(?P<value>[A-Z0-9][A-Z0-9._/-]{2,})\s*$",
+                r"(?im)^\s*rezervasyon\s*(?:referans[ıi]|numaras[ıi]|no\.?)?\s*[:#-]\s*(?P<value>[A-Z0-9][A-Z0-9._/-]{2,})\s*$",
+            ),
+        )
+    if normalized.shipping_instruction_date_time is None:
+        normalized.shipping_instruction_date_time = _extract_labeled_date(
+            ocr_text,
+            (
+                r"(?im)^\s*shipping\s+instructions?\s+(?:date\s*/\s*time|date\s+time|datetime)\s*[:#-]\s*(?P<value>\d{1,4}[./-]\d{1,2}[./-]\d{1,4}[T\s]+\d{1,2}:\d{2}(?::\d{2})?)\s*$",
+                r"(?im)^\s*(?:si|talimat)\s+(?:date\s*/\s*time|date\s+time|datetime|tarih\s*/\s*saat)\s*[:#-]\s*(?P<value>\d{1,4}[./-]\d{1,2}[./-]\d{1,4}[T\s]+\d{1,2}:\d{2}(?::\d{2})?)\s*$",
+            ),
+            require_time=True,
+        )
+    if normalized.issue_date is None:
+        normalized.issue_date = _extract_labeled_date(
+            ocr_text,
+            (
+                r"(?im)^\s*(?:issue\s+date|date\s+of\s+issue|date|tarih|d[üu]zenleme\s+tarihi)\s*[:#-]\s*(?P<value>\d{1,4}[./-]\d{1,2}[./-]\d{1,4})\s*$",
+            ),
+        )
+    normalized_instruction_date_time = (
+        _normalize_date_value(
+            normalized.shipping_instruction_date_time,
+            require_time=True,
+        )
+        if normalized.shipping_instruction_date_time
+        else None
+    )
+    if normalized_instruction_date_time:
+        normalized.shipping_instruction_date_time = normalized_instruction_date_time
+    normalized_issue_date = (
+        _normalize_date_value(normalized.issue_date)
+        if normalized.issue_date
+        else None
+    )
+    if normalized_issue_date:
+        normalized.issue_date = normalized_issue_date
+    for party in normalized.parties:
+        if (
+            party.party_id
+            and party.party_name
+            and party.party_id.strip().casefold() == party.party_name.strip().casefold()
+        ):
+            party.party_id = None
+    tax_office = _extract_labeled_value(
+        ocr_text,
+        (
+            r"(?im)^\s*(?:v\.?\s*dairesi|vergi\s+dairesi|tax\s+office)\s*[:#-]\s*(?P<value>[^\r\n]+?)\s*$",
+        ),
+    )
+    place_name = (
+        normalized.place_of_issue.location_name
+        if normalized.place_of_issue is not None
+        else None
+    )
+    if tax_office and place_name:
+        normalized_tax_office = re.sub(r"\W+", "", tax_office.casefold())
+        normalized_place_name = re.sub(r"\W+", "", place_name.casefold())
+        if normalized_tax_office == normalized_place_name:
+            normalized.place_of_issue = None
+    for cargo_item in normalized.cargo_items:
+        if cargo_item.description_of_goods:
+            cleaned_description = re.sub(
+                r"(?i)^\s*(?:\d+\s+)?(?:pallets?|cartons?|boxes?|crates?|bales?|drums?)\s+",
+                "",
+                cargo_item.description_of_goods,
+            ).strip()
+            if cleaned_description:
+                cargo_item.description_of_goods = cleaned_description
+    date_match = re.search(
+        r"(?im)^\s*(?:issue\s+date|date|tarih)\s*[:\-]\s*(\d{4}-\d{2}-\d{2})\s*$",
+        ocr_text,
+    )
+    date_time_value = normalized.shipping_instruction_date_time
+    if (
+        date_match
+        and date_time_value
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_time_value.strip())
+        and date_time_value.strip() == date_match.group(1)
+        and normalized.issue_date in {None, date_match.group(1)}
+    ):
+        normalized.issue_date = date_match.group(1)
+        normalized.shipping_instruction_date_time = None
+    return normalized
 
 
 def _extract_json(text: str) -> str:
@@ -183,8 +363,66 @@ def run_inference_with_fallback(
 ) -> Tuple[ShippingInstruction, str]:
     raw_output = run_guided_inference(ocr_text, document_language, output_language)
     try:
-        return parse_llm_output(raw_output), raw_output
+        return normalize_extracted_instruction(
+            parse_llm_output(raw_output),
+            ocr_text,
+        ), raw_output
     except Exception:
         cleaned = _extract_json(raw_output)
         data = _parse_json_with_fallback(cleaned)
-        return ShippingInstruction.model_validate(data), raw_output
+        return normalize_extracted_instruction(
+            ShippingInstruction.model_validate(data),
+            ocr_text,
+        ), raw_output
+
+
+def build_refinement_prompt(
+    ocr_text: str,
+    initial_result: ShippingInstruction,
+    findings: list[dict[str, Any]],
+    document_language: str,
+) -> str:
+    source_language = _language_names.get(document_language, "mixed Turkish and English")
+    schema = json.dumps(get_json_schema(), ensure_ascii=False)
+    initial_json = initial_result.model_dump_json(exclude_none=False)
+    findings_json = json.dumps(findings, ensure_ascii=False)
+    return (
+        f"System: {_system_prompt}\n\n"
+        f"The source is {source_language}. Recheck the initial extraction against the OCR text. "
+        "Correct only values directly supported by the OCR text. Resolve the listed deterministic validation "
+        "findings when the document contains the required evidence. Keep unsupported fields null and preserve "
+        "identifiers, names, addresses, locations, codes, units, and numeric values exactly.\n\n"
+        f"Validation findings:\n{findings_json}\n\n"
+        f"Initial extraction:\n{initial_json}\n\n"
+        f"JSON Schema:\n{schema}\n\n"
+        f"OCR Text:\n{ocr_text}\n\n"
+        "Return the verified shipping instruction as JSON:"
+    )
+
+
+def run_refinement_with_fallback(
+    ocr_text: str,
+    initial_result: ShippingInstruction,
+    findings: list[dict[str, Any]],
+    document_language: str,
+) -> Tuple[ShippingInstruction, str]:
+    pipe = get_llm_pipeline()
+    prompt = build_refinement_prompt(
+        ocr_text,
+        initial_result,
+        findings,
+        document_language,
+    )
+    raw_output = str(pipe.generate(prompt, _build_generation_config()))
+    try:
+        return normalize_extracted_instruction(
+            parse_llm_output(raw_output),
+            ocr_text,
+        ), raw_output
+    except Exception:
+        cleaned = _extract_json(raw_output)
+        data = _parse_json_with_fallback(cleaned)
+        return normalize_extracted_instruction(
+            ShippingInstruction.model_validate(data),
+            ocr_text,
+        ), raw_output

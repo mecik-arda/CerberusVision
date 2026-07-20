@@ -11,12 +11,7 @@ from app.models import (
 
 
 MANDATORY_FIELDS = [
-    ("shipping_instruction_reference", "Shipping Instruction Reference"),
     ("document_status_code", "Document Status Code"),
-    ("shipping_instruction_date_time", "Shipping Instruction DateTime"),
-    ("carrier_booking_reference", "Carrier Booking Reference"),
-    ("issue_date", "Issue Date"),
-    ("place_of_issue.location_name", "Place of Issue"),
 ]
 
 COLLECTION_MANDATORY_FIELDS = {

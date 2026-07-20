@@ -16,6 +16,16 @@ from app.routes import processing
 from tests.test_validator import create_complete_si
 
 
+@pytest.fixture(autouse=True)
+def isolate_qwen_post_processing(monkeypatch):
+    monkeypatch.setattr(settings.model, "refinement_enabled", False)
+    monkeypatch.setattr(
+        processing,
+        "translate_instruction_content",
+        lambda instruction, output_language: (instruction, ""),
+    )
+
+
 def test_copy_upload_enforces_streaming_size_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(processing, "_MAX_UPLOAD_SIZE", 10)
     destination = tmp_path / "too-large.pdf"
@@ -47,6 +57,7 @@ async def test_pipeline_runs_short_cloud_review_and_keeps_local_as_source(tmp_pa
 
     monkeypatch.setattr(settings, "logs_dir", tmp_path / "logs")
     monkeypatch.setattr(settings.deepseek, "api_key", "test-key")
+    monkeypatch.setattr(settings.deepseek, "risk_threshold", 30)
     monkeypatch.setattr(
         processing,
         "process_pdf_with_spatial_ocr",
@@ -159,6 +170,7 @@ async def test_runtime_settings_update_never_returns_api_key(monkeypatch):
     monkeypatch.setattr(settings.deepseek, "review_mode", "risk")
     monkeypatch.setattr(settings.deepseek, "risk_threshold", 30)
     monkeypatch.setattr(processing, "discover_local_models", lambda *args: [])
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
 
     response = await processing.update_runtime_settings(
         processing.RuntimeSettingsUpdate(
@@ -174,6 +186,36 @@ async def test_runtime_settings_update_never_returns_api_key(monkeypatch):
     assert data["deepseek"]["review_mode"] == "manual"
     assert data["deepseek"]["risk_threshold"] == 45
     assert "api_key" not in data["deepseek"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_settings_selects_one_openvino_model(tmp_path, monkeypatch):
+    model_path = tmp_path / "Qwen-7B"
+    model_path.mkdir()
+    (model_path / "openvino_model.xml").write_text("<xml/>", encoding="utf-8")
+    resets = []
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
+    monkeypatch.setattr(processing, "reset_llm_pipeline", lambda: resets.append(True))
+    monkeypatch.setattr(
+        processing,
+        "discover_local_models",
+        lambda *args: [{
+            "name": "Qwen-7B",
+            "path": str(model_path.resolve()),
+            "source": "Test",
+            "format": "OpenVINO",
+            "active": False,
+            "selectable": True,
+        }],
+    )
+
+    response = await processing.update_runtime_settings(
+        processing.RuntimeSettingsUpdate(local_model_path=str(model_path))
+    )
+
+    assert response.status_code == 200
+    assert settings.model.model_path == str(model_path.resolve())
+    assert resets == [True]
 
 
 @pytest.mark.asyncio
