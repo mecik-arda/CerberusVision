@@ -14,20 +14,34 @@ def get_florence_pipeline():
     global _florence_pipeline
     if _florence_pipeline is not None:
         return _florence_pipeline
-    import torch
-    from transformers import AutoProcessor, AutoModelForCausalLM
+    try:
+        import torch
+        from transformers import AutoProcessor, AutoModelForCausalLM
 
-    model_id = "microsoft/Florence-2-base"
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16,
-        trust_remote_code=True,
-    ).to("cpu")
-    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-    _florence_pipeline = (model, processor)
-    assert model is not None, "Florence-2 modeli yuklenemedi"
-    assert processor is not None, "Florence-2 processor yuklenemedi"
-    return _florence_pipeline
+        model_id = "microsoft/Florence-2-base"
+        if torch.cuda.is_available():
+            device = "cuda"
+            dtype = torch.float16
+        elif torch.backends.mps.is_available():
+            device = "mps"
+            dtype = torch.float16
+        else:
+            device = "cpu"
+            dtype = torch.bfloat16 if hasattr(torch, "bfloat16") else torch.float32
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=dtype,
+            trust_remote_code=True,
+        ).to(device)
+        processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        logger.info("Florence-2 yuklendi: device=%s dtype=%s", device, str(dtype))
+        _florence_pipeline = (model, processor)
+        assert model is not None, "Florence-2 modeli yuklenemedi"
+        assert processor is not None, "Florence-2 processor yuklenemedi"
+        return _florence_pipeline
+    except Exception:
+        logger.warning("Florence-2 yuklenemedi, Y-orani yontemine dusuluyor", exc_info=True)
+        raise RuntimeError("Florence-2 yuklenemedi") from None
 
 
 def reset_florence_pipeline() -> None:

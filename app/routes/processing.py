@@ -410,14 +410,24 @@ async def _process_document_pipeline_locked(
             if use_florence:
                 from app.ocr.spatial_ocr import process_pdf_with_florence_regions
 
-                (
-                    upper_text, middle_text, lower_text, boxes, _florence_meta,
-                ) = await _run_blocking(
-                    process_pdf_with_florence_regions,
-                    document_path,
-                    _OCR_LANGUAGE_MAP[document_language],
-                    use_florence=True,
-                )
+                try:
+                    (
+                        upper_text, middle_text, lower_text, boxes, _florence_meta,
+                    ) = await _run_blocking(
+                        process_pdf_with_florence_regions,
+                        document_path,
+                        _OCR_LANGUAGE_MAP[document_language],
+                        use_florence=True,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Florence-2 basarisiz, Y-orani yontemine dusuluyor"
+                    )
+                    upper_text, middle_text, lower_text, boxes = await _run_blocking(
+                        process_pdf_with_region_ocr,
+                        document_path,
+                        _OCR_LANGUAGE_MAP[document_language],
+                    )
                 ocr_text = (
                     f"{upper_text}\n\n--- ORTA BOLGE ---\n\n{middle_text}"
                     f"\n\n--- ALT BOLGE ---\n\n{lower_text}"

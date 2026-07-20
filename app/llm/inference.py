@@ -571,6 +571,26 @@ def _extract_containers_from_ocr(ocr_text: str) -> list[str]:
     return deduped
 
 
+def _detect_weight_unit(ocr_text: str, value_str: str) -> str:
+    if not value_str or not ocr_text:
+        return "KGM"
+    idx = ocr_text.casefold().find(value_str.casefold())
+    if idx == -1:
+        return "KGM"
+    window_start = max(0, idx - 5)
+    window_end = min(len(ocr_text), idx + len(value_str) + 10)
+    window = ocr_text[window_start:window_end].casefold()
+    unit_map = {
+        "lbs": "LBR", "lbr": "LBR", "pound": "LBR", "pounds": "LBR",
+        "kg": "KGM", "kgs": "KGM", "kgm": "KGM", "kilogram": "KGM",
+        "ton": "TON", "tons": "TON",
+    }
+    for keyword, unit in unit_map.items():
+        if keyword in window:
+            return unit
+    return "KGM"
+
+
 def _clean_location_name(location) -> None:
     if location is None or not location.location_name:
         return
@@ -728,29 +748,34 @@ def normalize_extracted_instruction(
         parsed_brut = _parse_european_number(brut_value)
         if parsed_brut is not None and parsed_brut > 0:
             from app.models import Weight, WeightUnit
+            brut_unit_str = _detect_weight_unit(ocr_text, brut_value)
+            brut_unit = WeightUnit.KILOGRAM if brut_unit_str == "KGM" else (
+                WeightUnit.TON if brut_unit_str == "TON" else WeightUnit.KILOGRAM
+            )
             applied = False
             for equipment in normalized.equipment_list:
                 if equipment.cargo_gross_weight is None or equipment.cargo_gross_weight.weight is None:
-                    equipment.cargo_gross_weight = Weight(weight=parsed_brut, unit=WeightUnit.KILOGRAM)
+                    equipment.cargo_gross_weight = Weight(weight=parsed_brut, unit=brut_unit)
                     applied = True
                     break
             if not applied:
                 from app.models import Equipment
-                new_eq = Equipment(cargo_gross_weight=Weight(weight=parsed_brut, unit=WeightUnit.KILOGRAM))
+                new_eq = Equipment(cargo_gross_weight=Weight(weight=parsed_brut, unit=brut_unit))
                 normalized.equipment_list.append(new_eq)
     if net_value is not None:
         parsed_net = _parse_european_number(net_value)
         if parsed_net is not None and parsed_net > 0:
             from app.models import CargoWeight
+            net_unit_str = _detect_weight_unit(ocr_text, net_value)
             applied = False
             for cargo_item in normalized.cargo_items:
                 if cargo_item.weight is None or cargo_item.weight.weight_value is None:
-                    cargo_item.weight = CargoWeight(weight_value=parsed_net, unit="KGM")
+                    cargo_item.weight = CargoWeight(weight_value=parsed_net, unit=net_unit_str)
                     applied = True
                     break
             if not applied:
                 from app.models import CargoItem
-                new_item = CargoItem(weight=CargoWeight(weight_value=parsed_net, unit="KGM"))
+                new_item = CargoItem(weight=CargoWeight(weight_value=parsed_net, unit=net_unit_str))
                 normalized.cargo_items.append(new_item)
     ocr_containers = _extract_containers_from_ocr(ocr_text)
     if ocr_containers:
