@@ -23,6 +23,10 @@ class PartyRoleCode(str, Enum):
     SHIPPER = "SHI"
     CONSIGNEE = "CON"
     NOTIFY = "NTF"
+    SHIPPER_DCSA = "CZ"
+    CONSIGNEE_DCSA = "CN"
+    NOTIFY_DCSA = "N1"
+    FORWARDER = "FW"
 
 
 class TransportMode(str, Enum):
@@ -293,3 +297,64 @@ class RuntimeSettingsUpdate(BaseModel):
     region_upper_ratio: Optional[float] = Field(default=None, ge=0.10, le=0.45)
     region_middle_ratio: Optional[float] = Field(default=None, ge=0.50, le=0.80)
     stage_timeout_seconds: Optional[int] = Field(default=None, ge=60, le=1800)
+
+
+# ---------------------------------------------------------------------------
+# Batch (toplu isleme) modelleri
+# ---------------------------------------------------------------------------
+
+
+class BatchItemStatus(str, Enum):
+    VALIDATING = "VALIDATING"
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    DRAFT = "DRAFT"
+    ERROR = "ERROR"
+    REJECTED = "REJECTED"
+
+
+class BatchItemResult(BaseModel):
+    filename: str
+    original_filename: str
+    status: BatchItemStatus
+    session_id: Optional[str] = None
+    error_message: Optional[str] = None
+    risk_score: Optional[float] = None
+    confidence_score: Optional[float] = None
+
+
+class BatchStatusResponse(BaseModel):
+    batch_id: str
+    created_at: str
+    total_count: int
+    completed_count: int = 0
+    error_count: int = 0
+    percent: float = 0.0
+    current_file: Optional[str] = None
+    current_status: Optional[str] = None
+    items: List[BatchItemResult] = Field(default_factory=list)
+    zip_ready: bool = False
+    zip_size_bytes: Optional[int] = None
+
+
+class BatchUploadResponse(BaseModel):
+    batch_id: str
+    total_count: int
+    rejected_count: int
+    rejected_items: List[BatchItemResult] = Field(default_factory=list)
+    queued_count: int
+    stream_url: str
+    status_url: str
+
+
+class BatchEvent(BaseModel):
+    batch_id: str
+    completed_count: int
+    total_count: int
+    percent: float
+    current_file: Optional[str] = None
+    current_status: Optional[str] = None
+    error_count: int = 0
+    item: Optional[BatchItemResult] = None
+    zip_ready: bool = False

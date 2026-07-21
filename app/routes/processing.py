@@ -1,16 +1,25 @@
 from __future__ import annotations
 import asyncio
+from datetime import datetime, timezone
+import io
 import json
 import logging
 from dataclasses import asdict
 from pathlib import Path
+import tempfile
 from time import monotonic
 from typing import AsyncGenerator
+import zipfile
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 from app.config import save_persistent_settings, settings
 from app.security import enforce_upload_rate_limit, require_api_key
 from app.models import (
+    BatchEvent,
+    BatchItemResult,
+    BatchItemStatus,
+    BatchStatusResponse,
+    BatchUploadResponse,
     DocumentStatusCode,
     ProcessingStatus,
     ProcessingResult,
@@ -77,6 +86,15 @@ _stream_cleanup_handles: dict[str, asyncio.TimerHandle] = {}
 _stream_consumers: set[str] = set()
 _active_pipeline_sessions: set[str] = set()
 _active_pipeline_lock = asyncio.Lock()
+
+# Batch (toplu isleme) state
+_batch_store: dict[str, dict] = {}
+_batch_queues: dict[str, asyncio.Queue] = {}
+_batch_rate_limiter: dict[str, list[float]] = {}
+_MAX_BATCH_STORE = 50
+_MAX_BATCH_FILES = 50
+_BATCH_RATE_LIMIT = 3
+_BATCH_RATE_WINDOW = 60
 
 
 _PROCESSING_STORE_MAX_SIZE = 100
@@ -1019,6 +1037,508 @@ async def stream_status(session_id: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ============================================================================
+# Batch (toplu isleme) sistemi
+# ============================================================================
+
+
+def _check_batch_rate_limit(client_ip: str) -> int | None:
+    """Batch endpoint'i icin kayan pencere rate limiter. None=gecer, int=Retry-After."""
+    now = monotonic()
+    timestamps = _batch_rate_limiter.get(client_ip, [])
+    timestamps = [t for t in timestamps if now - t < _BATCH_RATE_WINDOW]
+    _batch_rate_limiter[client_ip] = timestamps
+    if len(timestamps) >= _BATCH_RATE_LIMIT:
+        return max(1, int(_BATCH_RATE_WINDOW - (now - timestamps[0])))
+    timestamps.append(now)
+    if len(_batch_rate_limiter) > 500:
+        stale = [ip for ip, ts in _batch_rate_limiter.items() if not ts]
+        for ip in stale:
+            _batch_rate_limiter.pop(ip, None)
+    return None
+
+
+def _create_batch_id() -> str:
+    now = datetime.now(timezone.utc)
+    return f"batch_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond:06d}"
+
+
+def _get_or_create_batch_queue(batch_id: str) -> asyncio.Queue:
+    if batch_id in _batch_queues:
+        return _batch_queues[batch_id]
+    queue: asyncio.Queue = asyncio.Queue()
+    _batch_queues[batch_id] = queue
+    if len(_batch_queues) > _MAX_BATCH_STORE * 2:
+        stale = [bid for bid in _batch_queues if bid not in _batch_store]
+        for bid in stale[:10]:
+            _batch_queues.pop(bid, None)
+    return queue
+
+
+def _emit_batch_event(batch: dict, item: dict | None = None) -> BatchEvent:
+    completed = sum(
+        1 for i in batch["items"]
+        if i["status"] in (BatchItemStatus.COMPLETED.value, BatchItemStatus.DRAFT.value,
+                           BatchItemStatus.ERROR.value)
+    )
+    total = batch["total_count"]
+    percent = round((completed / total * 100.0) if total else 0.0, 1)
+    current = None
+    current_status = None
+    for i in batch["items"]:
+        if i["status"] == BatchItemStatus.PROCESSING.value:
+            current = i["original_filename"]
+            current_status = "PROCESSING"
+            break
+        if i["status"] == BatchItemStatus.QUEUED.value:
+            if current is None:
+                current = i["original_filename"]
+                current_status = "QUEUED"
+
+    event = BatchEvent(
+        batch_id=batch["batch_id"],
+        completed_count=completed,
+        total_count=total,
+        percent=percent,
+        current_file=current,
+        current_status=current_status,
+        error_count=batch.get("error_count", 0),
+        item=BatchItemResult(**item) if item else None,
+        zip_ready=batch.get("zip_ready", False),
+    )
+    batch_queue = _batch_queues.get(batch["batch_id"])
+    if batch_queue is not None:
+        try:
+            batch_queue.put_nowait(event.model_dump_json())
+        except asyncio.QueueFull:
+            pass
+    return event
+
+
+async def _process_single_in_batch(
+    document_path: Path,
+    item: dict,
+    document_language: str,
+    output_language: str,
+    translation_enabled: bool,
+) -> None:
+    """Batch icinde tek bir dosyayi isler. Mevcut pipeline'i kullanir."""
+    session_id = item["session_id"]
+    queue = _get_or_create_queue(session_id)
+
+    await _process_document_pipeline_locked(
+        document_path,
+        session_id,
+        item["original_filename"],
+        queue,
+        document_language,
+        output_language,
+        translation_enabled,
+    )
+
+
+async def _process_batch(batch_id: str) -> None:
+    """Batch koordinatoru: dosyalari sirayla isler, GPU'yu korur."""
+    batch = _batch_store.get(batch_id)
+    if batch is None:
+        return
+    doc_lang = batch["document_language"]
+    out_lang = batch["output_language"]
+    trans_enabled = batch["translation_enabled"]
+    temp_dir = batch["_temp_dir"]
+
+    for item in batch["items"]:
+        if item["status"] != BatchItemStatus.QUEUED.value:
+            continue
+
+        # Pipeline slot bekle
+        while not await _reserve_pipeline_slot(item["session_id"]):
+            await asyncio.sleep(3)
+
+        item["status"] = BatchItemStatus.PROCESSING.value
+        _emit_batch_event(batch, item)
+
+        try:
+            doc_path = Path(temp_dir) / item["filename"]
+            await _process_single_in_batch(
+                doc_path, item, doc_lang, out_lang, trans_enabled,
+            )
+            # Basariyla tamamlandi — session model'den skoru al
+            si_model = _session_models.get(item["session_id"])
+            if si_model is not None:
+                stored = _processing_store.get(item["session_id"])
+                if stored:
+                    if stored.status == ProcessingStatus.COMPLETED:
+                        item["status"] = BatchItemStatus.COMPLETED.value
+                    elif stored.status == ProcessingStatus.DRAFT:
+                        item["status"] = BatchItemStatus.DRAFT.value
+                    item["risk_score"] = stored.local_risk_score
+                    item["confidence_score"] = stored.audit_confidence_score
+                else:
+                    item["status"] = BatchItemStatus.COMPLETED.value
+            else:
+                item["status"] = BatchItemStatus.COMPLETED.value
+        except Exception as exc:
+            item["status"] = BatchItemStatus.ERROR.value
+            item["error_message"] = f"{type(exc).__name__}: {exc}"
+            batch["error_count"] = batch.get("error_count", 0) + 1
+        finally:
+            await _release_pipeline_slot(item["session_id"])
+            _emit_batch_event(batch, item)
+
+    # Tum dosyalar islendi → ZIP olustur
+    try:
+        zip_path = await _build_batch_zip(batch_id)
+        batch["zip_path"] = str(zip_path)
+        batch["zip_size_bytes"] = zip_path.stat().st_size
+    except Exception as exc:
+        logger.error("Batch ZIP olusturulamadi: %s", exc)
+    batch["zip_ready"] = True
+    _emit_batch_event(batch, item=None)
+    # Queue'ya None sentinel gonder (stream sonu)
+    batch_queue = _batch_queues.get(batch_id)
+    if batch_queue is not None:
+        try:
+            batch_queue.put_nowait("__BATCH_COMPLETE__")
+        except asyncio.QueueFull:
+            pass
+
+    # Temp dizini temizle (dosyalar zaten pipeline tarafindan silindi)
+    try:
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+
+async def _build_batch_zip(batch_id: str) -> Path:
+    """Batch sonuclarini tam audit paketi olarak ZIP'ler."""
+    batch = _batch_store[batch_id]
+    zip_path = settings.uploads_dir / f"{batch_id}.zip"
+
+    def _build():
+        completed_items = [
+            i for i in batch["items"]
+            if i["status"] in (BatchItemStatus.COMPLETED.value, BatchItemStatus.DRAFT.value)
+        ]
+        error_items = [
+            i for i in batch["items"]
+            if i["status"] == BatchItemStatus.ERROR.value
+        ]
+        with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
+            # xml/ dizini
+            for item in completed_items:
+                sid = item.get("session_id")
+                if not sid:
+                    continue
+                log_dir = settings.logs_dir / sid
+                approved_xml = log_dir / "approved_shipping_instruction.xml"
+                output_xml = log_dir / "shipping_instruction_output.xml"
+                xml_file = approved_xml if approved_xml.exists() else output_xml
+                if xml_file.exists():
+                    safe_name = item["original_filename"].rsplit(".", 1)[0]
+                    zf.write(str(xml_file), f"xml/SI_{safe_name}.xml")
+
+            # audit_reports/ dizini
+            for item in completed_items:
+                sid = item.get("session_id")
+                if not sid:
+                    continue
+                log_dir = settings.logs_dir / sid
+                audit_files = sorted(log_dir.glob("*audit*.json")) + sorted(log_dir.glob("*review*.json"))
+                for af in audit_files:
+                    safe_name = item["original_filename"].rsplit(".", 1)[0]
+                    zf.write(str(af), f"audit_reports/{safe_name}_{af.name}")
+
+            # BATCH_SUMMARY.json
+            summary = {
+                "batch_id": batch_id,
+                "created_at": batch["created_at"],
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "total_files": batch["total_count"],
+                "successful": len(completed_items),
+                "errors": len(error_items),
+                "document_language": batch["document_language"],
+                "output_language": batch["output_language"],
+                "items": [
+                    {
+                        "filename": i["original_filename"],
+                        "status": i["status"],
+                        "session_id": i.get("session_id"),
+                        "risk_score": i.get("risk_score"),
+                        "confidence_score": i.get("confidence_score"),
+                        "error_message": i.get("error_message"),
+                    }
+                    for i in batch["items"]
+                ],
+            }
+            zf.writestr("BATCH_SUMMARY.json", json.dumps(summary, ensure_ascii=False, indent=2))
+
+            # HATALI_DOSYALAR_RAPORU.json
+            if error_items:
+                error_report = {
+                    "title": "Hatali Dosyalar Raporu",
+                    "batch_id": batch_id,
+                    "error_count": len(error_items),
+                    "errors": [
+                        {
+                            "filename": i["original_filename"],
+                            "error_message": i.get("error_message", "Bilinmeyen hata"),
+                            "session_id": i.get("session_id"),
+                        }
+                        for i in error_items
+                    ],
+                }
+                zf.writestr("HATALI_DOSYALAR_RAPORU.json",
+                            json.dumps(error_report, ensure_ascii=False, indent=2))
+
+    await _run_blocking(_build)
+    return zip_path
+
+
+async def _batch_event_generator(batch_id: str) -> AsyncGenerator[str, None]:
+    """Batch SSE event ureteci."""
+    batch_queue = _get_or_create_batch_queue(batch_id)
+    timeout = float(settings.sse_timeout_seconds)
+    try:
+        while True:
+            try:
+                data = await asyncio.wait_for(batch_queue.get(), timeout=timeout)
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'batch_id': batch_id, 'timeout': True})}\n\n"
+                break
+            if data == "__BATCH_COMPLETE__":
+                yield f"data: {json.dumps({'batch_id': batch_id, 'status': 'COMPLETE', 'message': 'Batch isleme tamamlandi'})}\n\n"
+                break
+            yield f"data: {data}\n\n"
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _batch_queues.pop(batch_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Batch endpoint'leri
+# ---------------------------------------------------------------------------
+
+
+@router.post("/batch/upload")
+async def batch_upload(
+    request: Request,
+    files: list[UploadFile] = File(..., alias="files"),
+    document_language: str = Form("en"),
+    output_language: str = Form("en"),
+    translation_enabled: bool = Form(True),
+):
+    """Toplu belge yukleme: 50'ye kadar PDF/DOCX/XML/PNG/JPEG."""
+    # Rate limit
+    client_ip = request.client.host if request.client else "unknown"
+    retry_after = _check_batch_rate_limit(client_ip)
+    if retry_after is not None:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Cok fazla batch istegi. Lutfen bekleyin."},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    # Dil dogrulama
+    doc_lang, out_lang = _validate_processing_languages(document_language, output_language)
+
+    # Dosya siniri
+    if len(files) > _MAX_BATCH_FILES:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": f"En fazla {_MAX_BATCH_FILES} dosya yuklenebilir. Gonderilen: {len(files)}"},
+        )
+    if not files:
+        return JSONResponse(status_code=422, content={"detail": "En az bir dosya gerekli."})
+
+    # Gecici dizin ve eager validation
+    temp_dir = tempfile.mkdtemp(prefix="cerberus_batch_")
+    batch_id = _create_batch_id()
+    items: list[dict] = []
+    rejected: list[dict] = []
+
+    for f in files:
+        safe_name = f"{batch_id}_{f.filename or 'unknown'}"
+        item = {
+            "filename": safe_name,
+            "original_filename": f.filename or "unknown",
+            "status": BatchItemStatus.VALIDATING.value,
+            "session_id": create_session_id(),
+            "error_message": None,
+            "risk_score": None,
+            "confidence_score": None,
+        }
+        doc_path = Path(temp_dir) / safe_name
+        try:
+            # Uzanti kontrolu
+            validate_supported_filename(f.filename or "")
+            # Dosyayi kaydet ve validate et
+            await _save_uploaded_document(f, doc_path)
+            item["status"] = BatchItemStatus.QUEUED.value
+            items.append(item)
+        except (DocumentValidationError, UploadTooLargeError, ValueError) as exc:
+            item["status"] = BatchItemStatus.REJECTED.value
+            item["error_message"] = str(exc)
+            rejected.append(item)
+        except Exception as exc:
+            item["status"] = BatchItemStatus.REJECTED.value
+            item["error_message"] = f"{type(exc).__name__}: {exc}"
+            rejected.append(item)
+
+    queued_count = len(items)
+    total_count = queued_count + len(rejected)
+    all_items = items + rejected
+
+    # Batch session olustur
+    batch = {
+        "batch_id": batch_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "total_count": total_count,
+        "error_count": 0,
+        "items": all_items,
+        "document_language": doc_lang,
+        "output_language": out_lang,
+        "translation_enabled": translation_enabled,
+        "zip_ready": False,
+        "zip_path": None,
+        "zip_size_bytes": None,
+        "_temp_dir": temp_dir,
+    }
+    _batch_store[batch_id] = batch
+    # Batch store temizligi
+    if len(_batch_store) > _MAX_BATCH_STORE:
+        oldest = sorted(_batch_store.keys())[:max(1, len(_batch_store) - _MAX_BATCH_STORE)]
+        for old_id in oldest:
+            _batch_store.pop(old_id, None)
+            _batch_queues.pop(old_id, None)
+
+    # Arka planda islemeye basla
+    asyncio.create_task(_process_batch(batch_id))
+
+    return BatchUploadResponse(
+        batch_id=batch_id,
+        total_count=total_count,
+        rejected_count=len(rejected),
+        rejected_items=[BatchItemResult(**r) for r in rejected],
+        queued_count=queued_count,
+        stream_url=f"/api/batch/{batch_id}/stream",
+        status_url=f"/api/batch/{batch_id}/status",
+    )
+
+
+@router.get("/batch/{batch_id}/status")
+async def batch_status(batch_id: str):
+    """Batch durumunu dondurur."""
+    batch = _batch_store.get(batch_id)
+    if batch is None:
+        return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
+
+    completed = sum(
+        1 for i in batch["items"]
+        if i["status"] in (BatchItemStatus.COMPLETED.value, BatchItemStatus.DRAFT.value,
+                           BatchItemStatus.ERROR.value)
+    )
+    total = batch["total_count"]
+    percent = round((completed / total * 100.0) if total else 0.0, 1)
+
+    current = None
+    current_status = None
+    for i in batch["items"]:
+        if i["status"] == BatchItemStatus.PROCESSING.value:
+            current = i["original_filename"]
+            current_status = "PROCESSING"
+            break
+        if current is None and i["status"] == BatchItemStatus.QUEUED.value:
+            current = i["original_filename"]
+            current_status = "QUEUED"
+
+    return BatchStatusResponse(
+        batch_id=batch_id,
+        created_at=batch["created_at"],
+        total_count=total,
+        completed_count=completed,
+        error_count=batch.get("error_count", 0),
+        percent=percent,
+        current_file=current,
+        current_status=current_status,
+        items=[BatchItemResult(**i) for i in batch["items"]],
+        zip_ready=batch.get("zip_ready", False),
+        zip_size_bytes=batch.get("zip_size_bytes"),
+    )
+
+
+@router.get("/batch/{batch_id}/stream")
+async def batch_stream(batch_id: str):
+    """Batch SSE akisi."""
+    batch = _batch_store.get(batch_id)
+    if batch is None:
+        return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
+
+    return StreamingResponse(
+        _batch_event_generator(batch_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/batch/{batch_id}/download")
+async def batch_download(batch_id: str):
+    """Batch ZIP paketini indirir."""
+    batch = _batch_store.get(batch_id)
+    if batch is None:
+        return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
+    if not batch.get("zip_ready"):
+        return JSONResponse(status_code=409, content={"detail": "ZIP henuz hazir degil. Islemin tamamlanmasini bekleyin."})
+
+    zip_path = batch.get("zip_path")
+    if not zip_path or not Path(zip_path).exists():
+        return JSONResponse(status_code=500, content={"detail": "ZIP dosyasi bulunamadi."})
+
+    zip_path_obj = Path(zip_path)
+    return Response(
+        content=zip_path_obj.read_bytes(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"batch_results_{batch_id}.zip\"",
+            "Content-Length": str(zip_path_obj.stat().st_size),
+        },
+    )
+
+
+@router.delete("/batch/{batch_id}")
+async def batch_cancel(batch_id: str):
+    """Devam eden batch'i iptal eder (best-effort)."""
+    batch = _batch_store.get(batch_id)
+    if batch is None:
+        return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
+
+    # QUEUED ogeleri ERROR yap
+    for item in batch["items"]:
+        if item["status"] in (BatchItemStatus.QUEUED.value, BatchItemStatus.PROCESSING.value):
+            item["status"] = BatchItemStatus.ERROR.value
+            item["error_message"] = "Batch kullanici tarafindan iptal edildi."
+
+    batch["zip_ready"] = True
+    _emit_batch_event(batch, item=None)
+
+    # Temp dizini temizle
+    temp_dir = batch.pop("_temp_dir", None)
+    if temp_dir:
+        try:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    return {"batch_id": batch_id, "status": "cancelled"}
 
 
 @router.get("/sessions/{session_id}/ocr-boxes")

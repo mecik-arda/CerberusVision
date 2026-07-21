@@ -12,36 +12,38 @@
 
 CerberusVision, konşimento talimatı (Shipping Instruction) belgelerini yerel
 çıkarım hattı ve Qwen modeliyle işleyip DCSA tabanlı XML üreten bir FastAPI
-uygulamasıdır. PDF, DOCX, XML, PNG ve JPEG desteklenir; arayüz tek seçimde en
-fazla 10 belgeyi GPU dostu sıralı kuyrukla işler. Ana ve tek çalışma ortamı
+uygulamasıdır. PDF, DOCX, XML, PNG ve JPEG desteklenir; arayüz tekil veya toplu yüklemede
+(Batch Upload) en fazla 50 belgeyi GPU dostu sıralı kuyrukla işler. Ana ve tek çalışma ortamı
 WSL2/Ubuntu'dur; DeepSeek yalnızca isteğe bağlı, kısa ve salt-okunur bir risk
 hakemi olarak kullanılır.
 
 ```mermaid
 graph LR
-    A[📄 PDF / PNG / JPEG] --> B[👁️ Florence-2 VLM + PaddleOCR<br/>Mizanpaj & Tablo Tespiti]
-    T[📄 DOCX / XML / TXT] --> C
-    B --> C[📐 Akıllı Bölge Ayrıştırma<br/>Üst / Orta / Alt Bölge]
-    C --> D[🧩 3 Aşamalı Modüler Çıkarım<br/>Qwen2.5 / LoRA OpenVINO]
-    D --> E[🛠️ Düzeltme & Normalizasyon<br/>Tarih / VKN / Konteyner]
-    E --> F[🛡️ Yerel Risk Kontrolleri<br/>Zorunlu Alan Denetimi]
-    F -.->|Gerekirse| G[☁️ Kısa DeepSeek Yorumu<br/>Salt-Okunur Hakem]
-    F --> H[⚙️ DCSA XML / XSD]
-    G -.-> H
-    H --> I[🖥️ Web Arayüzü & Onay]
-    H -.->|Otomatik / Tetik| J[🌐 Webhook ERP Entegrasyonu]
+    A["📦 Toplu / Tekil Belge Yükleme<br/>PDF / DOCX / PNG / JPEG (Max 50)"] --> B["🛡️ Eager Validation & Ön Kontrol<br/>İmza, Boyut & Uyum Doğrulama"]
+    B --> C["👁️ Florence-2 VLM + PaddleOCR<br/>Mizanpaj & Tablo Tespiti"]
+    C --> D["📐 Akıllı Bölge Ayrıştırma<br/>Üst / Orta / Alt Bölge"]
+    D --> E["🧩 3 Aşamalı Modüler Çıkarım<br/>Qwen2.5 / LoRA OpenVINO"]
+    E --> F["🛠️ Deterministik Kural Motoru<br/>Konteyner ISO / Ağırlık-CBM / Rol & Adres"]
+    F --> G["🛡️ Yerel Risk Kontrolleri<br/>Zorunlu Alan & Şema Denetimi"]
+    G -.->|Gerekirse| H["☁️ Kısa DeepSeek Yorumu<br/>Salt-Okunur Hakem"]
+    G --> I["⚙️ DCSA XML & Audit Oluşturucu"]
+    H -.-> I
+    I --> J["🖥️ Web Arayüzü & Canlı SSE İlerleme"]
+    I --> K["📦 Toplu Audit ZIP İndirme<br/>XML + Audit JSON + Hata Raporu"]
+    I -.->|Otomatik / Tetik| L["🌐 Webhook ERP Entegrasyonu"]
 
     style A fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
-    style T fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
-    style B fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
+    style B fill:#fff4e6,stroke:#ffa94d,stroke-width:2px,color:#212529
     style C fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
-    style D fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529
-    style E fill:#ebfbee,stroke:#8ce99a,stroke-width:2px,color:#212529
-    style F fill:#fff4e6,stroke:#ffa94d,stroke-width:2px,color:#212529
-    style G fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
-    style H fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
-    style I fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529
-    style J fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
+    style D fill:#e7f5ff,stroke:#74c0fc,stroke-width:2px,color:#212529
+    style E fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529
+    style F fill:#ebfbee,stroke:#8ce99a,stroke-width:2px,color:#212529
+    style G fill:#fff4e6,stroke:#ffa94d,stroke-width:2px,color:#212529
+    style H fill:#f3f0ff,stroke:#b197fc,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
+    style I fill:#f8f9fa,stroke:#adb5bd,stroke-width:2px,color:#212529
+    style J fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529
+    style K fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529
+    style L fill:#e6fcf5,stroke:#20c997,stroke-width:2px,color:#212529,stroke-dasharray: 5 5
 ```
 
 DeepSeek belge verisini düzeltmez, alan doldurmaz ve ikinci bir Shipping
@@ -54,7 +56,7 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
-- Test sonucu: `151 passed` (Ubuntu WSL2)
+- Test sonucu: `179 passed` (Ubuntu WSL2)
 
 Kod düzenleme, Git işlemleri, testler ve sunucu doğrudan WSL ext4 dosya sistemi
 içinde yürütülür. Windows tarafında ikinci bir kaynak kopya veya senkronizasyon
@@ -396,6 +398,11 @@ Audit CLI:
 |---|---|---|
 | `POST` | `/api/upload` | En fazla 50 MB PDF/DOCX/XML/PNG/JPEG yükler ve session ID döndürür |
 | `POST` | `/api/upload-and-stream` | Desteklenen belgeyi yükler ve SSE durum akışını başlatır |
+| `POST` | `/api/batch/upload` | En fazla 50 belgeyi doğrulayıp kuyruğa alır ve `batch_id` döndürür |
+| `GET` | `/api/batch/{batch_id}/status` | Toplu işlemin anlık genel ve dosya seviyesindeki durumunu döndürür |
+| `GET` | `/api/batch/{batch_id}/stream` | Toplu işlemi iki seviyeli (genel % + aktif dosya) SSE ile canlı yayınlar |
+| `GET` | `/api/batch/{batch_id}/download` | DCSA XML'ler, audit raporları ve özeti içeren toplu ZIP paketini indirir |
+| `DELETE` | `/api/batch/{batch_id}` | Devam eden toplu işlemi iptal eder ve kaynakları temizler |
 | `GET` | `/api/runtime-settings` | Model, aygıt, WSL model keşfi ve güvenli yapılandırma durumunu döndürür |
 | `PUT` | `/api/runtime-settings` | Kalıcı kullanıcı tercihlerini ve süreç içi DeepSeek anahtarını günceller |
 | `GET` | `/api/logs` | Maskelenmiş son sistem loglarını döndürür |
@@ -411,9 +418,10 @@ Audit CLI:
 `/api/upload` ve `/api/upload-and-stream` multipart istekleri `file` yanında
 `document_language=tr|en` ve `output_language=tr|en` alanlarını kabul eder. API
 istemcileri bu alanları göndermezse geriye uyumluluk için `en` kullanılır.
-Arayüz çoklu seçimleri bu endpoint'e sıralı istekler olarak gönderir; böylece her
-belge bağımsız session, audit izi ve XML sonucuna sahip olur ve yerel GPU çıkarımı
-aynı anda birden çok belgeyle zorlanmaz.
+Arayüz çoklu veya toplu (Batch Upload) seçimleri sıralı kuyruk mekanizmasıyla
+işler; böylece her belge bağımsız session, audit izi ve XML sonucuna sahip olur
+ve yerel GPU çıkarımı aynı anda birden çok belgeyle zorlanmaz. Toplu işlemlerde
+tüm DCSA XML'ler, audit raporları, özet ve hata dosyaları tek bir ZIP paketi olarak indirilebilir.
 
 ## Audit kayıtları
 
@@ -453,31 +461,80 @@ scripts/
   wsl_api_smoke.sh     Readiness ve tam HTTP/SSE denetimi
   wsl_gpu_info.py      OpenVINO GPU özellik raporu
   evaluate_qwen.py     Alan bazlı Qwen benchmark raporu
+  benchmark_accuracy.py PDF tabanlı uçtan uca doğruluk ölçümü
 static/
   app.css              Yerel, minify edilmiş Tailwind çıktısı
-tests/                 151 otomatik regresyon testi
+tests/                 179 otomatik regresyon testi
 ```
 
-## Qwen 7B doğruluk ölçümü
+## Doğruluk ölçümü ve benchmark
+
+### Hafif değerlendirme (OCR metin tabanlı)
 
 Sabit değerlendirme örnekleri `tests/fixtures/qwen_benchmark/` altında tutulur.
 Her örnek OCR metnini ve yalnızca doğrulanacak beklenen alanları içerir. Alan bazlı
 doğruluk, eksik değerler ve uyuşmayan değerler aşağıdaki komutla raporlanır:
 
 ```bash
-python scripts/evaluate_qwen.py --output logs/qwen_benchmark.json
+.venv/bin/python scripts/evaluate_qwen.py --output logs/qwen_benchmark.json
 ```
 
-Yeni belge türleri bu veri kümesine eklendiğinde istem, doğrulama ve yeniden işleme
-değişiklikleri aynı alanlar üzerinden karşılaştırılabilir. İşleme hattı düşük güvenli
-sonuçlarda yalnızca aynı Qwen 7B modelini ikinci bir doğrulama geçişinde kullanır ve
-risk puanı düşmeyen adayı kabul etmez. Çeviri açıksa tanımlayıcılar ve sayısal alanlar
-korunarak yalnızca açıklayıcı XML değerleri yine aynı modelle ayrı bir geçişte çevrilir.
+### Tam doğruluk ölçümü (PDF tabanlı, uçtan uca)
 
-20 Temmuz 2026 tarihinde gerçek Qwen2.5-7B-Instruct INT4 hattıyla iki sabit örnek
-üzerinde yapılan son ölçümde 25 alanın 25'i eşleşmiş, eksik ve uyuşmayan alan
-oluşmamıştır. Bu yüzde 100 sonucu yalnızca mevcut küçük ve kontrollü regresyon
-kümesini ifade eder; genel belge doğruluğu garantisi değildir.
+`scripts/benchmark_accuracy.py`, gerçek PDF'leri OCR + 3 aşamalı LLM hattından geçirip
+DCSA XML veya JSON ground truth ile karşılaştıran otomatik benchmark aracıdır.
+Kategori bazlı (Belge Bilgileri, Taraflar, Taşıma, Ekipman, Yük Kalemleri) Accuracy,
+Precision, Recall ve F1-Score üretir. Dizi elemanlarını `party_role_code` ve
+`equipment_reference` gibi anahtarlara göre sıralayarak indeks kaynaklı yanlış
+eşleşmeleri önler.
+
+```bash
+.venv/bin/python scripts/benchmark_accuracy.py tests/fixtures/qwen_benchmark
+.venv/bin/python scripts/benchmark_accuracy.py . --output logs/benchmark.json --html logs/benchmark.html
+.venv/bin/python scripts/benchmark_accuracy.py . --pdf-only
+```
+
+Benchmark JSON dosyası içinde `pdf` (belge yolu), `expected` (ground truth JSON) ve
+isteğe bağlı `ocr_text` (önceden çıkarılmış OCR) alanları bulunur. `pdf` verildiğinde
+belge sıfırdan OCR + LLM işlenir; `ocr_text` verildiğinde yalnızca LLM çıkarımı
+çalıştırılır. Ground truth DCSA XML dosyası olarak da verilebilir; betik XML'i
+otomatik ayrıştırır.
+
+Çıktı formatları: renkli terminal tablosu (yeşil >= %90, sarı >= %70, kırmızı < %70),
+JSON raporu (`--output`) ve HTML raporu (`--html`).
+
+### Deterministik kural motorları
+
+LLM çıkarımı sonrası `normalize_extracted_instruction()` içinde çalışan bu kurallar
+modelin sayısal ve format hatalarını düzeltir, eksik verileri OCR'dan tamamlar:
+
+- **ISO 6346 Konteyner Regex:** OCR metninde `[A-Z]{4}\d{7}` kalıbıyla konteyner
+  numaraları taranır, kontrol basamağı doğrulanır ve LLM'in bulamadığı konteynerler
+  `equipment_list`'e enjekte edilir.
+- **BRUT/NET Ağırlık Kural Motoru:** `BRUT`, `GROSS`, `G.W.` etiketleri
+  `equipment.cargo_gross_weight` alanına; `NET`, `N.W.` etiketleri
+  `cargo_items.weight` alanına deterministik olarak eşlenir. Avrupa sayı formatı
+  (`26.080,00` → `26080.00`) otomatik dönüştürülür. Ağırlık birimi OCR metninden
+  dinamik tespit edilir (KG, LBS, TON).
+- **Hacim / CBM Kural Motoru (`_normalize_cargo_volume`):** `28.16 CBM`, `12.5 M3`,
+  `VOLUME: 28,16 CBM` gibi kalıplar ve nokta/virgül binlik ayraç akıllı ayrıştırması ile
+  `CargoItem.volume` alanını deterministik olarak doldurur.
+- **Konteyner Tipi Motoru (`_normalize_equipment_types`):** 60+ insan yazımı kod eşlemesi
+  (`40HC` ➔ `45G1`, `20GP` ➔ `22G1`, `40 REEFER` ➔ `42R1`) ile ISO equipment tiplerini
+  standartlaştırır.
+- **Adres, Şehir ve Ülke Kodu Motoru (`_normalize_party_addresses`):** 120+ ülke ismi/kodu
+  ve 180+ şehir sözlüğü ile taraf adreslerinden `country_code`, `city` ve `street`
+  bileşenlerini otomatik ayrıştırır.
+- **Bölge Örtüşmesi (%15 Overlap):** Pass 3'e (Konteyner & Yük) yalnızca alt bölge
+  değil, orta + alt bölge birleştirilerek gönderilir. Belgenin ortasına sıkışmış
+  konteyner tabloları Pass 3'ten kaçmaz.
+- **DCSA Rol Kodu Eşleme:** LLM'in ürettiği doğal dil rol adları (`SHIPPER`,
+  `CONSIGNEE`, `NOTIFY PARTY`, `FORWARDER`) DCSA standart 2 harfli kodlara
+  (`CZ`, `CN`, `N1`, `FW`) dönüştürülür. Eski kodlar (`SHI`, `CON`, `NTF`) da
+  geriye dönük uyumlu olarak desteklenir.
+- **Konteyner-Yük Yakınlık Bağlama:** OCR metnindeki konum sırasına göre ekipman
+  ve yük kalemleri birbiriyle eşleştirilir; LLM'in konteyner-ağırlık indeks
+  karışıklıkları düzeltilir.
 
 `Document Status Code` çıkarım sırasında uygulama tarafından `DRF`, başarılı onayda
 `FNL` yapılır. `SI NO`, `TALİMAT NO`, `BOOKING NO`, `BKG REF`, `REZERVASYON NO`,

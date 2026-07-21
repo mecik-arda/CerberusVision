@@ -293,12 +293,12 @@ def _compute_precision_recall(
         expected_cat = {p: v for p, v in expected_fields.items() if _classify_field(p) == cat_name}
         actual_cat = {p: v for p, v in actual_fields.items() if _classify_field(p) == cat_name}
         expected_set = set(expected_cat.keys())
-        actual_present = {p for p, v in actual_cat.items() if v is not None}
+        actual_non_null = {p for p, v in actual_cat.items() if v is not None and v != "" and v is not False}
         correct_set = set(evaluation.get("correct_fields", []))
         cat_correct = correct_set & expected_set
         tp = len(cat_correct)
-        fp = len(actual_present - expected_set)
-        fn = len(expected_set - actual_present)
+        fp = len(actual_non_null - expected_set)
+        fn = len(expected_set - actual_non_null)
         total = len(expected_cat)
         correct = len(cat_correct)
         category_metrics[cat_name] = {
@@ -395,6 +395,68 @@ def _print_report(
     print()
 
 
+def _sort_arrays_by_key(data: Dict[str, Any]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in data.items():
+        if key == "parties" and isinstance(value, list) and len(value) > 1:
+            role_order = {"CZ": 0, "CN": 1, "N1": 2, "FW": 3, "SHI": 0, "CON": 1, "NTF": 2}
+            result[key] = sorted(
+                value,
+                key=lambda p: role_order.get(
+                    str(p.get("party_role_code", "")), 99
+                ),
+            )
+        elif key == "equipment_list" and isinstance(value, list) and len(value) > 1:
+            result[key] = sorted(
+                value,
+                key=lambda e: str(e.get("equipment_reference") or ""),
+            )
+        elif key == "transport_plans" and isinstance(value, list) and len(value) > 1:
+            result[key] = sorted(
+                value,
+                key=lambda tp: int(tp.get("leg_sequence_number", 0) or 0),
+            )
+        elif isinstance(value, dict):
+            result[key] = _sort_arrays_by_key(value)
+        elif isinstance(value, list):
+            result[key] = [
+                _sort_arrays_by_key(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
+
+
+def _prune_empty_objects(data: Dict[str, Any]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            pruned = _prune_empty_objects(value)
+            if any(
+                v is not None and v != [] and v != {} and v != ""
+                for v in pruned.values()
+            ):
+                result[key] = pruned
+        elif isinstance(value, list):
+            pruned_list = []
+            for item in value:
+                if isinstance(item, dict):
+                    pruned_item = _prune_empty_objects(item)
+                    if any(
+                        v is not None and v != [] and v != {} and v != ""
+                        for v in pruned_item.values()
+                    ):
+                        pruned_list.append(pruned_item)
+                elif item is not None and item != "":
+                    pruned_list.append(item)
+            if pruned_list:
+                result[key] = pruned_list
+        elif value is not None and value != "" and value is not False:
+            result[key] = value
+    return result
+
+
 def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     case_name = case["case_name"]
     pdf_rel = case.get("pdf")
@@ -436,8 +498,10 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     )
     actual = instruction.model_dump(mode="json")
 
-    expected_flat = _flatten_ground_truth(expected)
-    actual_flat = flatten_values(actual)
+    expected_sorted = _sort_arrays_by_key(dict(expected))
+    actual_sorted = _sort_arrays_by_key(dict(actual))
+    expected_flat = _flatten_ground_truth(expected_sorted)
+    actual_flat = flatten_values(actual_sorted)
 
     evaluation = evaluate_expected_fields(
         dict(expected_flat),

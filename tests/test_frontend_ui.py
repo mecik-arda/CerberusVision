@@ -56,7 +56,7 @@ def test_frontend_assets_are_local_and_precompiled():
 def test_multifile_multiformat_queue_is_available():
     assert 'accept=".pdf,.docx,.xml,.png,.jpg,.jpeg" multiple' in INDEX_HTML
     assert 'id="fileQueue"' in INDEX_HTML
-    assert "const MAX_BATCH_FILES = 10" in APP_JS
+    assert "const MAX_BATCH_FILES = 50" in APP_JS
     assert "async function handleFiles(fileList)" in APP_JS
     assert "const pendingJobs = documentQueue.filter" in APP_JS
     assert "for (const job of pendingJobs)" in APP_JS
@@ -101,6 +101,8 @@ def test_every_static_button_has_an_explicit_behavior_contract():
         "clearSelectionBtn",
         "exportAllBtn",
         "webhookTestBtn",
+        "batchDownloadBtn",
+        "batchCancelBtn",
     }
     for button_id in interactive_button_ids:
         assert f'id="{button_id}"' in INDEX_HTML

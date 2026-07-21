@@ -9,12 +9,12 @@
     "issue_date": "2026-01-15",
     "parties": [
       {
-        "party_role_code": "SHI",
+        "party_role_code": "CZ",
         "party_id": null,
         "party_name": "FORENTIS GLOBAL"
       },
       {
-        "party_role_code": "CON",
+        "party_role_code": "CN",
         "party_id": null,
         "party_name": "SHAHEEN PLASTIC"
       }

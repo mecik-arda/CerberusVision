@@ -19,6 +19,7 @@ from tests.test_validator import create_complete_si
 @pytest.fixture(autouse=True)
 def isolate_qwen_post_processing(monkeypatch):
     monkeypatch.setattr(settings.model, "refinement_enabled", False)
+    monkeypatch.setattr(settings, "inference_mode", "single_stage")
     monkeypatch.setattr(
         processing,
         "translate_instruction_content",
@@ -342,3 +343,472 @@ async def test_save_waits_for_same_session_cloud_review(tmp_path, monkeypatch):
     processing._processing_store.pop(session_id, None)
     processing._session_models.pop(session_id, None)
     processing._session_locks.pop(session_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Deterministik kural motoru testleri
+# ---------------------------------------------------------------------------
+
+
+class TestVolumeCbmEngine:
+    """Hacim/CBM motoru testleri."""
+
+    def test_extracts_single_volume_from_labeled_ocr(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction
+
+        si = ShippingInstruction()
+        ocr = "VOLUME: 28.16 CBM"
+        _normalize_cargo_volume(si, ocr)
+
+        assert len(si.cargo_items) == 1
+        assert si.cargo_items[0].volume is not None
+        assert si.cargo_items[0].volume.volume_value == 28.16
+        assert si.cargo_items[0].volume.unit == "CBM"
+
+    def test_extracts_volume_value_before_unit(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction
+
+        si = ShippingInstruction()
+        ocr = "28.16 CBM"
+        _normalize_cargo_volume(si, ocr)
+
+        assert len(si.cargo_items) == 1
+        assert si.cargo_items[0].volume.volume_value == 28.16
+
+    def test_extracts_volume_with_m3_unit(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction
+
+        si = ShippingInstruction()
+        ocr = "12.5 M3"
+        _normalize_cargo_volume(si, ocr)
+
+        assert len(si.cargo_items) == 1
+        assert si.cargo_items[0].volume.volume_value == 12.5
+
+    def test_handles_european_number_format(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction
+
+        si = ShippingInstruction()
+        ocr = "28,16 CBM"
+        _normalize_cargo_volume(si, ocr)
+
+        assert si.cargo_items[0].volume.volume_value == 28.16
+
+    def test_distributes_multiple_volumes_sequentially(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction, CargoItem
+
+        si = ShippingInstruction(cargo_items=[CargoItem(), CargoItem()])
+        ocr = "ITEM1: 28.16 CBM  ITEM2: 12.5 CBM"
+        _normalize_cargo_volume(si, ocr)
+
+        assert si.cargo_items[0].volume.volume_value == 28.16
+        assert si.cargo_items[1].volume.volume_value == 12.5
+
+    def test_does_not_overwrite_existing_volume(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction, CargoItem, CargoVolume
+
+        existing_vol = CargoVolume(volume_value=99.99)
+        si = ShippingInstruction(cargo_items=[CargoItem(volume=existing_vol)])
+        ocr = "VOLUME: 28.16 CBM"
+        _normalize_cargo_volume(si, ocr)
+
+        assert si.cargo_items[0].volume.volume_value == 99.99
+
+    def test_skips_filled_slots_and_fills_next(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction, CargoItem, CargoVolume
+
+        existing_vol = CargoVolume(volume_value=99.99)
+        si = ShippingInstruction(cargo_items=[
+            CargoItem(volume=existing_vol),
+            CargoItem(),
+        ])
+        ocr = "28.16 CBM"
+        _normalize_cargo_volume(si, ocr)
+
+        assert si.cargo_items[0].volume.volume_value == 99.99
+        assert si.cargo_items[1].volume.volume_value == 28.16
+
+    def test_empty_ocr_does_nothing(self):
+        from app.llm.inference import _normalize_cargo_volume
+        from app.models import ShippingInstruction
+
+        si = ShippingInstruction()
+        _normalize_cargo_volume(si, ocr_text="")
+
+        assert len(si.cargo_items) == 0
+
+
+class TestEquipmentTypeEngine:
+    """Konteyner tipi (ISO Equipment Code) motoru testleri."""
+
+    def test_maps_40hc_to_45g1(self):
+        from app.llm.inference import _normalize_equipment_types
+        from app.models import ShippingInstruction, Equipment
+
+        si = ShippingInstruction(equipment_list=[
+            Equipment(equipment_reference="MSKU1875698"),
+        ])
+        ocr = "CONTAINER: MSKU1875698  TYPE: 40HC"
+        _normalize_equipment_types(si, ocr)
+
+        assert si.equipment_list[0].iso_equipment_code == "45G1"
+
+    def test_maps_20gp_to_22g1(self):
+        from app.llm.inference import _normalize_equipment_types
+        from app.models import ShippingInstruction, Equipment
+
+        si = ShippingInstruction(equipment_list=[
+            Equipment(equipment_reference="MSCU1234567"),
+        ])
+        ocr = "MSCU1234567  20GP"
+        _normalize_equipment_types(si, ocr)
+
+        assert si.equipment_list[0].iso_equipment_code == "22G1"
+
+    def test_does_not_overwrite_existing_iso_code(self):
+        from app.llm.inference import _normalize_equipment_types
+        from app.models import ShippingInstruction, Equipment
+
+        si = ShippingInstruction(equipment_list=[
+            Equipment(
+                equipment_reference="MSKU1875698",
+                iso_equipment_code="42G1",
+            ),
+        ])
+        ocr = "CONTAINER: MSKU1875698  40HC"
+        _normalize_equipment_types(si, ocr)
+
+        assert si.equipment_list[0].iso_equipment_code == "42G1"
+
+    def test_handles_multiple_equipment_types(self):
+        from app.llm.inference import _normalize_equipment_types
+        from app.models import ShippingInstruction, Equipment
+
+        si = ShippingInstruction(equipment_list=[
+            Equipment(equipment_reference="MSKU1875698"),
+            Equipment(equipment_reference="MSCU1234567"),
+        ])
+        ocr = "MSKU1875698 40HC  MSCU1234567 20GP"
+        _normalize_equipment_types(si, ocr)
+
+        assert si.equipment_list[0].iso_equipment_code == "45G1"
+        assert si.equipment_list[1].iso_equipment_code == "22G1"
+
+    def test_empty_ocr_does_nothing(self):
+        from app.llm.inference import _normalize_equipment_types
+        from app.models import ShippingInstruction, Equipment
+
+        si = ShippingInstruction(equipment_list=[
+            Equipment(equipment_reference="MSKU1875698"),
+        ])
+        _normalize_equipment_types(si, ocr_text="")
+
+        assert si.equipment_list[0].iso_equipment_code is None
+
+    def test_handles_reefer_type(self):
+        from app.llm.inference import _normalize_equipment_types
+        from app.models import ShippingInstruction, Equipment
+
+        si = ShippingInstruction(equipment_list=[
+            Equipment(equipment_reference="MSCU5555555"),
+        ])
+        ocr = "MSCU5555555 40 REEFER"
+        _normalize_equipment_types(si, ocr)
+
+        assert si.equipment_list[0].iso_equipment_code == "42R1"
+
+
+class TestAddressParserEngine:
+    """Adres ve ulke kodu parcAlayici testleri."""
+
+    def test_extracts_country_from_street_end_with_slash(self):
+        from app.llm.inference import _normalize_party_addresses, normalize_extracted_instruction
+        from app.models import (
+            ShippingInstruction, Party, Address, PartyRoleCode,
+        )
+
+        si = ShippingInstruction(parties=[
+            Party(
+                party_role_code=PartyRoleCode.SHIPPER,
+                party_name="TEST EXPORT",
+                address=Address(
+                    street="YESILYURT MAH. 4306 SOK. NO:3 KEPEZ/ANTALYA/TURKEY",
+                ),
+            ),
+        ])
+        _normalize_party_addresses(si)
+
+        addr = si.parties[0].address
+        assert addr.country_code == "TR"
+        assert addr.city == "ANTALYA"
+        assert "TURKEY" not in (addr.street or "")
+
+    def test_country_already_set_is_not_modified(self):
+        from app.llm.inference import _normalize_party_addresses
+        from app.models import (
+            ShippingInstruction, Party, Address, PartyRoleCode,
+        )
+
+        si = ShippingInstruction(parties=[
+            Party(
+                party_role_code=PartyRoleCode.SHIPPER,
+                party_name="TEST EXPORT",
+                address=Address(
+                    street="YESILYURT MAH. KEPEZ/ANTALYA/TURKEY",
+                    country_code="TR",
+                ),
+            ),
+        ])
+        _normalize_party_addresses(si)
+
+        addr = si.parties[0].address
+        assert addr.country_code == "TR"
+        # country_code zaten gecerli oldugu icin ulke cikarma yapilmamali
+        # Sehir cikarma ise city None oldugu icin calisir (beklenen davranis)
+        assert addr.city == "ANTALYA"
+        assert "TURKEY" in (addr.street or "")
+
+    def test_detects_city_and_sets_city_field(self):
+        from app.llm.inference import _normalize_party_addresses
+        from app.models import (
+            ShippingInstruction, Party, Address, PartyRoleCode,
+        )
+
+        si = ShippingInstruction(parties=[
+            Party(
+                party_role_code=PartyRoleCode.CONSIGNEE,
+                party_name="TEST IMPORT",
+                address=Address(
+                    street="OFF # 15, KARACHI",
+                ),
+            ),
+        ])
+        _normalize_party_addresses(si)
+
+        addr = si.parties[0].address
+        assert addr.city == "KARACHI"
+        assert "KARACHI" not in (addr.street or "")
+
+    def test_extracts_germany_country_code(self):
+        from app.llm.inference import _normalize_party_addresses
+        from app.models import (
+            ShippingInstruction, Party, Address, PartyRoleCode,
+        )
+
+        si = ShippingInstruction(parties=[
+            Party(
+                party_role_code=PartyRoleCode.SHIPPER,
+                party_name="GERMAN EXPORT GMBH",
+                address=Address(street="HAMBURG/GERMANY"),
+            ),
+        ])
+        _normalize_party_addresses(si)
+
+        assert si.parties[0].address.country_code == "DE"
+        assert si.parties[0].address.city == "HAMBURG"
+
+    def test_handles_turkish_chars_in_country_name(self):
+        from app.llm.inference import _normalize_party_addresses
+        from app.models import (
+            ShippingInstruction, Party, Address, PartyRoleCode,
+        )
+
+        si = ShippingInstruction(parties=[
+            Party(
+                party_role_code=PartyRoleCode.SHIPPER,
+                party_name="TEST",
+                address=Address(street="IZMIR/TÜRKİYE"),
+            ),
+        ])
+        _normalize_party_addresses(si)
+
+        assert si.parties[0].address.country_code == "TR"
+
+    def test_no_address_does_not_crash(self):
+        from app.llm.inference import _normalize_party_addresses
+        from app.models import (
+            ShippingInstruction, Party, PartyRoleCode,
+        )
+
+        si = ShippingInstruction(parties=[
+            Party(
+                party_role_code=PartyRoleCode.SHIPPER,
+                party_name="TEST",
+                address=None,
+            ),
+        ])
+        _normalize_party_addresses(si)
+
+        assert si.parties[0].address is None
+
+
+# ---------------------------------------------------------------------------
+# Batch (toplu isleme) testleri
+# ---------------------------------------------------------------------------
+
+
+class TestBatchUpload:
+    """Batch upload endpoint testleri."""
+
+    def test_batch_rejects_more_than_max_files(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        # 51 empty files (MAX_BATCH_FILES = 50)
+        files = [("files", (f"test_{i}.pdf", b"%PDF-test", "application/pdf")) for i in range(51)]
+        response = client.post("/api/batch/upload", files=files, data={
+            "document_language": "en", "output_language": "en",
+        })
+        assert response.status_code == 422
+
+    def test_batch_accepts_valid_pdf_files(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        files = [("files", (f"doc_{i}.pdf", b"%PDF-test", "application/pdf")) for i in range(3)]
+        response = client.post("/api/batch/upload", files=files, data={
+            "document_language": "en", "output_language": "en",
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "batch_id" in data
+        assert data["total_count"] == 3
+        assert data["rejected_count"] == 0
+        assert data["queued_count"] == 3
+        assert data["stream_url"].startswith("/api/batch/")
+
+    def test_batch_rejects_invalid_extension(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        files = [
+            ("files", ("doc_1.pdf", b"%PDF-test", "application/pdf")),
+            ("files", ("bad.exe", b"malware", "application/octet-stream")),
+        ]
+        response = client.post("/api/batch/upload", files=files, data={
+            "document_language": "en", "output_language": "en",
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["rejected_count"] == 1
+        assert data["queued_count"] == 1
+        assert data["rejected_items"][0]["original_filename"] == "bad.exe"
+        assert data["rejected_items"][0]["status"] == "REJECTED"
+
+    def test_batch_requires_at_least_one_file(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        response = client.post("/api/batch/upload", files=[], data={
+            "document_language": "en", "output_language": "en",
+        })
+        assert response.status_code == 422
+
+    def test_batch_status_returns_404_for_unknown_batch(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        response = client.get("/api/batch/nonexistent/status")
+        assert response.status_code == 404
+
+    def test_batch_download_returns_409_when_zip_not_ready(self, monkeypatch):
+        import app.routes.processing as proc
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        batch_id = "batch_test_123"
+        proc._batch_store[batch_id] = {
+            "batch_id": batch_id,
+            "created_at": "2026-01-01T00:00:00",
+            "total_count": 1,
+            "error_count": 0,
+            "items": [],
+            "zip_ready": False,
+            "_temp_dir": "/tmp/test",
+        }
+        try:
+            response = client.get(f"/api/batch/{batch_id}/download")
+            assert response.status_code == 409
+        finally:
+            proc._batch_store.pop(batch_id, None)
+
+    def test_batch_status_returns_progress_for_active_batch(self, monkeypatch):
+        import app.routes.processing as proc
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        batch_id = "batch_test_status"
+        proc._batch_store[batch_id] = {
+            "batch_id": batch_id,
+            "created_at": "2026-01-01T00:00:00",
+            "total_count": 5,
+            "error_count": 0,
+            "items": [
+                {"filename": "f1.pdf", "original_filename": "f1.pdf", "status": "COMPLETED", "session_id": "s1", "error_message": None, "risk_score": 5.0, "confidence_score": 95.0},
+                {"filename": "f2.pdf", "original_filename": "f2.pdf", "status": "PROCESSING", "session_id": "s2", "error_message": None, "risk_score": None, "confidence_score": None},
+                {"filename": "f3.pdf", "original_filename": "f3.pdf", "status": "QUEUED", "session_id": "s3", "error_message": None, "risk_score": None, "confidence_score": None},
+                {"filename": "f4.pdf", "original_filename": "f4.pdf", "status": "QUEUED", "session_id": "s4", "error_message": None, "risk_score": None, "confidence_score": None},
+                {"filename": "f5.pdf", "original_filename": "f5.pdf", "status": "ERROR", "session_id": "s5", "error_message": "OCR failed", "risk_score": None, "confidence_score": None},
+            ],
+            "zip_ready": False,
+            "_temp_dir": "/tmp/test",
+        }
+        try:
+            response = client.get(f"/api/batch/{batch_id}/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["completed_count"] == 2  # COMPLETED + ERROR
+            assert data["error_count"] == 0  # ERROR count from batch dict
+            assert data["current_file"] == "f2.pdf"
+            assert data["current_status"] == "PROCESSING"
+            assert data["percent"] == 40.0  # 2/5
+        finally:
+            proc._batch_store.pop(batch_id, None)
+
+    def test_batch_cancel_marks_items_as_error(self, monkeypatch):
+        import app.routes.processing as proc
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        batch_id = "batch_test_cancel"
+        proc._batch_store[batch_id] = {
+            "batch_id": batch_id,
+            "created_at": "2026-01-01T00:00:00",
+            "total_count": 3,
+            "error_count": 0,
+            "items": [
+                {"filename": "f1.pdf", "original_filename": "f1.pdf", "status": "QUEUED", "session_id": "s1", "error_message": None, "risk_score": None, "confidence_score": None},
+                {"filename": "f2.pdf", "original_filename": "f2.pdf", "status": "PROCESSING", "session_id": "s2", "error_message": None, "risk_score": None, "confidence_score": None},
+                {"filename": "f3.pdf", "original_filename": "f3.pdf", "status": "COMPLETED", "session_id": "s3", "error_message": None, "risk_score": 5.0, "confidence_score": 95.0},
+            ],
+            "zip_ready": False,
+            "_temp_dir": "/tmp/test",
+        }
+        try:
+            response = client.delete(f"/api/batch/{batch_id}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "cancelled"
+            # QUEUED and PROCESSING should now be ERROR
+            items = proc._batch_store[batch_id]["items"]
+            assert items[0]["status"] == "ERROR"
+            assert items[1]["status"] == "ERROR"
+            # COMPLETED should remain
+            assert items[2]["status"] == "COMPLETED"
+        finally:
+            proc._batch_store.pop(batch_id, None)

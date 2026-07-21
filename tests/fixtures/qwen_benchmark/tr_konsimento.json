@@ -10,7 +10,7 @@
     "freight_payment_term_code": "COL",
     "parties": [
       {
-        "party_role_code": "SHI",
+        "party_role_code": "CZ",
         "party_name": "FORENTIS GLOBAL ORMAN URUNLERI SAN. VE TIC.LTD.STI",
         "party_id": "3881946820",
         "address": {
@@ -19,7 +19,7 @@
         }
       },
       {
-        "party_role_code": "CON",
+        "party_role_code": "CN",
         "party_name": "SHAHEEN PLASTIC",
         "address": {
           "country_code": "PK"

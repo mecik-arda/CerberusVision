@@ -571,6 +571,292 @@ def _extract_containers_from_ocr(ocr_text: str) -> list[str]:
     return deduped
 
 
+_ROLE_CODE_MAP = {
+    "SHIPPER": "CZ", "CZ": "CZ", "SHI": "CZ", "EXPORTER": "CZ",
+    "CONSIGNEE": "CN", "CN": "CN", "CON": "CN", "CONSIGNED TO ORDER": "CN",
+    "NOTIFY": "N1", "N1": "N1", "NTF": "N1", "NOTIFY PARTY": "N1",
+    "FORWARDER": "FW", "FW": "FW", "FREIGHT FORWARDER": "FW",
+    "GONDERICI": "CZ", "ALICI": "CN", "BILDIRIM TARAFI": "N1",
+    "ACENTE": "FW",
+}
+
+_CONTAINER_TYPE_MAP = {
+    # 40' High Cube
+    "40HC": "45G1", "40'HC": "45G1", "40 HC": "45G1", "40' HC": "45G1",
+    "40HIGH CUBE": "45G1", "40 HIGH CUBE": "45G1", "40' HIGH CUBE": "45G1",
+    "40HQ": "45G1", "40' HQ": "45G1", "40 HQ": "45G1",
+    # 20' General Purpose
+    "20GP": "22G1", "20'GP": "22G1", "20 GP": "22G1", "20' GP": "22G1",
+    "20GENERAL PURPOSE": "22G1", "20 GENERAL PURPOSE": "22G1",
+    "20STANDARD": "22G1", "20 STANDARD": "22G1", "20' STANDARD": "22G1",
+    "20DC": "22G1", "20' DC": "22G1", "20 DRY": "22G1",
+    "20DV": "22G1", "20' DV": "22G1",
+    # 40' General Purpose
+    "40GP": "42G1", "40'GP": "42G1", "40 GP": "42G1", "40' GP": "42G1",
+    "40GENERAL PURPOSE": "42G1", "40 GENERAL PURPOSE": "42G1",
+    "40STANDARD": "42G1", "40 STANDARD": "42G1", "40' STANDARD": "42G1",
+    "40DC": "42G1", "40' DC": "42G1", "40 DRY": "42G1",
+    "40DV": "42G1", "40' DV": "42G1",
+    # 45' High Cube
+    "45HC": "L5G1", "45'HC": "L5G1", "45 HC": "L5G1", "45' HC": "L5G1",
+    "45HIGH CUBE": "L5G1", "45 HIGH CUBE": "L5G1",
+    # 20' Reefer
+    "20RF": "22R1", "20'RF": "22R1", "20 RF": "22R1", "20' RF": "22R1",
+    "20REEFER": "22R1", "20 REEFER": "22R1", "20 REFRIGERATED": "22R1",
+    "20' REEFER": "22R1",
+    # 40' Reefer
+    "40RF": "42R1", "40'RF": "42R1", "40 RF": "42R1", "40' RF": "42R1",
+    "40REEFER": "42R1", "40 REEFER": "42R1", "40 REFRIGERATED": "42R1",
+    "40' REEFER": "42R1", "40HI CUBE REEFER": "45R1",
+    # 20' Open Top
+    "20OT": "22U1", "20'OT": "22U1", "20 OT": "22U1", "20' OT": "22U1",
+    "20OPEN TOP": "22U1", "20 OPEN TOP": "22U1",
+    # 40' Open Top
+    "40OT": "42U1", "40'OT": "42U1", "40 OT": "42U1", "40' OT": "42U1",
+    "40OPEN TOP": "42U1", "40 OPEN TOP": "42U1",
+    # 20' Flat Rack
+    "20FR": "22P1", "20'FR": "22P1", "20 FR": "22P1", "20' FR": "22P1",
+    "20FLAT RACK": "22P1", "20 FLAT RACK": "22P1", "20FLAT": "22P1",
+    # 40' Flat Rack
+    "40FR": "42P1", "40'FR": "42P1", "40 FR": "42P1", "40' FR": "42P1",
+    "40FLAT RACK": "42P1", "40 FLAT RACK": "42P1", "40FLAT": "42P1",
+    # 20' Tank
+    "20TK": "22T1", "20' TK": "22T1", "20 TANK": "22T1",
+    # 40' Tank
+    "40TK": "42T1", "40' TK": "42T1", "40 TANK": "42T1",
+}
+
+_CONTAINER_TYPE_PATTERN = re.compile(
+    r"(?i)(?:"
+    r"40\s*['’]?\s*(?:HC|HIGH\s*CUBE|HQ)|"
+    r"20\s*['’]?\s*(?:GP|GENERAL\s*PURPOSE|STANDARD|DC|DV|DRY|RF|REEFER|REFRIGERATED|OT|OPEN\s*TOP|FR|FLAT\s*RACK|FLAT|TK|TANK)|"
+    r"40\s*['’]?\s*(?:GP|GENERAL\s*PURPOSE|STANDARD|DC|DV|DRY|RF|REEFER|REFRIGERATED|OT|OPEN\s*TOP|FR|FLAT\s*RACK|FLAT|TK|TANK)|"
+    r"45\s*['’]?\s*(?:HC|HIGH\s*CUBE|HQ)"
+    r")",
+    re.IGNORECASE,
+)
+
+_COUNTRY_NAME_TO_CODE = {
+    # Europe
+    "TURKEY": "TR", "TÜRKIYE": "TR", "TURKIYE": "TR", "TÜRKİYE": "TR",
+    "GERMANY": "DE", "ALMANYA": "DE", "DEUTSCHLAND": "DE",
+    "UNITED KINGDOM": "GB", "UK": "GB", "ENGLAND": "GB", "GREAT BRITAIN": "GB",
+    "ITALY": "IT", "İTALYA": "IT", "ITALIA": "IT",
+    "SPAIN": "ES", "İSPANYA": "ES", "ESPANA": "ES", "ESPAÑA": "ES",
+    "FRANCE": "FR", "FRANSA": "FR",
+    "NETHERLANDS": "NL", "HOLLAND": "NL", "HOLLANDA": "NL",
+    "BELGIUM": "BE", "BELÇİKA": "BE",
+    "RUSSIA": "RU", "RUSYA": "RU", "RUSSIAN FEDERATION": "RU",
+    "UKRAINE": "UA", "UKRAYNA": "UA",
+    "POLAND": "PL", "POLONYA": "PL",
+    "ROMANIA": "RO", "ROMANYA": "RO",
+    "GREECE": "GR", "YUNANISTAN": "GR",
+    "BULGARIA": "BG", "BULGARISTAN": "BG",
+    "PORTUGAL": "PT", "PORTEKIZ": "PT",
+    "SWEDEN": "SE", "İSVEÇ": "SE",
+    "NORWAY": "NO", "NORVEÇ": "NO",
+    "DENMARK": "DK", "DANIMARKA": "DK",
+    "FINLAND": "FI", "FİNLANDİYA": "FI",
+    "AUSTRIA": "AT", "AVUSTURYA": "AT",
+    "SWITZERLAND": "CH", "İSVİÇRE": "CH",
+    "CZECH REPUBLIC": "CZ", "CZECHIA": "CZ", "ÇEK CUMHURİYETİ": "CZ",
+    "HUNGARY": "HU", "MACARISTAN": "HU",
+    "SLOVAKIA": "SK", "SLOVAKYA": "SK",
+    "SLOVENIA": "SI", "SLOVENYA": "SI",
+    "CROATIA": "HR", "HIRVATISTAN": "HR",
+    "SERBIA": "RS", "SIRBISTAN": "RS",
+    "IRELAND": "IE", "İRLANDA": "IE",
+    "LITHUANIA": "LT", "LITVANYA": "LT",
+    "LATVIA": "LV", "LETONYA": "LV",
+    "ESTONIA": "EE", "ESTONYA": "EE",
+    "MALTA": "MT",
+    "CYPRUS": "CY", "KIBRIS": "CY",
+    "LUXEMBOURG": "LU", "LÜKSEMBURG": "LU",
+    "ICELAND": "IS", "İZLANDA": "IS",
+    # Asia
+    "CHINA": "CN", "ÇİN": "CN", "PRC": "CN",
+    "INDIA": "IN", "HİNDİSTAN": "IN",
+    "PAKISTAN": "PK", "PAKİSTAN": "PK",
+    "JAPAN": "JP", "JAPONYA": "JP",
+    "SOUTH KOREA": "KR", "KOREA": "KR", "GÜNEY KORE": "KR",
+    "TAIWAN": "TW", "TAYVAN": "TW",
+    "VIETNAM": "VN", "VIETNAM": "VN",
+    "THAILAND": "TH", "TAYLAND": "TH",
+    "MALAYSIA": "MY", "MALEZYA": "MY",
+    "INDONESIA": "ID", "ENDONEZYA": "ID",
+    "PHILIPPINES": "PH", "FILIPINLER": "PH",
+    "SINGAPORE": "SG", "SİNGAPUR": "SG",
+    "BANGLADESH": "BD", "BANGLADEŞ": "BD",
+    "SRI LANKA": "LK", "SRİ LANKA": "LK",
+    # Middle East
+    "UAE": "AE", "UNITED ARAB EMIRATES": "AE", "BİRLEŞİK ARAP EMİRLİKLERİ": "AE",
+    "SAUDI ARABIA": "SA", "SUUDI ARABISTAN": "SA", "SUUDİ ARABİSTAN": "SA",
+    "QATAR": "QA", "KATAR": "QA",
+    "KUWAIT": "KW", "KÜVEYT": "KW",
+    "BAHRAIN": "BH", "BAHREYN": "BH",
+    "OMAN": "OM", "UMMAN": "OM",
+    "JORDAN": "JO", "ÜRDÜN": "JO",
+    "LEBANON": "LB", "LÜBNAN": "LB",
+    "ISRAEL": "IL", "İSRAIL": "IL",
+    "IRAN": "IR", "İRAN": "IR",
+    "IRAQ": "IQ", "IRAK": "IQ",
+    "YEMEN": "YE", "YEMEN": "YE",
+    "SYRIA": "SY", "SURIYE": "SY", "SURİYE": "SY",
+    # Africa
+    "EGYPT": "EG", "MISIR": "EG",
+    "SOUTH AFRICA": "ZA", "GÜNEY AFRİKA": "ZA",
+    "MOROCCO": "MA", "FAS": "MA",
+    "ALGERIA": "DZ", "CEZAYİR": "DZ",
+    "TUNISIA": "TN", "TUNUS": "TN",
+    "LIBYA": "LY", "LIBYA": "LY",
+    "NIGERIA": "NG", "NİJERYA": "NG",
+    "KENYA": "KE", "KENYA": "KE",
+    "GHANA": "GH", "GANA": "GH",
+    "ETHIOPIA": "ET", "ETİYOPYA": "ET",
+    "TANZANIA": "TZ", "TANZANYA": "TZ",
+    "SUDAN": "SD", "SUDAN": "SD",
+    "ANGOLA": "AO", "ANGOLA": "AO",
+    "MOZAMBIQUE": "MZ", "MOZAMBİK": "MZ",
+    "SENEGAL": "SN", "SENEGAL": "SN",
+    "IVORY COAST": "CI", "CÔTE D'IVOIRE": "CI", "FILDİŞİ SAHİLİ": "CI",
+    # Americas
+    "UNITED STATES": "US", "USA": "US", "U.S.A.": "US",
+    "AMERICA": "US", "UNITED STATES OF AMERICA": "US",
+    "CANADA": "CA", "KANADA": "CA",
+    "MEXICO": "MX", "MEKSIKA": "MX", "MEKSİKA": "MX",
+    "BRAZIL": "BR", "BREZİLYA": "BR",
+    "ARGENTINA": "AR", "ARJANTİN": "AR",
+    "CHILE": "CL", "ŞİLİ": "CL",
+    "COLOMBIA": "CO", "KOLOMBIYA": "CO",
+    "PERU": "PE", "PERU": "PE",
+    "VENEZUELA": "VE", "VENEZUELA": "VE",
+    "ECUADOR": "EC", "EKVADOR": "EC",
+    "URUGUAY": "UY", "URUGUAY": "UY",
+    "PARAGUAY": "PY", "PARAGUAY": "PY",
+    "PANAMA": "PA", "PANAMA": "PA",
+    "COSTA RICA": "CR", "KOSTA RIKA": "CR",
+    "DOMINICAN REPUBLIC": "DO", "DOMİNİK CUMHURİYETİ": "DO",
+    # Oceania
+    "AUSTRALIA": "AU", "AVUSTRALYA": "AU",
+    "NEW ZEALAND": "NZ", "YENİ ZELANDA": "NZ",
+    # ISO codes (already a code, normalize to uppercase)
+    "TR": "TR", "DE": "DE", "PK": "PK", "US": "US", "GB": "GB",
+    "IT": "IT", "ES": "ES", "FR": "FR", "IN": "IN", "CN": "CN",
+    "JP": "JP", "KR": "KR", "RU": "RU", "BR": "BR", "AE": "AE",
+    "SA": "SA", "EG": "EG", "GR": "GR", "NL": "NL", "BE": "BE",
+    "PL": "PL", "RO": "RO", "UA": "UA", "BG": "BG", "PT": "PT",
+    "SE": "SE", "NO": "NO", "DK": "DK", "FI": "FI", "AT": "AT",
+    "CH": "CH", "CZ": "CZ", "HU": "HU", "SK": "SK", "SI": "SI",
+    "HR": "HR", "RS": "RS", "IE": "IE", "LT": "LT", "LV": "LV",
+    "EE": "EE", "MT": "MT", "CY": "CY", "LU": "LU", "IS": "IS",
+    "TW": "TW", "VN": "VN", "TH": "TH", "MY": "MY", "ID": "ID",
+    "PH": "PH", "SG": "SG", "BD": "BD", "LK": "LK", "QA": "QA",
+    "KW": "KW", "BH": "BH", "OM": "OM", "JO": "JO", "LB": "LB",
+    "IL": "IL", "IR": "IR", "IQ": "IQ", "YE": "YE", "SY": "SY",
+    "ZA": "ZA", "MA": "MA", "DZ": "DZ", "TN": "TN", "LY": "LY",
+    "NG": "NG", "KE": "KE", "GH": "GH", "ET": "ET", "TZ": "TZ",
+    "SD": "SD", "AO": "AO", "MZ": "MZ", "SN": "SN", "CI": "CI",
+    "CA": "CA", "MX": "MX", "AR": "AR", "CL": "CL", "CO": "CO",
+    "PE": "PE", "VE": "VE", "EC": "EC", "UY": "UY", "PY": "PY",
+    "PA": "PA", "CR": "CR", "DO": "DO", "AU": "AU", "NZ": "NZ",
+}
+
+_KNOWN_CITIES = frozenset({
+    # Turkey
+    "ISTANBUL", "ANKARA", "IZMIR", "İZMİR", "ANTALYA", "BURSA", "ADANA",
+    "KONYA", "GAZIANTEP", "MERSIN", "MERSİN", "KOCAELI", "KAYSERI",
+    "ESKISEHIR", "DENIZLI", "SAMSUN", "TRABZON", "ERZURUM", "MALATYA",
+    "SAKARYA", "TEKIRDAG", "DIYARBAKIR", "HATAY", "MANISA", "KAHRAMANMARAS",
+    "SANLIURFA", "KARS", "SIVAS", "VAN", "EDIRNE", "IZMIT", "CANAKKALE",
+    "AYDIN", "MUGLA", "ISKENDERUN", "ALIAGA", "GEBZE", "DILOVASI",
+    "CORLU", "KARAMAN", "KUTAHYA", "BALIKESIR", "KIRKLARELI", "ZONGULDAK",
+    "ORDU", "GIRESUN", "RIZE", "SINOP", "KARABUK",
+    # Pakistan
+    "KARACHI", "LAHORE", "ISLAMABAD", "FAISALABAD", "RAWALPINDI",
+    "MULTAN", "PESHAWAR", "QUETTA", "SIALKOT", "GUJRANWALA",
+    # Germany
+    "HAMBURG", "BERLIN", "MUNICH", "MÜNCHEN", "FRANKFURT", "BREMEN",
+    "DUISBURG", "DUSSELDORF", "DÜSSELDORF", "STUTTGART", "COLOGNE", "KÖLN",
+    "LEIPZIG", "DORTMUND", "ESSEN", "NUREMBERG", "NÜRNBERG",
+    # Netherlands
+    "ROTTERDAM", "AMSTERDAM", "UTRECHT", "EINDHOVEN", "GRONINGEN",
+    # Belgium
+    "ANTWERP", "BRUSSELS", "BRÜKSEL", "GENT", "LIEGE",
+    # UK
+    "LONDON", "MANCHESTER", "LIVERPOOL", "BIRMINGHAM", "LEEDS",
+    "BRISTOL", "SOUTHAMPTON", "FELIXSTOWE", "TILBURY",
+    # France
+    "PARIS", "MARSEILLE", "LE HAVRE", "LYON", "BORDEAUX", "NANTES",
+    "DUNKERQUE", "STRASBOURG", "TOULOUSE",
+    # Italy
+    "MILAN", "GENOA", "NAPLES", "TRIESTE", "VENICE",
+    "LIVORNO", "ROME", "RAVENNA", "LA SPEZIA", "GIOIA TAURO",
+    # Spain
+    "BARCELONA", "VALENCIA", "ALGECIRAS", "MADRID", "BILBAO",
+    "LAS PALMAS", "SEVILLE", "MALAGA",
+    # USA
+    "NEW YORK", "LOS ANGELES", "MIAMI", "HOUSTON", "CHICAGO",
+    "SAVANNAH", "OAKLAND", "SEATTLE", "BALTIMORE", "BOSTON",
+    "SAN FRANCISCO", "PHILADELPHIA", "DALLAS", "ATLANTA",
+    "LONG BEACH", "TACOMA", "CHARLESTON",
+    # UAE
+    "DUBAI", "ABU DHABI", "SHARJAH",
+    # China
+    "SHANGHAI", "SHENZHEN", "BEIJING", "GUANGZHOU", "NINGBO",
+    "TIANJIN", "QINGDAO", "DALIAN", "XIAMEN",
+    # Other major ports
+    "SINGAPORE", "HONG KONG", "BUSAN", "SEOUL", "TOKYO", "YOKOHAMA",
+    "MUMBAI", "CHENNAI", "DELHI", "KOLKATA", "NHAVA SHEVA",
+    "COLOMBO", "JAKARTA", "HO CHI MINH", "HAI PHONG", "BANGKOK",
+    "GDANSK", "GDYNIA", "SZCZECIN",
+    "HELSINKI", "OSLO", "COPENHAGEN", "STOCKHOLM",
+    "RIO DE JANEIRO", "SANTOS", "BUENOS AIRES", "LIMA", "SANTIAGO",
+    "JEBEL ALI", "DAMMAM", "JEDDAH", "MUSCAT", "DOHA",
+    "ALEXANDRIA", "CASABLANCA", "DURBAN", "CAPE TOWN",
+    "SYDNEY", "MELBOURNE", "AUCKLAND",
+})
+
+
+def _apply_role_code_mapping(instruction: ShippingInstruction) -> None:
+    from app.models import PartyRoleCode
+
+    _valid_roles = {r.value: r for r in PartyRoleCode}
+    for party in instruction.parties:
+        if party.party_role_code is None:
+            continue
+        raw = party.party_role_code.strip().upper()
+        mapped = _ROLE_CODE_MAP.get(raw)
+        if mapped is not None and mapped in _valid_roles:
+            party.party_role_code = _valid_roles[mapped]
+
+
+def _bind_container_cargo(instruction: ShippingInstruction, ocr_text: str) -> None:
+    if not instruction.equipment_list or not instruction.cargo_items:
+        return
+    container_positions: list[tuple[int, int]] = []
+    for idx, eq in enumerate(instruction.equipment_list):
+        ref = eq.equipment_reference
+        if ref:
+            pos = ocr_text.casefold().find(ref.casefold())
+            container_positions.append((idx, pos if pos >= 0 else 999999))
+    cargo_positions: list[tuple[int, int]] = []
+    for idx, ci in enumerate(instruction.cargo_items):
+        desc = ci.description_of_goods or ""
+        pos = ocr_text.casefold().find(desc.casefold()[:30]) if desc else 999999
+        cargo_positions.append((idx, pos if pos >= 0 else 999999))
+    container_positions.sort(key=lambda x: x[1])
+    cargo_positions.sort(key=lambda x: x[1])
+    if len(container_positions) == len(cargo_positions) and len(container_positions) > 1:
+        reordered_eq: list = [None] * len(instruction.equipment_list)
+        reordered_cargo: list = [None] * len(instruction.cargo_items)
+        for new_idx, (orig_idx, _) in enumerate(container_positions):
+            reordered_eq[new_idx] = instruction.equipment_list[orig_idx]
+        for new_idx, (orig_idx, _) in enumerate(cargo_positions):
+            reordered_cargo[new_idx] = instruction.cargo_items[orig_idx]
+        instruction.equipment_list = reordered_eq
+        instruction.cargo_items = reordered_cargo
+
+
 def _detect_weight_unit(ocr_text: str, value_str: str) -> str:
     if not value_str or not ocr_text:
         return "KGM"
@@ -610,11 +896,232 @@ def _clean_location_name(location) -> None:
             location.location_name = remainder
 
 
+def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
+    """Deterministik adres ve ulke kodu parcAlayici.
+
+    Her Party'nin Address'inde:
+    1. street sonundan ulke ismini bulup country_code'a tasir
+    2. street icinden bilinen sehir ismini bulup city'ye tasir
+    3. Kalan metni temizler
+    """
+    for party in normalized.parties:
+        if party.address is None:
+            continue
+        address = party.address
+
+        # --- Ulke kodu cikarma ---
+        country_already_valid = (
+            address.country_code is not None
+            and re.fullmatch(r"[A-Za-z]{2}", address.country_code or "")
+        )
+        if not country_already_valid:
+            # street sonundan ulke ismi ara
+            if address.street:
+                found_code = None
+                clean_street = address.street
+                for separator in ("/", ",", "-"):
+                    parts = [p.strip() for p in clean_street.rsplit(separator, 1)]
+                    if len(parts) == 2:
+                        last_part = parts[1].strip().upper()
+                        if last_part in _COUNTRY_NAME_TO_CODE:
+                            found_code = _COUNTRY_NAME_TO_CODE[last_part]
+                            clean_street = parts[0].strip()
+                            break
+                # Tum street'i ulke olarak dene (sadece ulke ismi varsa)
+                if found_code is None:
+                    street_upper = address.street.strip().upper()
+                    if street_upper in _COUNTRY_NAME_TO_CODE:
+                        found_code = _COUNTRY_NAME_TO_CODE[street_upper]
+                        clean_street = ""
+                if found_code is not None:
+                    address.country_code = found_code
+                    address.street = clean_street if clean_street else None
+
+            # country_code hala bossa city'de de dene
+            if address.country_code is None and address.city:
+                city_upper = address.city.strip().upper()
+                if city_upper in _COUNTRY_NAME_TO_CODE:
+                    address.country_code = _COUNTRY_NAME_TO_CODE[city_upper]
+                    address.city = None
+
+        # --- Sehir cikarma (sadece city None ise) ---
+        if address.city is None and address.street:
+            # street'i bol ve bilinen sehirleri ara
+            tokens = re.split(r"\s*[,/\-]\s*|\s+MAH\.?\s*|\s+CAD\.?\s*|\s+CD\.?\s*|\s+SOK\.?\s*|\s+SK\.?\s*|\s+NO:?\s*|\s+NO\.?\s*", address.street)
+            found_city = None
+            best_idx = -1
+            for i, token in enumerate(tokens):
+                token_upper = token.strip().upper()
+                if token_upper in _KNOWN_CITIES:
+                    # En sondaki sehir eslesmesini tercih et
+                    if i >= best_idx:
+                        found_city = token.strip()
+                        best_idx = i
+            if found_city is not None:
+                address.city = found_city
+                # Sehri street'ten cikar
+                escaped_city = re.escape(found_city)
+                address.street = re.sub(
+                    r"[,/\-]*\s*" + escaped_city + r"\s*[,/\-]*",
+                    "",
+                    address.street,
+                    count=1,
+                ).strip()
+
+        # --- Street temizligi ---
+        if address.street is not None:
+            cleaned = address.street.strip()
+            cleaned = re.sub(r"^[,/\-\s]+", "", cleaned)
+            cleaned = re.sub(r"[,/\-\s]+$", "", cleaned)
+            address.street = cleaned if cleaned else address.street
+
+
+def _parse_volume_number(raw: str) -> Optional[float]:
+    """Hacim sayisi ayristirici: hem ondalik hem binlik ayraci formatini destekler.
+
+    Ornekler:
+      28.16  -> 28.16 (ondalik, cunku .16 2 haneli)
+      28,16  -> 28.16 (Avrupa ondalik)
+      26.080,00 -> 26080.00 (binlik ayracli)
+    """
+    if not raw:
+        return None
+    cleaned = raw.strip().replace(" ", "")
+    if not cleaned:
+        return None
+    if "," in cleaned:
+        # Virgul varsa Avrupa formati: nokta=binlik, virgul=ondalik
+        return _parse_european_number(cleaned)
+    # Sadece nokta var. 1-2 haneli son grup -> ondalik; 3 haneli -> binlik olabilir
+    if "." in cleaned:
+        parts = cleaned.split(".")
+        if all(len(p) == 3 for p in parts[1:]):
+            # Tum gruplar 3 haneli -> binlik ayraci
+            return _parse_european_number(cleaned)
+        # Son grup 1-2 haneli -> ondalik
+        cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _normalize_cargo_volume(normalized: ShippingInstruction, ocr_text: str) -> None:
+    """Hacim/CBM motoru.
+
+    OCR metninde CBM/M3 hacim degerlerini regex ile yakalar,
+    _parse_european_number ile float'a cevirir ve CargoItem'lara dagitir.
+    """
+    if not ocr_text.strip():
+        return
+    from app.models import CargoVolume
+
+    volume_matches: list[float] = []
+    for pattern in (
+        r"(?im)(?:VOLUME|CBM|M3|CUBIC\s*MET(?:ER|RE)S?)\s*[:#\-]?\s*(?P<value>[\d][\d.,]*)",
+        r"(?im)(?P<value>[\d][\d.,]*)\s*(?:CBM|M3|CUBIC\s*MET(?:ER|RE)S?)",
+    ):
+        for match in re.finditer(pattern, ocr_text):
+            raw_value = match.group("value")
+            parsed = _parse_volume_number(raw_value)
+            if parsed is not None and parsed > 0:
+                volume_matches.append(parsed)
+    # Deduplicate
+    seen: set[float] = set()
+    deduped: list[float] = []
+    for val in volume_matches:
+        if val not in seen:
+            seen.add(val)
+            deduped.append(val)
+    volume_matches = deduped
+    if not volume_matches:
+        return
+    cargo_items = normalized.cargo_items
+    if not cargo_items:
+        volume_value = volume_matches[0]
+        from app.models import CargoItem
+        normalized.cargo_items.append(
+            CargoItem(volume=CargoVolume(volume_value=volume_value))
+        )
+        return
+    # Dagitim: sirayla, sadece volume'u bos olanlara
+    vol_idx = 0
+    for cargo_item in cargo_items:
+        if cargo_item.volume is not None:
+            continue
+        if vol_idx >= len(volume_matches):
+            break
+        cargo_item.volume = CargoVolume(volume_value=volume_matches[vol_idx])
+        vol_idx += 1
+    # Kalan hacim degerleri varsa yeni CargoItem ekle
+    while vol_idx < len(volume_matches):
+        from app.models import CargoItem
+        normalized.cargo_items.append(
+            CargoItem(volume=CargoVolume(volume_value=volume_matches[vol_idx]))
+        )
+        vol_idx += 1
+
+
+def _normalize_equipment_types(normalized: ShippingInstruction, ocr_text: str) -> None:
+    """Konteyner tipi (ISO Equipment Code) motoru.
+
+    OCR metninde insan-yazimi konteyner tiplerini (40HC, 20GP vb.) arar
+    ve DCSA ISO 6346 kodlarina (45G1, 22G1 vb.) donusturur.
+    """
+    if not normalized.equipment_list or not ocr_text.strip():
+        return
+    from app.models import Equipment
+    _valid_iso_pattern = re.compile(r"^[0-9A-Z]{4}$")
+    # Tum OCR eslesmelerini konumlari ve kodlariyla topla
+    all_ocr_matches: list[tuple[int, str]] = []
+    for m in _CONTAINER_TYPE_PATTERN.finditer(ocr_text):
+        normalized_key = re.sub(r"\s+", " ", m.group().strip().upper())
+        normalized_key = re.sub(r"['’]", "", normalized_key)
+        iso_code = _CONTAINER_TYPE_MAP.get(normalized_key)
+        if iso_code:
+            all_ocr_matches.append((m.start(), iso_code))
+    assigned_match_indices: set[int] = set()
+
+    for equipment in normalized.equipment_list:
+        if equipment.iso_equipment_code is not None:
+            existing = equipment.iso_equipment_code.strip().upper()
+            if _valid_iso_pattern.match(existing):
+                continue
+        found_code: str | None = None
+        ref = equipment.equipment_reference
+        if ref:
+            ref_pos = ocr_text.casefold().find(ref.casefold())
+            if ref_pos >= 0:
+                # Henuz atanmamis en yakin tip eslesmesini bul
+                best_distance = 999999
+                best_idx = -1
+                for idx, (match_pos, iso_code) in enumerate(all_ocr_matches):
+                    if idx in assigned_match_indices:
+                        continue
+                    distance = abs(ref_pos - match_pos)
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_idx = idx
+                        found_code = iso_code
+                if best_idx >= 0:
+                    assigned_match_indices.add(best_idx)
+        if found_code is None:
+            # Global fallback: henuz kullanilmamis ilk eslesmeyi al
+            for idx, (pos, iso_code) in enumerate(all_ocr_matches):
+                if idx not in assigned_match_indices:
+                    found_code = iso_code
+                    assigned_match_indices.add(idx)
+                    break
+        if found_code is not None:
+            equipment.iso_equipment_code = found_code
+
+
 def normalize_extracted_instruction(
     instruction: ShippingInstruction,
     ocr_text: str = "",
 ) -> ShippingInstruction:
     normalized = instruction.model_copy(deep=True)
+    _apply_role_code_mapping(normalized)
     if normalized.document_status_code is None:
         normalized.document_status_code = DocumentStatusCode.DRAFT
     if normalized.shipping_instruction_reference is None:
@@ -727,6 +1234,7 @@ def normalize_extracted_instruction(
                 if not contact.phone_number:
                     contact.phone_number = name_val
                 contact.name = None
+    _normalize_party_addresses(normalized)
     for plan in normalized.transport_plans:
         _clean_location_name(plan.port_of_loading)
         _clean_location_name(plan.port_of_discharge)
@@ -777,6 +1285,8 @@ def normalize_extracted_instruction(
                 from app.models import CargoItem
                 new_item = CargoItem(weight=CargoWeight(weight_value=parsed_net, unit=net_unit_str))
                 normalized.cargo_items.append(new_item)
+    _bind_container_cargo(normalized, ocr_text)
+    _normalize_cargo_volume(normalized, ocr_text)
     ocr_containers = _extract_containers_from_ocr(ocr_text)
     if ocr_containers:
         existing_refs: set[str] = set()
@@ -787,6 +1297,7 @@ def normalize_extracted_instruction(
             if container_ref not in existing_refs:
                 from app.models import Equipment
                 normalized.equipment_list.append(Equipment(equipment_reference=container_ref))
+    _normalize_equipment_types(normalized, ocr_text)
     return normalized
 
 

@@ -708,7 +708,9 @@ let currentPdfFile = null;
 let currentPreviewKind = null;
 let documentQueue = [];
 const SUPPORTED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'docx', 'xml', 'png', 'jpg', 'jpeg']);
-const MAX_BATCH_FILES = 10;
+const MAX_BATCH_FILES = 50;
+let activeBatchId = null;
+let activeBatchController = null;
 let currentPage = 1;
 let totalPages = 1;
 let currentZoom = 100;
@@ -1438,16 +1440,218 @@ async function startSelectedFiles() {
     const requestId = activeUploadRequestId;
     selectionProcessing = true;
     renderDocumentQueue();
-    for (const job of pendingJobs) {
-        if (requestId !== activeUploadRequestId) break;
-        const controller = new AbortController();
-        activeUploadController = controller;
-        await processQueuedFile(job, controller, requestId);
+
+    // Batch mod: 1'den fazla dosya varsa toplu yukleme kullan
+    if (pendingJobs.length > 1) {
+        await startBatchUpload(pendingJobs, requestId);
+    } else {
+        for (const job of pendingJobs) {
+            if (requestId !== activeUploadRequestId) break;
+            const controller = new AbortController();
+            activeUploadController = controller;
+            await processQueuedFile(job, controller, requestId);
+        }
     }
     if (requestId === activeUploadRequestId) activeUploadController = null;
     selectionProcessing = false;
     renderDocumentQueue();
 }
+
+// ---------------------------------------------------------------------------
+// Batch (toplu isleme) fonksiyonlari
+// ---------------------------------------------------------------------------
+
+async function startBatchUpload(pendingJobs, requestId) {
+    const batchProgressPanel = document.getElementById('batchProgressPanel');
+    const batchProgressBar = document.getElementById('batchProgressBar');
+    const batchProgressLabel = document.getElementById('batchProgressLabel');
+    const batchCurrentFile = document.getElementById('batchCurrentFile');
+    const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+    const batchCancelBtn = document.getElementById('batchCancelBtn');
+
+    batchProgressPanel.classList.remove('hidden');
+    batchDownloadBtn.disabled = true;
+    batchCancelBtn.disabled = false;
+    updateBatchProgress(0, 0, pendingJobs.length);
+
+    const formData = new FormData();
+    for (const job of pendingJobs) {
+        formData.append('files', job.file);
+    }
+    formData.append('document_language', documentLanguage.value);
+    formData.append('output_language', outputLanguage.value);
+    formData.append('translation_enabled', String(translationEnabled.checked));
+
+    try {
+        showStatusMessage('', true, '', false);
+        const statusMsg = document.getElementById('statusMessage');
+        statusMsg.classList.remove('status-hidden');
+        statusMsg.querySelector('span').textContent = 'Batch yukleniyor ve dogrulaniyor...';
+        showSpinner(true);
+
+        const response = await apiFetch('/api/batch/upload', {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `Batch upload failed (${response.status})`);
+        }
+        const result = await response.json();
+        activeBatchId = result.batch_id;
+
+        // Rejected dosyalari goster
+        if (result.rejected_count > 0) {
+            for (const rejected of result.rejected_items) {
+                const job = pendingJobs.find(j => j.file.name === rejected.original_filename);
+                if (job) {
+                    job.status = 'REJECTED';
+                    job._rejectReason = rejected.error_message;
+                }
+            }
+        }
+
+        // Batch SSE'ye baglan
+        await connectBatchStream(result.batch_id, pendingJobs, requestId);
+    } catch (e) {
+        console.error('Batch upload error:', e);
+        showStatusMessage(e.message, false, '', true);
+        showSpinner(false);
+    } finally {
+        batchCancelBtn.disabled = true;
+    }
+}
+
+async function connectBatchStream(batchId, pendingJobs, requestId) {
+    const batchProgressBar = document.getElementById('batchProgressBar');
+    const batchProgressLabel = document.getElementById('batchProgressLabel');
+    const batchCurrentFile = document.getElementById('batchCurrentFile');
+    const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+
+    try {
+        const response = await apiFetch(`/api/batch/${batchId}/stream`);
+        if (!response.ok) throw new Error('Batch stream failed');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (requestId === activeUploadRequestId) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6);
+                try {
+                    const event = JSON.parse(jsonStr);
+                    if (event.status === 'COMPLETE') {
+                        // Batch tamamlandi
+                        updateBatchProgress(100, event.completed_count || pendingJobs.length, pendingJobs.length);
+                        batchCurrentFile.textContent = 'Islem tamamlandi.';
+                        batchDownloadBtn.disabled = false;
+                        showSpinner(false);
+                        showStatusMessage('Batch isleme tamamlandi!', true, '', false);
+                        // Pending job'lari guncelle
+                        try {
+                            const statusResp = await apiFetch(`/api/batch/${batchId}/status`);
+                            const status = await statusResp.json();
+                            syncBatchItemsToQueue(status.items, pendingJobs);
+                        } catch (_) {}
+                        return;
+                    }
+                    if (event.timeout) {
+                        showStatusMessage('Batch islemi zaman asimina ugradi.', false, '', true);
+                        showSpinner(false);
+                        return;
+                    }
+                    // Ilerleme guncellemesi
+                    updateBatchProgress(event.percent, event.completed_count, event.total_count);
+                    if (event.current_file) {
+                        batchCurrentFile.textContent = `Isleniyor: ${event.current_file}`;
+                    }
+                    if (event.item) {
+                        const job = pendingJobs.find(
+                            j => j.file.name === event.item.original_filename
+                        );
+                        if (job) {
+                            job.status = event.item.status;
+                            job.sessionId = event.item.session_id;
+                            job.riskScore = event.item.risk_score;
+                            if (event.item.error_message) {
+                                job._errorMessage = event.item.error_message;
+                            }
+                        }
+                        renderDocumentQueue();
+                    }
+                    if (event.zip_ready) {
+                        batchDownloadBtn.disabled = false;
+                        batchCurrentFile.textContent = 'ZIP hazir! Indirebilirsiniz.';
+                    }
+                } catch (_) {}
+            }
+        }
+    } catch (e) {
+        console.error('Batch stream error:', e);
+        showStatusMessage('Batch SSE baglantisi koptu.', false, '', true);
+        showSpinner(false);
+    }
+}
+
+function updateBatchProgress(percent, completed, total) {
+    const batchProgressBar = document.getElementById('batchProgressBar');
+    const batchProgressLabel = document.getElementById('batchProgressLabel');
+    if (batchProgressBar) batchProgressBar.style.width = `${percent}%`;
+    if (batchProgressLabel) batchProgressLabel.textContent = `%${Math.round(percent)} — ${completed}/${total}`;
+}
+
+function syncBatchItemsToQueue(batchItems, pendingJobs) {
+    for (const item of batchItems) {
+        const job = pendingJobs.find(j => j.file.name === item.original_filename);
+        if (job) {
+            job.status = item.status;
+            job.sessionId = item.session_id;
+            job.riskScore = item.risk_score;
+            job._errorMessage = item.error_message;
+        }
+    }
+    renderDocumentQueue();
+}
+
+async function downloadBatchZip() {
+    if (!activeBatchId) return;
+    try {
+        const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+        batchDownloadBtn.disabled = true;
+        const response = await apiFetch(`/api/batch/${activeBatchId}/download`);
+        if (!response.ok) throw new Error('ZIP download failed');
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `batch_results_${activeBatchId}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+        batchDownloadBtn.disabled = false;
+    } catch (e) {
+        console.error('Batch ZIP download error:', e);
+    }
+}
+
+async function cancelBatch() {
+    if (!activeBatchId) return;
+    try {
+        await apiFetch(`/api/batch/${activeBatchId}`, { method: 'DELETE' });
+    } catch (_) {}
+    activeBatchId = null;
+    document.getElementById('batchProgressPanel').classList.add('hidden');
+    selectionProcessing = false;
+    renderDocumentQueue();
+}
+
 
 function clearFileSelection() {
     if (activeUploadController) activeUploadController.abort();
@@ -2160,6 +2364,12 @@ clearSelectionBtn.addEventListener('click', clearFileSelection);
 
 const exportAllBtn = document.getElementById('exportAllBtn');
 exportAllBtn.addEventListener('click', exportApprovedSessions);
+
+const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+if (batchDownloadBtn) batchDownloadBtn.addEventListener('click', downloadBatchZip);
+
+const batchCancelBtn = document.getElementById('batchCancelBtn');
+if (batchCancelBtn) batchCancelBtn.addEventListener('click', cancelBatch);
 
 async function exportApprovedSessions() {
     const approvedJobs = documentQueue.filter(
