@@ -3,7 +3,7 @@
 **Denetim Tarihi:** 20.07.2026
 **Denetim Saati:** V16 kod denetimi + düzeltme — SKILL.md 4 aşamalı metodoloji (Europe/Istanbul, UTC+3)
 **Denetim Yöntemi:** 🔴 Hata, ⚡ Performans, 🔒 Güvenlik (OWASP Top 10), 🧹 Kod Kalitesi (SOLID/DRY) — 2 paralel kıdemli mimar agent ile tam kod tabanı taraması
-**Toplam Düzeltilen Hata Sayısı:** 159 (V1-V19: 154 + V20: 5)
+**Toplam Düzeltilen Hata Sayısı:** 160 (V1-V19: 154 + V20: 6)
 **Test Sonucu:** 179/179 PASSED (Ubuntu WSL2)
 **Benchmark:** %69.4 doğruluk, %100 XSD geçiş (13/13)
 
@@ -1741,4 +1741,22 @@ Batch yükleme döngüsünde `safe_name = f"{batch_id}_{f.filename or 'unknown'}
 | 158 | 🔒 Güvenlik | YÜKSEK | `routes/processing.py` | Batch dosya adında path traversal zafiyeti | ✅ Düzeltildi |
 | 159 | 🔴 Hata | ORTA | `routes/processing.py` | Batch iptali asyncio.Task cancel etmiyordu | ✅ Düzeltildi |
 
-**V20 Sonuç:** 5 bulgunun **tamamı düzeltildi**.
+**V20 Sonuç:** 6 bulgunun **tamamı düzeltildi**.
+
+### 160. Batch Hata Yutulması — si_model None iken COMPLETED İşaretleniyor (KRİTİK)
+
+**Tarih/Saat:** 21.07.2026
+**Dosya:** `app/routes/processing.py`
+**Satır:** `_process_batch()` — `si_model` None kontrolü
+
+**Problem:**
+`_process_batch` koordinatöründe `_process_single_in_batch` başarıyla döndükten sonra `_session_models.get(item["session_id"])` ile model çıktısı alınıyordu. Eğer OCR çökerse veya belge okunamazsa `si_model` None dönüyor, ancak kod `else` bloğunda item'i doğrudan `COMPLETED` işaretliyordu. Kullanıcı batch sonuç listesinde çöken belgeyi "başarılı" görüyordu.
+
+**Çözüm:**
+1. `si_model` None ise `_processing_store`'dan gerçek durum kontrol ediliyor
+2. Store'da `ERROR` statüsü varsa veya store kaydı hiç yoksa item `ERROR` işaretleniyor
+3. `error_count` sayacı bu durumda da artırılıyor
+4. `si_model` var ama stored statü `ERROR` ise yine ERROR işaretleniyor
+5. Hata mesajı olarak OCR/LLM hatası bilgisi ekleniyor
+
+**Test:** 179/179 PASSED (Ubuntu WSL2)

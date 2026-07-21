@@ -1169,12 +1169,25 @@ async def _process_batch(batch_id: str) -> None:
                         item["status"] = BatchItemStatus.COMPLETED.value
                     elif stored.status == ProcessingStatus.DRAFT:
                         item["status"] = BatchItemStatus.DRAFT.value
+                    elif stored.status == ProcessingStatus.ERROR:
+                        item["status"] = BatchItemStatus.ERROR.value
+                        item["error_message"] = item.get("error_message") or "Pipeline hatasi"
+                        batch["error_count"] = batch.get("error_count", 0) + 1
                     item["risk_score"] = stored.local_risk_score
                     item["confidence_score"] = stored.audit_confidence_score
                 else:
-                    item["status"] = BatchItemStatus.COMPLETED.value
+                    item["status"] = BatchItemStatus.ERROR.value
+                    item["error_message"] = "Islem sonucu bulunamadi"
+                    batch["error_count"] = batch.get("error_count", 0) + 1
             else:
-                item["status"] = BatchItemStatus.COMPLETED.value
+                stored = _processing_store.get(item["session_id"])
+                if stored and stored.status == ProcessingStatus.ERROR:
+                    item["status"] = BatchItemStatus.ERROR.value
+                    item["error_message"] = stored.message or "Pipeline hatasi"
+                else:
+                    item["status"] = BatchItemStatus.ERROR.value
+                    item["error_message"] = "Model ciktisi uretilemedi (OCR/LMM hatasi)"
+                batch["error_count"] = batch.get("error_count", 0) + 1
         except Exception as exc:
             item["status"] = BatchItemStatus.ERROR.value
             item["error_message"] = f"{type(exc).__name__}: {exc}"
