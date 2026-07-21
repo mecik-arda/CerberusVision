@@ -1,0 +1,95 @@
+{
+  "case_name": "Overstamped_Handwritten_Noisy_OCR",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "S H1PP1NG 1NSTRUCT10N\nS1-2026-STP-001\nD4TE: 2O26-O4-15\nB00KING: BK-STP-11O088\n\n~~~~~~~~ AGENCY STAMP OVERLAP ~~~~~~~~\nSH1PPER:\nMER1D1AN MAR1T1ME CORP.\nEMBARCADERO CENTER 5, S4N FR4NC1SCO, CA 94111\nUSA\nTEL: 415-555-0199  [RECEIVED FOR SHIPMENT]\n~~~~~~~~ MAERSK AGENCY SEAL ~~~~~~~~\n\nC0NS1GNEE:\nATL4NT1C D1STR1BUTORS LTD\n~~~~~~~~  APR 17 2026  ~~~~~~~~\nAVEN1DA D1AG0NAL 482, 08029\n[ORIGINAL STAMP: SHIPPED ON BOARD]\nB4RCEL0NA, SPA1N\n\nN0T1FY P4RTY:\nMEDITERRANEAN AGENC1A MAR1T1MA SL\nC/ MAYOR 12, 46002 VALENC1A, SPA1N\n\nP0RT 0F L0ADING: L0S 4NGELES\nP0RT 0F D1SCH4RGE: BARCEL0NA\nM0THER VESSEL: MAERSK M0NTANA / V0Y: 607W\n\nC0NT41NER: MEDU4455667 40HC\nSEAL: ML-ES99887766\nBRUT: ~~26.080,00 KG~~  27.500,00 KG [HANDWRITTEN CORRECTION]\nNET: ~~24.776,00 KG~~  26.150,00 KG [HANDWRITTEN CORRECTION]\n32 P4LLETS TEXT1LE PR0DUCTS\nV0LUME: 28,16 CBM\nSHIPPING M4RKS: ATL-BCN-2026\n\nC0NT41NER: TCLU8877665 40HC\nSEAL: ML-ES11223344\nBRUT: 18.750,00 KG\nNET: 17.200,00 KG\n22 P4LLETS CER4MIC C0NTA1NERS\nV0LUME: 19,30 CBM\n\nFR3IGHT C0LLECT\nB1LL 0F L4D1NG",
+  "expected": {
+    "shipping_instruction_reference": "SI-2026-STP-001",
+    "carrier_booking_reference": "BK-STP-110088",
+    "issue_date": "2026-04-15",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "COL",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "MERIDIAN MARITIME CORP."
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "ATLANTIC DISTRIBUTORS LTD"
+      },
+      {
+        "party_role_code": "N1",
+        "party_name": "MEDITERRANEAN AGENCIA MARITIMA SL"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "LOS ANGELES"
+        },
+        "port_of_discharge": {
+          "location_name": "BARCELONA"
+        },
+        "carrier_voyage_number": "607W"
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MEDU4455667",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 27500.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "ML-ES99887766"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "TCLU8877665",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 18750.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "ML-ES11223344"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 32,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "TEXTILE PRODUCTS",
+        "shipping_marks": "ATL-BCN-2026",
+        "weight": {
+          "weight_value": 26150.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 28.16,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 22,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "CERAMIC CONTAINERS",
+        "weight": {
+          "weight_value": 17200.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 19.30,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

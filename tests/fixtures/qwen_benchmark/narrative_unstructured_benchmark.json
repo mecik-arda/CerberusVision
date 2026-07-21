@@ -1,0 +1,113 @@
+{
+  "case_name": "Narrative_Unstructured_Email_Style",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "From: booking@exportradeltd.com\nTo: operations@maerskline.com\nSubject: Shipping Instruction for Export Order EXP-2026-4422\n\nDear Operations Team,\n\nPlease find below the shipping instruction details for our upcoming export from Antwerp to Mumbai:\n\nShipping Instruction Reference: SI-EXP-4422-2026\nBooking Reference: MAEU-99887766\n\nAs per our contract, the freight terms are freight prepaid and the transport document type is Bill of Lading. The issue date of this instruction is June 22nd, 2026.\n\nSHIPPER DETAILS:\nThe exporter is EXPORTRA DEL TRADING LTD whose registered office is located at Hanzestedenplaats 1, 2000 Antwerpen, Belgium. Their VAT identification number is BE0892123456.\n\nCONSIGNEE DETAILS:\nThe goods are consigned to BHARAT IMPORTS PRIVATE LIMITED with their corporate address at Nariman Point, 215 Free Press Journal Road, Mumbai 400021, Maharashtra, India. Their GST registration is 27AABCB1234C1Z5.\n\nNOTIFY PARTY:\nPlease also notify SHREE LOGISTICS PVT LTD at Ballard Estate, Mumbai 400001, India.\n\nLOGISTICS INFORMATION:\nThe port of loading will be Antwerp and the port of discharge will be Nhava Sheva (Jawaharlal Nehru Port), Mumbai. The mother vessel is M.V. MAERSK SHEERNESS with voyage number 623E. The place of receipt is the shipper's warehouse in Antwerp and the final place of delivery is ICD Tughlakabad, New Delhi.\n\nEQUIPMENT AND CARGO:\n\nWe have one 40 foot high cube container MSKU1234567 sealed with seal number BE-ML-442200. The container's gross weight is twenty six thousand eighty kilograms and the net cargo weight is twenty four thousand seven hundred seventy six kilograms.\n\nThe cargo consists of thirty two pallets of MDF laminate flooring with shipping marks reading EXP-MUM-2026. The total volume is twenty eight point sixteen cubic meters. The HS commodity code is 4411.13.\n\nAdditionally, we have a second container TGHU7654321 which is a 20 foot general purpose container sealed with BE-ML-442201. Gross weight is twelve thousand five hundred kilograms and net weight is eleven thousand eight hundred kilograms. This container holds eighteen pallets of ceramic wall tiles with volume fifteen point four cubic meters. The HS code for this item is 6908.90.\n\nPlease also note the following document references: the commercial invoice number is INV-EXP-4422 and the related bill of lading reference from the carrier will be issued.\n\nWe declare under FTA that these goods originate in the European Union under the EU-India FTA agreement.\n\nBest regards,\nExport Manager\nEXPORTRA DEL TRADING LTD",
+  "expected": {
+    "shipping_instruction_reference": "SI-EXP-4422-2026",
+    "carrier_booking_reference": "MAEU-99887766",
+    "issue_date": "2026-06-22",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "EXPORTRA DEL TRADING LTD",
+        "party_id": "BE0892123456"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "BHARAT IMPORTS PRIVATE LIMITED"
+      },
+      {
+        "party_role_code": "N1",
+        "party_name": "SHREE LOGISTICS PVT LTD"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ANTWERP"
+        },
+        "port_of_discharge": {
+          "location_name": "NHAVA SHEVA"
+        },
+        "place_of_receipt": {
+          "location_name": "ANTWERP"
+        },
+        "place_of_delivery": {
+          "location_name": "ICD TUGHLAKABAD"
+        },
+        "carrier_voyage_number": "623E"
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MSKU1234567",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 26080.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "BE-ML-442200"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "TGHU7654321",
+        "iso_equipment_code": "22G1",
+        "cargo_gross_weight": {
+          "weight": 12500.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "BE-ML-442201"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 32,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "MDF LAMINATE FLOORING",
+        "shipping_marks": "EXP-MUM-2026",
+        "commodity_code": "4411.13",
+        "weight": {
+          "weight_value": 24776.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 28.16,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 18,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "CERAMIC WALL TILES",
+        "commodity_code": "6908.90",
+        "weight": {
+          "weight_value": 11800.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 15.40,
+          "unit": "CBM"
+        }
+      }
+    ],
+    "document_references": [
+      {
+        "type_code": "INV",
+        "reference_number": "INV-EXP-4422"
+      }
+    ],
+    "customs_information": {
+      "fta_declaration": "EU-India FTA"
+    }
+  }
+}

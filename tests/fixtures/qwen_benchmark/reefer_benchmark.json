@@ -1,0 +1,116 @@
+{
+  "case_name": "Reefer_Mixed_Temperature_Goods",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-REF-2026-001\nDATE: 2026-07-14\nBOOKING: BKG-REF-554433\nSHIPPER: FRESHFOOD EXPORT LTDA, SANTOS, BR\nCONSIGNEE: EURO MARKET DISTRIBUTION, ROTTERDAM, NL\nPORT OF LOADING: SANTOS\nPORT OF DISCHARGE: ROTTERDAM\nVESSEL: REEFER STAR / VOYAGE: RS-8821\n\nCONTAINER: CRLU8877665 40 REEFER\nSEAL: SEAL-RF-8877\nCARGO: FROZEN BEEF QUARTERS\nTEMPERATURE SETTING: -18.0 DEGREES CELSIUS\nVENTILATION: CLOSED\nHUMIDITY: 85%\nGROSS: 26.500,00 KG  NET: 25.100,00 KG\n28 PALLETS FROZEN BONELESS BEEF\nVOLUME: 28.16 CBM\n\nCONTAINER: CRLU5544332 40 REEFER\nSEAL: SEAL-RF-5544\nCARGO: FRESH GRAPES\nTEMPERATURE SETTING: +2.0 DEGREES CELSIUS\nVENTILATION: 25 CBM/H\nHUMIDITY: 90%\nGROSS: 18.750,00 KG  NET: 17.200,00 KG\n22 PALLETS FRESH TABLE GRAPES\nVOLUME: 19.30 CBM\n\nCONTAINER: MSKU1122334 20GP\nSEAL: SEAL-DR-1122\nGROSS: 12.500,00 KG  NET: 11.800,00 KG\n18 PALLETS CANNED FRUIT COCKTAIL\nVOLUME: 11.40 CBM\n\nFREIGHT PREPAID\nBILL OF LADING",
+  "expected": {
+    "shipping_instruction_reference": "SI-REF-2026-001",
+    "carrier_booking_reference": "BKG-REF-554433",
+    "issue_date": "2026-07-14",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "FRESHFOOD EXPORT LTDA"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "EURO MARKET DISTRIBUTION"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "SANTOS"
+        },
+        "port_of_discharge": {
+          "location_name": "ROTTERDAM"
+        },
+        "carrier_voyage_number": "RS-8821"
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "CRLU8877665",
+        "iso_equipment_code": "42R1",
+        "cargo_gross_weight": {
+          "weight": 26500.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "SEAL-RF-8877"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "CRLU5544332",
+        "iso_equipment_code": "42R1",
+        "cargo_gross_weight": {
+          "weight": 18750.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "SEAL-RF-5544"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "MSKU1122334",
+        "iso_equipment_code": "22G1",
+        "cargo_gross_weight": {
+          "weight": 12500.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "SEAL-DR-1122"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 28,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "FROZEN BONELESS BEEF",
+        "weight": {
+          "weight_value": 25100.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 28.16,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 22,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "FRESH TABLE GRAPES",
+        "weight": {
+          "weight_value": 17200.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 19.30,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 18,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "CANNED FRUIT COCKTAIL",
+        "weight": {
+          "weight_value": 11800.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 11.40,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

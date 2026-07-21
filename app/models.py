@@ -38,16 +38,34 @@ class TransportMode(str, Enum):
 
 class PackageKindCode(str, Enum):
     PALLET = "PALLET"
+    PL = "PL"
     CARTON = "CARTON"
+    CT = "CT"
     CRATE = "CRATE"
+    CR = "CR"
     BALE = "BALE"
+    BA = "BA"
     DRUM = "DRUM"
+    DR = "DR"
     BOX = "BOX"
+    BX = "BX"
+    BG = "BG"
+    BE = "BE"
+    RO = "RO"
+    CA = "CA"
+    BO = "BO"
+    BJ = "BJ"
+    CY = "CY"
+    PC = "PC"
+    PK = "PK"
+    NE = "NE"
+    IBC = "IBC"
 
 
 class WeightUnit(str, Enum):
     KILOGRAM = "KGM"
     TON = "TON"
+    LBR = "LBR"
 
 
 class VolumeUnit(str, Enum):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import re
 from typing import List, Tuple
 from app.config import settings
 
@@ -152,6 +153,38 @@ def segment_boxes_by_region(
         f"ust={len(upper_boxes)} orta={len(middle_boxes)} alt={len(lower_boxes)} toplam={len(boxes)}"
     )
     return upper_boxes, middle_boxes, lower_boxes
+
+
+def chunk_boxes_by_container(
+    boxes: List[TextBox],
+    page_height: float,
+    upper_ratio: float = None,
+    middle_ratio: float = None,
+) -> List[List[TextBox]]:
+    if not boxes:
+        return []
+    if upper_ratio is None:
+        upper_ratio = settings.region_upper_ratio
+    if middle_ratio is None:
+        middle_ratio = settings.region_middle_ratio
+    middle_boundary = page_height * middle_ratio
+    container_ref_pattern = re.compile(r"\b[A-Z]{4}\d{7}\b")
+    lower_boxes = [b for b in boxes if b.y_min >= middle_boundary]
+    if not lower_boxes:
+        return [lower_boxes]
+    split_indices = []
+    for i, box in enumerate(lower_boxes):
+        if container_ref_pattern.search(box.text):
+            split_indices.append(i)
+    if split_indices and split_indices[0] != 0:
+        split_indices.insert(0, 0)
+    if len(split_indices) <= 1:
+        return [lower_boxes]
+    chunks = []
+    for j, start_idx in enumerate(split_indices):
+        end_idx = split_indices[j + 1] if j + 1 < len(split_indices) else len(lower_boxes)
+        chunks.append(lower_boxes[start_idx:end_idx])
+    return chunks
 
 
 def reconstruct_region_texts(

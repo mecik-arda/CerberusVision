@@ -89,6 +89,7 @@ _active_pipeline_lock = asyncio.Lock()
 
 _batch_store: dict[str, dict] = {}
 _batch_queues: dict[str, asyncio.Queue] = {}
+_batch_tasks: dict[str, asyncio.Task] = {}
 _batch_rate_limiter: dict[str, list[float]] = {}
 _MAX_BATCH_STORE = 50
 _MAX_BATCH_FILES = 50
@@ -1076,7 +1077,7 @@ def _emit_batch_event(batch: dict, item: dict | None = None) -> BatchEvent:
     completed = sum(
         1 for i in batch["items"]
         if i["status"] in (BatchItemStatus.COMPLETED.value, BatchItemStatus.DRAFT.value,
-                           BatchItemStatus.ERROR.value)
+                           BatchItemStatus.ERROR.value, BatchItemStatus.REJECTED.value)
     )
     total = batch["total_count"]
     percent = round((completed / total * 100.0) if total else 0.0, 1)
@@ -1345,7 +1346,7 @@ async def batch_upload(
     rejected: list[dict] = []
 
     for f in files:
-        safe_name = f"{batch_id}_{f.filename or 'unknown'}"
+        safe_name = f"{batch_id}_{Path(f.filename or 'unknown').name}"
         item = {
             "filename": safe_name,
             "original_filename": f.filename or "unknown",
@@ -1396,8 +1397,11 @@ async def batch_upload(
         for old_id in oldest:
             _batch_store.pop(old_id, None)
             _batch_queues.pop(old_id, None)
+            _batch_tasks.pop(old_id, None)
 
-    asyncio.create_task(_process_batch(batch_id))
+    task = asyncio.create_task(_process_batch(batch_id))
+    _batch_tasks[batch_id] = task
+    task.add_done_callback(lambda _t, bid=batch_id: _batch_tasks.pop(bid, None))
 
     return BatchUploadResponse(
         batch_id=batch_id,
@@ -1420,7 +1424,7 @@ async def batch_status(batch_id: str):
     completed = sum(
         1 for i in batch["items"]
         if i["status"] in (BatchItemStatus.COMPLETED.value, BatchItemStatus.DRAFT.value,
-                           BatchItemStatus.ERROR.value)
+                           BatchItemStatus.ERROR.value, BatchItemStatus.REJECTED.value)
     )
     total = batch["total_count"]
     percent = round((completed / total * 100.0) if total else 0.0, 1)
@@ -1499,6 +1503,10 @@ async def batch_cancel(batch_id: str):
     batch = _batch_store.get(batch_id)
     if batch is None:
         return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
+
+    batch_task = _batch_tasks.pop(batch_id, None)
+    if batch_task is not None and not batch_task.done():
+        batch_task.cancel()
 
     for item in batch["items"]:
         if item["status"] in (BatchItemStatus.QUEUED.value, BatchItemStatus.PROCESSING.value):

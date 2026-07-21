@@ -1,0 +1,131 @@
+{
+  "case_name": "Nested_Packaging_Mixed_Types",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-NP-2026-001\nDATE: 2026-07-10\nBOOKING: BKG-NP-665544\nSHIPPER: MULTIPACK INDUSTRIES LTD, ANTWERP, BE\nCONSIGNEE: WEST AFRICAN TRADING CO, LAGOS, NG\nPORT OF LOADING: ANTWERP\nPORT OF DISCHARGE: LAGOS\n\nCONTAINER: MSCU6677889 40HC\nSEAL: BE-SL-778899\nGROSS: 22.500,00 KG  NET: 21.100,00 KG\n10 PALLETS CONTAINING 400 CARTONS OF SPARE PARTS FOR AGRICULTURAL MACHINERY\nMARKS: MAT-LOS-2026\nVOLUME: 22.50 CBM\n\nCONTAINER: TGHU9988776 20GP\nSEAL: BE-SL-990011\nGROSS: 14.300,00 KG  NET: 13.400,00 KG\n8 PALLETS CONTAINING 96 DRUMS OF INDUSTRIAL LUBRICANT OIL\n12 DRUMS LOOSE OF HYDRAULIC FLUID\nMARKS: MAT-LOS-OIL\nVOLUME: 13.80 CBM\n\nCONTAINER: OOLU5544332 40GP\nSEAL: BE-SL-554433\nGROSS: 16.800,00 KG  NET: 15.600,00 KG\n20 CRATES OF STEEL CONSTRUCTION BEAMS\n5 BULK PIECES OF STEEL PLATES\nVOLUME: 14.20 CBM\n\nFREIGHT PREPAID\nBILL OF LADING",
+  "expected": {
+    "shipping_instruction_reference": "SI-NP-2026-001",
+    "carrier_booking_reference": "BKG-NP-665544",
+    "issue_date": "2026-07-10",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "MULTIPACK INDUSTRIES LTD"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "WEST AFRICAN TRADING CO"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ANTWERP"
+        },
+        "port_of_discharge": {
+          "location_name": "LAGOS"
+        }
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MSCU6677889",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 22500.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "BE-SL-778899"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "TGHU9988776",
+        "iso_equipment_code": "22G1",
+        "cargo_gross_weight": {
+          "weight": 14300.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "BE-SL-990011"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "OOLU5544332",
+        "iso_equipment_code": "42G1",
+        "cargo_gross_weight": {
+          "weight": 16800.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "BE-SL-554433"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 400,
+        "package_kind_code": "CARTON",
+        "description_of_goods": "SPARE PARTS FOR AGRICULTURAL MACHINERY",
+        "shipping_marks": "MAT-LOS-2026",
+        "weight": {
+          "weight_value": 21100.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 22.50,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 96,
+        "package_kind_code": "DRUM",
+        "description_of_goods": "INDUSTRIAL LUBRICANT OIL",
+        "shipping_marks": "MAT-LOS-OIL",
+        "weight": {
+          "weight_value": 13400.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 13.80,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 12,
+        "package_kind_code": "DRUM",
+        "description_of_goods": "HYDRAULIC FLUID",
+        "shipping_marks": "MAT-LOS-OIL",
+        "weight": {
+          "weight_value": 13400.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 13.80,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 20,
+        "package_kind_code": "CRATE",
+        "description_of_goods": "STEEL CONSTRUCTION BEAMS",
+        "weight": {
+          "weight_value": 15600.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 14.20,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

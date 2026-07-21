@@ -442,14 +442,21 @@ app/
   document_ingestion.py  Format/imza doğrulama ve DOCX/XML metin çıkarımı
   security.py           Opsiyonel API anahtarı ve kayan pencere yükleme limiti
   llm/                 Yerel Qwen, yerel risk ve kısa DeepSeek hakemi
-  llm/evaluation.py   Alan bazlı Qwen benchmark değerlendirmesi
+  llm/inference.py    Qwen 2.5 7B çıkarım, 3 aşamalı modüler çıkarım, deterministik kural motoru
+  llm/local_audit.py  Yerel risk değerlendirmesi (ISO 6346, format denetimi, ağırlık tutarlılığı)
+  llm/cloud_inference.py  DeepSeek API salt-okunur risk hakemi
+  llm/translation.py  DCSA XML içerik çevirisi
+  llm/evaluation.py   Alan bazlı benchmark değerlendirme metrikleri
   llm/document_relevance.py  Keşif için yalnızca konu ve İngilizce filtresi
-  ocr/                 PaddleOCR ve uzamsal satır gruplama
+  ocr/                 PaddleOCR, PyMuPDF, Y-oranı bölge segmentasyonu
+  ocr/vlm_region.py   Florence-2 VLM mizanpaj tespiti
+  ocr/line_grouper.py OCR kutu gruplama, konteyner bazlı Y-chunking
   utils/model_discovery.py  WSL içindeki bilinen yerel model depolarını tarar
   utils/live_logs.py  Sınırlı, maskelenmiş canlı log tamponu
   routes/              Upload, SSE, canlı log, taslak, onay ve cloud-review API'leri
   search/              Resmî arama API'leri, güvenli indirme ve yerel ön eleme
   xml/                 DCSA XML dönüştürme ve XSD doğrulama
+  xml/schemas/         DCSA SI v2 XSD şeması
 scripts/
   find_shipping_documents.py  İngilizce örnek belge keşif CLI'ı
   wsl_sync.sh          WSL-native kaynak/Git çalışma dizimini doğrular
@@ -462,9 +469,14 @@ scripts/
   wsl_gpu_info.py      OpenVINO GPU özellik raporu
   evaluate_qwen.py     Alan bazlı Qwen benchmark raporu
   benchmark_accuracy.py PDF tabanlı uçtan uca doğruluk ölçümü
+  train_lora.py        LoRA ince ayar eğitimi
+  prepare_training_data.py  Eğitim verisi hazırlama
 static/
+  index.html, app.js   Web arayüzü (TR/EN, koyu/açık tema, SSE, PDF görüntüleyici)
   app.css              Yerel, minify edilmiş Tailwind çıktısı
 tests/                 179 otomatik regresyon testi
+  fixtures/
+    qwen_benchmark/    13 benchmark JSON senaryosu
 ```
 
 ## Doğruluk ölçümü ve benchmark
@@ -481,16 +493,17 @@ doğruluk, eksik değerler ve uyuşmayan değerler aşağıdaki komutla raporlan
 
 ### Tam doğruluk ölçümü (PDF tabanlı, uçtan uca)
 
-`scripts/benchmark_accuracy.py`, gerçek PDF'leri OCR + 3 aşamalı LLM hattından geçirip
-DCSA XML veya JSON ground truth ile karşılaştıran otomatik benchmark aracıdır.
-Kategori bazlı (Belge Bilgileri, Taraflar, Taşıma, Ekipman, Yük Kalemleri) Accuracy,
-Precision, Recall ve F1-Score üretir. Dizi elemanlarını `party_role_code` ve
-`equipment_reference` gibi anahtarlara göre sıralayarak indeks kaynaklı yanlış
-eşleşmeleri önler.
+`scripts/benchmark_accuracy.py`, gerçek PDF'leri veya OCR metinlerini OCR + 3 aşamalı
+LLM hattından geçirip DCSA XML veya JSON ground truth ile karşılaştıran otomatik
+benchmark aracıdır. Kategori bazlı (Belge Bilgileri, Taraflar, Taşıma, Ekipman,
+Yük Kalemleri) Accuracy, Precision, Recall ve F1-Score üretir. Dizi elemanlarını
+`party_role_code` ve `equipment_reference` gibi anahtarlara göre sıralayarak
+indeks kaynaklı yanlış eşleşmeleri önler.
 
 ```bash
 .venv/bin/python scripts/benchmark_accuracy.py tests/fixtures/qwen_benchmark
-.venv/bin/python scripts/benchmark_accuracy.py . --output logs/benchmark.json --html logs/benchmark.html
+.venv/bin/python scripts/benchmark_accuracy.py tests/fixtures/qwen_benchmark \
+  --output logs/benchmark.json --html logs/benchmark.html
 .venv/bin/python scripts/benchmark_accuracy.py . --pdf-only
 ```
 
@@ -503,28 +516,85 @@ otomatik ayrıştırır.
 Çıktı formatları: renkli terminal tablosu (yeşil >= %90, sarı >= %70, kırmızı < %70),
 JSON raporu (`--output`) ve HTML raporu (`--html`).
 
+### Benchmark senaryoları
+
+13 zorlayıcı senaryo `tests/fixtures/qwen_benchmark/` altında tutulur:
+
+| Dosya | Senaryo | Zorluk | Alan |
+|---|---|---|---|
+| `control_field_labels.json` | V.DAIRESI vs place_of_issue tuzağı | Düşük | 5 |
+| `sample_shipping_instruction.json` | Temel SI çıkarımı | Düşük | 18 |
+| `tr_konsimento.json` | Türkçe konsimento (PDF tabanlı) | Orta | 13 |
+| `de_frachtbrief.json` | Almanca terimler (ABSENDER, EMPFANGER) | Orta | 22 |
+| `scanned_low_quality.json` | OCR karakter bozulması (S1PP1NG, D4TE) | Orta | 22 |
+| `multi_container_benchmark.json` | 5 konteyner, 5 farklı tip, Avrupa formatı | Orta | 66 |
+| `dangerous_goods_benchmark.json` | IMDG Class 3+8, UN 1993/3264, Flash Point -18°C | Yüksek | 66 |
+| `reefer_benchmark.json` | 40 REEFER, -18°C vs +2°C, nem/havalandırma | Yüksek | 48 |
+| `overstamped_noisy_benchmark.json` | Ajans kaşesi, el yazısı düzeltmeler, OCR gürültüsü | Yüksek | 39 |
+| `nested_packaging_benchmark.json` | İç içe ambalaj (PALLETS CONTAINING CARTONS) | Yüksek | 57 |
+| `multilingual_benchmark.json` | Çince, Arapça, Türkçe (Ş, Ğ, İ) karakterler | Yüksek | 28 |
+| `narrative_unstructured_benchmark.json` | E-posta formatı, tablosuz serbest metin | Yüksek | 47 |
+| `edge_cases_rule_traps.json` | 45 HC REEFER, US formatı, COP/RIO port prefix | Yüksek | 53 |
+
+### Benchmark sonuçları (v2, 2026-07-21)
+
+| Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
+|---|---|---|---|---|
+| Taraflar | %92.5 | %41.6 | %95.4 | %57.9 |
+| Lojistik & Taşıma | %84.4 | %48.2 | %96.4 | %64.3 |
+| Belge Bilgileri | %80.0 | %59.8 | %83.9 | %69.8 |
+| Yük Kalemleri | %73.5 | %62.8 | %96.2 | %76.0 |
+| Konteyner & Ekipman | %41.4 | %42.9 | %77.4 | %55.2 |
+| **Genel** | **%70.0** | **%52.7** | **%90.9** | **%66.7** |
+
+Tüm 13 belge **XSD doğrulamasından geçti** (%100).
+
 ### Deterministik kural motorları
 
 LLM çıkarımı sonrası `normalize_extracted_instruction()` içinde çalışan bu kurallar
 modelin sayısal ve format hatalarını düzeltir, eksik verileri OCR'dan tamamlar:
 
+- **Spatial Y-Chunking (Faz 1):** Konteyner referanslarına (`[A-Z]{4}\d{7}`) göre
+  alt bölge metni izole parçalara bölünür; Stage 3 her konteyner için bağımsız
+  çalışarak kargo-konteyner karışmasını önler.
 - **ISO 6346 Konteyner Regex:** OCR metninde `[A-Z]{4}\d{7}` kalıbıyla konteyner
   numaraları taranır, kontrol basamağı doğrulanır ve LLM'in bulamadığı konteynerler
   `equipment_list`'e enjekte edilir.
 - **BRUT/NET Ağırlık Kural Motoru:** `BRUT`, `GROSS`, `G.W.` etiketleri
   `equipment.cargo_gross_weight` alanına; `NET`, `N.W.` etiketleri
   `cargo_items.weight` alanına deterministik olarak eşlenir. Avrupa sayı formatı
-  (`26.080,00` → `26080.00`) otomatik dönüştürülür. Ağırlık birimi OCR metninden
-  dinamik tespit edilir (KG, LBS, TON).
+  (`26.080,00` → `26080.00`) ve US formatı (`18,750.00` → `18750.00`) akıllı
+  sezgisel ile otomatik dönüştürülür. Ağırlık birimi OCR metninden dinamik tespit
+  edilir (KG, LBS, TON).
 - **Hacim / CBM Kural Motoru (`_normalize_cargo_volume`):** `28.16 CBM`, `12.5 M3`,
   `VOLUME: 28,16 CBM` gibi kalıplar ve nokta/virgül binlik ayraç akıllı ayrıştırması ile
   `CargoItem.volume` alanını deterministik olarak doldurur.
-- **Konteyner Tipi Motoru (`_normalize_equipment_types`):** 60+ insan yazımı kod eşlemesi
-  (`40HC` ➔ `45G1`, `20GP` ➔ `22G1`, `40 REEFER` ➔ `42R1`) ile ISO equipment tiplerini
-  standartlaştırır.
+- **Konteyner Tipi Motoru (`_normalize_equipment_types`):** 70+ insan yazımı kod eşlemesi
+  (`40HC` ➔ `45G1`, `20GP` ➔ `22G1`, `40 REEFER` ➔ `42R1`, `45 HC REEFER` ➔ `45R1`)
+  ile ISO equipment tiplerini standartlaştırır.
+- **Rec 21 Ambalaj Kodu Eşleme (Faz 2):** UN/ECE Rec 21 standardı ile 30+ insan
+  yazımı ambalaj kodu (`PALLET`➔`PL`, `CARTON`➔`CT`, `DRUM`➔`DR`) ISO kodlarına
+  dönüştürülür. "10 PALLETS CONTAINING 400 CARTONS" gibi iç içe ambalaj kalıpları
+  `_NESTED_PACKAGING_PATTERN` ile iki kademeli ayrıştırılır.
+- **Tehlikeli Madde Motoru (Faz 3):** `UN\s*(\d{4})`, `CLASS\s*(\d)`,
+  `PACKING\s*GROUP\s*(I{1,3})` regex kalıplarıyla UN No, IMDG Class ve Packing Group
+  OCR'dan doğrudan yakalanır; LLM çıkarımına bağımlı kalmaksızın
+  `dangerous_goods_list`'e aktarılır. LLM çıktısı sonrası format standartlaştırması
+  (`UN1993` → `UN 1993`, `3` → `Class 3`, `II` → `PG II`) yapılır.
+- **UTF-8 NFC Normalizasyonu (Faz 4):** `unicodedata.normalize('NFC')` ve `ftfy`
+  ile Çince, Arapça, Türkçe karakterlerin Mojibake olmadan korunması sağlanır.
+- **Levenshtein Fuzzy Corrector (Faz 5):** Mühür/kaşe kaynaklı OCR gürültülerini
+  (örn. `S1PP1NG`→`SHIPPING`, `C0NS1GNEE`→`CONSIGNEE`) 2 karakter eşikli
+  Levenshtein mesafesi ile düzeltir.
+- **Reefer Sıcaklık Motoru (Faz 6):** `(?:\-|MINUS)?\s*(\d+)\s*(?:DEGREES?\s*)?(?:C|CELSIUS)`
+  regex'i ile eksi dereceler (`-18.0 °C`) sayısal olarak yakalanır; DCSA XSD'de
+  Equipment altında sıcaklık alanı bulunmadığından iklim ayarları `Remarks` alanına
+  XSD uyumlu formatta eklenir.
 - **Adres, Şehir ve Ülke Kodu Motoru (`_normalize_party_addresses`):** 120+ ülke ismi/kodu
   ve 180+ şehir sözlüğü ile taraf adreslerinden `country_code`, `city` ve `street`
   bileşenlerini otomatik ayrıştırır.
+- **VKN Format Doğrulama:** 10 haneli Türk Vergi Kimlik Numarası (`party_id`) format
+  kontrolü ve hatalı karakterlerin temizlenmesi.
 - **Bölge Örtüşmesi (%15 Overlap):** Pass 3'e (Konteyner & Yük) yalnızca alt bölge
   değil, orta + alt bölge birleştirilerek gönderilir. Belgenin ortasına sıkışmış
   konteyner tabloları Pass 3'ten kaçmaz.
@@ -535,6 +605,9 @@ modelin sayısal ve format hatalarını düzeltir, eksik verileri OCR'dan tamaml
 - **Konteyner-Yük Yakınlık Bağlama:** OCR metnindeki konum sırasına göre ekipman
   ve yük kalemleri birbiriyle eşleştirilir; LLM'in konteyner-ağırlık indeks
   karışıklıkları düzeltilir.
+- **Port Adı Temizleme:** OCR artefaktları (`TCEGE ALIAGA`→`ALIAGA`,
+  `COP RIO DE JANEIRO`→`RIO DE JANEIRO`) kara liste/beyaz liste korumasıyla
+  temizlenir; gerçek port adı bileşenleri (`JEBEL ALI`, `LOS ANGELES`) korunur.
 
 `Document Status Code` çıkarım sırasında uygulama tarafından `DRF`, başarılı onayda
 `FNL` yapılır. `SI NO`, `TALİMAT NO`, `BOOKING NO`, `BKG REF`, `REZERVASYON NO`,

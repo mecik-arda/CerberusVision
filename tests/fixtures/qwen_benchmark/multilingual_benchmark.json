@@ -1,0 +1,72 @@
+{
+  "case_name": "Multilingual_CN_TR_AR_Unicode",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-ML-2026-001\nDATE: 2026-07-01\nBOOKING: BKG-ML-778899\n\nSHIPPER / 发货人:\n上海国际贸易有限公司\nSHANGHAI INTERNATIONAL TRADING CO LTD\nROOM 1508, 南京西路 1515号, JING'AN DISTRICT\nSHANGHAI 200040, CHINA\nTEL: +86-21-6288-9999\n\nCONSIGNEE / المرسل إليه:\nشركة الخليج للتجارة والتوزيع\nGULF TRADING & DISTRIBUTION CO LLC\nAL RASHEED ROAD, DEIRA\nP.O. BOX 88221\nDUBAI, UNITED ARAB EMIRATES\n\nNOTIFY PARTY / Bildirim Tarafı:\nİSTANBUL LOJİSTİK VE NAKLİYAT A.Ş.\nŞERİFALİ MAH. HENDEM CAD. NO:42\nÜMRANİYE / İSTANBUL 34775\nTÜRKİYE\nVKN: 8820394156\n\nPORT OF LOADING: SHANGHAI\nPORT OF DISCHARGE: JEBEL ALI\nPLACE OF DELIVERY: İSTANBUL\n\nCONTAINER / 集装箱: TCLU3344556 40HC\nSEAL: CN-SL-445566\nGROSS: 22.500,00 KG  NET: 21.300,00 KG\n32 PALLETS / 托盘 电子产品 ELEKTRONİK KOMPONENTLER\nMARKS: GTC-DUBAI-2026\nVOLUME: 24.50 CBM\n\nFREIGHT PREPAID\nBILL OF LADING / 提单",
+  "expected": {
+    "shipping_instruction_reference": "SI-ML-2026-001",
+    "carrier_booking_reference": "BKG-ML-778899",
+    "issue_date": "2026-07-01",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "SHANGHAI INTERNATIONAL TRADING CO LTD"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "GULF TRADING & DISTRIBUTION CO LLC"
+      },
+      {
+        "party_role_code": "N1",
+        "party_name": "İSTANBUL LOJİSTİK VE NAKLİYAT A.Ş.",
+        "party_id": "8820394156"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "SHANGHAI"
+        },
+        "port_of_discharge": {
+          "location_name": "JEBEL ALI"
+        },
+        "place_of_delivery": {
+          "location_name": "İSTANBUL"
+        }
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "TCLU3344556",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 22500.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "CN-SL-445566"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 32,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "ELEKTRONİK KOMPONENTLER",
+        "shipping_marks": "GTC-DUBAI-2026",
+        "weight": {
+          "weight_value": 21300.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 24.50,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

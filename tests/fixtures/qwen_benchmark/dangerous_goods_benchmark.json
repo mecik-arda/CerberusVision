@@ -1,0 +1,152 @@
+{
+  "case_name": "Dangerous_Goods_IMDG_Multi_Class",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-DG-2026-001\nDATE: 2026-06-01\nBOOKING: BKG-DG-998877\nSHIPPER: CHEMTRADE GLOBAL LTD, ROTTERDAM, NL\nCONSIGNEE: ASIA CHEMICAL IMPORTS, SINGAPORE, SG\nNOTIFY PARTY: PACIFIC LOGISTICS PTE LTD, SINGAPORE, SG\nPORT OF LOADING: ROTTERDAM\nPORT OF DISCHARGE: SINGAPORE\nVESSEL: CHEMICAL VOYAGER / VOYAGE: CV-4421\n\nCONTAINER: MSKU9988776 40GP\nSEAL: SEAL-998877\nGROSS: 24.300,00 KG  NET: 22.900,00 KG\n80 DRUMS FLAMMABLE LIQUID N.O.S. (ETHANOL SOLUTION)\nUN NO: UN 1993\nIMDG CLASS: Class 3\nPACKING GROUP: PG II\nFLASH POINT: -18.0 CEL\nTECHNICAL NAME: ETHANOL SOLUTION\nEMERGENCY CONTACT: CHEMTREC +1-703-527-3887\nVOLUME: 22.80 CBM\n\nCONTAINER: TGHU1122334 40GP\nSEAL: SEAL-112233\nGROSS: 18.750,00 KG  NET: 17.200,00 KG\n60 DRUMS CORROSIVE LIQUID N.O.S. (PHOSPHORIC ACID)\nUN NO: UN 3264\nIMDG CLASS: Class 8\nPACKING GROUP: PG III\nFLASH POINT: 93.0 CEL\nTECHNICAL NAME: PHOSPHORIC ACID SOLUTION\nEMERGENCY CONTACT: CHEMTREC +1-703-527-3887\nVOLUME: 19.30 CBM\n\nCONTAINER: CMAU5566778 20GP\nSEAL: SEAL-556677\nGROSS: 8.200,00 KG  NET: 7.600,00 KG\n10 PALLETS NON-HAZARDOUS CERAMIC TILES\nVOLUME: 9.50 CBM\n\nFREIGHT PREPAID\nBILL OF LADING\nCARRIER: MAERSK LINE",
+  "expected": {
+    "shipping_instruction_reference": "SI-DG-2026-001",
+    "carrier_booking_reference": "BKG-DG-998877",
+    "issue_date": "2026-06-01",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "CHEMTRADE GLOBAL LTD"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "ASIA CHEMICAL IMPORTS"
+      },
+      {
+        "party_role_code": "N1",
+        "party_name": "PACIFIC LOGISTICS PTE LTD"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ROTTERDAM"
+        },
+        "port_of_discharge": {
+          "location_name": "SINGAPORE"
+        },
+        "carrier_voyage_number": "CV-4421"
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MSKU9988776",
+        "iso_equipment_code": "42G1",
+        "cargo_gross_weight": {
+          "weight": 24300.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "SEAL-998877"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "TGHU1122334",
+        "iso_equipment_code": "42G1",
+        "cargo_gross_weight": {
+          "weight": 18750.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "SEAL-112233"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "CMAU5566778",
+        "iso_equipment_code": "22G1",
+        "cargo_gross_weight": {
+          "weight": 8200.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "SEAL-556677"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 80,
+        "package_kind_code": "DRUM",
+        "description_of_goods": "FLAMMABLE LIQUID N.O.S. (ETHANOL SOLUTION)",
+        "weight": {
+          "weight_value": 22900.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 22.80,
+          "unit": "CBM"
+        },
+        "dangerous_goods_list": [
+          {
+            "un_number": "UN 1993",
+            "imdg_class": "Class 3",
+            "packing_group": "PG II",
+            "technical_name": "ETHANOL SOLUTION",
+            "flash_point": {
+              "temperature": -18.0,
+              "unit": "CEL"
+            },
+            "emergency_contact": {
+              "name": "CHEMTREC",
+              "phone_number": "+1-703-527-3887"
+            }
+          }
+        ]
+      },
+      {
+        "package_quantity": 60,
+        "package_kind_code": "DRUM",
+        "description_of_goods": "CORROSIVE LIQUID N.O.S. (PHOSPHORIC ACID)",
+        "weight": {
+          "weight_value": 17200.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 19.30,
+          "unit": "CBM"
+        },
+        "dangerous_goods_list": [
+          {
+            "un_number": "UN 3264",
+            "imdg_class": "Class 8",
+            "packing_group": "PG III",
+            "technical_name": "PHOSPHORIC ACID SOLUTION",
+            "flash_point": {
+              "temperature": 93.0,
+              "unit": "CEL"
+            },
+            "emergency_contact": {
+              "name": "CHEMTREC",
+              "phone_number": "+1-703-527-3887"
+            }
+          }
+        ]
+      },
+      {
+        "package_quantity": 10,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "NON-HAZARDOUS CERAMIC TILES",
+        "weight": {
+          "weight_value": 7600.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 9.50,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

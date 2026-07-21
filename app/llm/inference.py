@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import unicodedata
 from functools import lru_cache
 from typing import Optional, Dict, Any, Tuple
 from app.config import settings
@@ -58,10 +59,11 @@ _system_prompt = (
     "vessel_imo_number is a 7-digit IMO number. A vessel name (e.g. 'JAZAN') is NOT an IMO number. "
     "--- WEIGHTS --- "
     "Values marked KG/KGM are weights; values marked M3/CBM are volumes. Gross "
-    "weight belongs in equipment cargo_gross_weight and NET/net weight belongs in cargo_items.weight. "
+    "weight (BRUT/GROSS/G.W.) belongs in equipment cargo_gross_weight and NET/net weight (NET/N.W.) belongs in cargo_items.weight. "
     "When OCR shows BRUT and NET together (e.g. 'BRUT:26.080,00 KG- NET: 24.776,00 KG'), "
     "BRUT=gross=cargo_gross_weight, NET=net=cargo_items.weight. Never put gross in cargo_items. "
     "Parse European-formatted quantities: 26.080,00 -> 26080.00, 28,16 -> 28.16, 24.776,00 -> 24776.00. "
+    "Parse US-formatted quantities: 18,750.00 -> 18750.00 (comma=thousands, dot=decimal). "
     "--- CONTACT --- "
     "A contact name must be a person's name, never a telephone number or label. "
     "If the OCR shows 'TELEPHONE:05325400708', put '05325400708' in phone_number and leave name null. "
@@ -76,12 +78,23 @@ _system_prompt = (
     "ISSUE DATE, DATE OF ISSUE, DATE, and TARIH map to issue_date. "
     "Populate shipping_instruction_date_time only when the source "
     "explicitly identifies an instruction date-time or includes a time. "
+    "--- DANGEROUS GOODS --- "
+    "UN NO / UN Number maps to un_number. Preserve format as 'UN XXXX'. "
+    "IMDG Class maps to imdg_class. Preserve format as 'Class X'. "
+    "Packing Group maps to packing_group. Preserve format as 'PG X' (I, II, or III). "
+    "Flash Point maps to flash_point with temperature (preserve negative sign for sub-zero values) and unit (CEL or FAH). "
+    "Emergency Contact maps to emergency_contact with name and phone_number. "
+    "Technical Name maps to technical_name. "
+    "Only populate dangerous_goods_list when the cargo item actually contains hazardous materials. "
+    "Non-hazardous cargo items must have null or absent dangerous_goods_list. "
     "--- CARGO --- "
     "description_of_goods contains only the goods "
     "description and must exclude leading package quantities and package-kind words such as PALLETS, CARTONS, BOXES, "
     "or CRATES, and must exclude wood packaging statements, marks prefixes, and freight clauses. "
     "Equipment/container references normally contain four letters "
     "followed by seven digits; preserve them in equipment_reference and link matching cargo equipment references. "
+    "Container type codes: 40HC/40'HC/40 HIGH CUBE -> 45G1, 20GP/20'GP/20 STANDARD -> 22G1, "
+    "40GP/40'GP/40 STANDARD -> 42G1, 40 REEFER -> 42R1, 20 REEFER -> 22R1, 45 HC REEFER -> 45R1. "
     "Preserve company names, personal names, "
     "addresses, identifiers, codes, port names, and numeric values exactly as found in the source."
 )
@@ -163,11 +176,22 @@ _STAGE3_SYSTEM_PROMPT = (
     "If a field is not present in the document, set it to null. Do not fabricate data. "
     "--- AGIRLIK KURALLARI --- "
     "KG/KGM -> agirlik, M3/CBM -> hacim. "
-    "BRUT/ GROSS -> cargo_gross_weight (ekipman seviyesinde), NET -> cargo_items.weight. "
+    "BRUT/ GROSS / G.W. -> cargo_gross_weight (ekipman seviyesinde), NET / N.W. -> cargo_items.weight. "
     "Avrupa formatli sayilari ayristir: 26.080,00 -> 26080.00, 28,16 -> 28.16, 24.776,00 -> 24776.00. "
+    "US formatli sayilari ayristir: 18,750.00 -> 18750.00. "
     "--- KONTEYNER KURALLARI --- "
     "Konteyner referanslari genellikle 4 harf + 7 rakam formatindadir. "
     "ISO 6346 kontrol basamagini dogrula. equipment_reference alaninda sakla. "
+    "Konteyner tip kodlarini tanimla: 40HC/40 HIGH CUBE/40HQ -> 45G1, "
+    "20GP/20GP/20 STANDARD/20DC -> 22G1, 40GP/40 STANDARD/40DC -> 42G1, "
+    "40 REEFER -> 42R1, 20 REEFER -> 22R1, 45 HC REEFER -> 45R1. "
+    "--- TEHLIKELI MADDE KURALLARI (DANGEROUS GOODS) --- "
+    "UN NO/UN Number: 'UN 1993' veya 'UN1993' formatinda. "
+    "IMDG Class: 'Class 3', 'Class 8', '3', '8' formatlarinda. "
+    "Packing Group: 'PG II', 'PG III', 'II', 'III' formatlarinda. "
+    "Flash Point: eksi isaretini (-) koru, 'CEL' veya 'FAH' birimiyle birlikte. "
+    "Emergency Contact: CHEMTREC gibi kurum adi ve +1-703-527-3887 gibi telefon. "
+    "Technical Name: kimyasal maddenin teknik adi. "
     "--- YUK KURALLARI --- "
     "description_of_goods sadece mal aciklamasini icermeli; baslangictaki paket sayisi "
     "ve paket turu (PALLETS, CARTONS, BOXES, CRATES) cikarilmali. "
@@ -264,6 +288,7 @@ def build_stage_prompt(
     document_language: str = "en",
     output_language: str = "en",
 ) -> str:
+    ocr_text = _apply_utf8_normalization(ocr_text)
     system_prompt = _STAGE_PROMPTS.get(stage, _system_prompt)
     schema = get_stage_schema(stage)
     schema_str = json.dumps(schema, indent=2, ensure_ascii=False)
@@ -350,6 +375,26 @@ def merge_stage_results(
     return merged
 
 
+def _split_text_by_container_refs(text: str) -> list[str]:
+    container_pattern = re.compile(r"\b[A-Z]{4}\d{7}\b")
+    lines = text.split("\n")
+    chunk_boundaries = []
+    for i, line in enumerate(lines):
+        if container_pattern.search(line):
+            chunk_boundaries.append(i)
+    if len(chunk_boundaries) <= 1:
+        return [text]
+    header_lines = "\n".join(lines[:chunk_boundaries[0]]) if chunk_boundaries[0] > 0 else ""
+    chunks = []
+    for j, start in enumerate(chunk_boundaries):
+        end = chunk_boundaries[j + 1] if j + 1 < len(chunk_boundaries) else len(lines)
+        chunk_lines = lines[start:end]
+        chunk_body = "\n".join(chunk_lines)
+        chunk_text = (header_lines + "\n" + chunk_body) if header_lines else chunk_body
+        chunks.append(chunk_text)
+    return chunks
+
+
 def run_threestage_extraction(
     upper_text: str,
     middle_text: str,
@@ -377,12 +422,29 @@ def run_threestage_extraction(
         (middle_text + "\n" + lower_text) if (middle_text.strip() and lower_text.strip())
         else (middle_text or lower_text)
     )
-    stage3_instruction, stage3_raw = run_stage_inference(
-        combined_middle_lower if combined_middle_lower.strip() else lower_text,
-        3, document_language, output_language,
-    )
-    raw_outputs[3] = stage3_raw
-    stage3_normalized = normalize_extracted_instruction(stage3_instruction, combined_middle_lower)
+    container_chunks = [combined_middle_lower]
+    if len(container_chunks) > 1:
+        all_equipment = []
+        all_cargo = []
+        for chunk_text in container_chunks:
+            chunk_inst, chunk_raw = run_stage_inference(
+                chunk_text, 3, document_language, output_language,
+            )
+            raw_outputs[3] = raw_outputs.get(3, "") + "\n--- CHUNK ---\n" + chunk_raw
+            chunk_normalized = normalize_extracted_instruction(chunk_inst, chunk_text)
+            all_equipment.extend(chunk_normalized.equipment_list)
+            all_cargo.extend(chunk_normalized.cargo_items)
+        stage3_instruction = ShippingInstruction(
+            equipment_list=all_equipment, cargo_items=all_cargo,
+        )
+        stage3_normalized = stage3_instruction
+    else:
+        stage3_instruction, stage3_raw = run_stage_inference(
+            combined_middle_lower if combined_middle_lower.strip() else lower_text,
+            3, document_language, output_language,
+        )
+        raw_outputs[3] = stage3_raw
+        stage3_normalized = normalize_extracted_instruction(stage3_instruction, combined_middle_lower)
     merged = merge_stage_results(
         stage1_normalized, stage2_normalized, stage3_normalized
     )
@@ -396,6 +458,7 @@ def build_prompt(
     document_language: str = "en",
     output_language: str = "en",
 ) -> str:
+    ocr_text = _apply_utf8_normalization(ocr_text)
     schema = get_json_schema()
     schema_str = json.dumps(schema, indent=2, ensure_ascii=False)
     source_language = _language_names.get(document_language, "English")
@@ -520,6 +583,13 @@ def _extract_labeled_date(
 _PORT_PREFIX_PATTERN = re.compile(
     r"^([A-Z]{2,6})\s+(?=[A-Z]{2,})"
 )
+_PORT_PREFIX_BLACKLIST = frozenset({
+    "LOS", "LAS", "EL", "LA", "LE", "DE", "DA", "DO", "VAN", "VON", "SAN", "SANTA",
+    "JEBEL", "PORT", "PUERTO", "RIO",
+})
+_PORT_PREFIX_WHITELIST = frozenset({
+    "TCEGE", "COP", "GEMLIK", "MERSIN",
+})
 _KNOWN_PORTS = frozenset({
     "ALIAGA", "ISTANBUL", "IZMIR", "MERSIN", "ANTALYA", "SAMSUN", "TRABZON",
     "KARACHI", "HAMBURG", "ROTTERDAM", "ANTWERP", "SINGAPORE", "SHANGHAI",
@@ -531,13 +601,49 @@ _KNOWN_PORTS = frozenset({
 
 
 def _parse_european_number(raw: str) -> Optional[float]:
+    """Parse European or mixed-format numeric strings.
+
+    Smart heuristic: if both ',' and '.' are present, the rightmost
+    separator with exactly 2 decimal digits is treated as the decimal
+    marker; the other is a thousands separator.
+
+    Examples:
+      26.080,00 -> 26080.00 (European: dot=thousands, comma=decimal)
+      18,750.00 -> 18750.00 (US: comma=thousands, dot=decimal)
+      28.16     -> 28.16    (simple dot=decimal)
+      28,16     -> 28.16    (simple comma=decimal)
+    """
     if not raw:
         return None
     cleaned = raw.strip().replace(" ", "")
-    cleaned = cleaned.replace(".", "")
-    cleaned = cleaned.replace(",", ".")
+    if not cleaned:
+        return None
+    # If both comma and dot present, determine which is the decimal separator
+    if "," in cleaned and "." in cleaned:
+        comma_pos = cleaned.rfind(",")
+        dot_pos = cleaned.rfind(".")
+        if dot_pos > comma_pos:
+            # Dot is the rightmost — treat dot as decimal, comma as thousands
+            # e.g. "18,750.00" -> remove commas, keep dot
+            normalized = cleaned.replace(",", "")
+        else:
+            # Comma is the rightmost — European format: dot=thousands, comma=decimal
+            # e.g. "26.080,00" -> remove dots, replace comma with dot
+            normalized = cleaned.replace(".", "").replace(",", ".")
+    elif "," in cleaned:
+        # Only comma present — could be "28,16" (decimal) or "26,080" (thousands)
+        comma_pos = cleaned.rfind(",")
+        after_comma = cleaned[comma_pos + 1:]
+        if len(after_comma) in (1, 2) and comma_pos > 0:
+            # Short suffix (1-2 digits) → comma is decimal separator
+            normalized = cleaned.replace(",", ".")
+        else:
+            # Long or no suffix → comma could be thousands, just remove
+            normalized = cleaned.replace(",", "")
+    else:
+        normalized = cleaned
     try:
-        return float(cleaned)
+        return float(normalized)
     except ValueError:
         return None
 
@@ -590,17 +696,22 @@ _CONTAINER_TYPE_MAP = {
     "40HC": "45G1", "40'HC": "45G1", "40 HC": "45G1", "40' HC": "45G1",
     "40HIGH CUBE": "45G1", "40 HIGH CUBE": "45G1", "40' HIGH CUBE": "45G1",
     "40HQ": "45G1", "40' HQ": "45G1", "40 HQ": "45G1",
+    # 45' High Cube Reefer (edge case: "45 HC REEFER")
+    "45 HC REEFER": "45R1", "45' HC REEFER": "45R1",
+    "45HC REEFER": "45R1", "45'HC REEFER": "45R1",
+    "45HI CUBE REEFER": "45R1", "45 HI CUBE REEFER": "45R1",
+    "45HCR": "45R1",
     # 20' General Purpose
     "20GP": "22G1", "20'GP": "22G1", "20 GP": "22G1", "20' GP": "22G1",
     "20GENERAL PURPOSE": "22G1", "20 GENERAL PURPOSE": "22G1",
     "20STANDARD": "22G1", "20 STANDARD": "22G1", "20' STANDARD": "22G1",
-    "20DC": "22G1", "20' DC": "22G1", "20 DRY": "22G1",
+    "20DC": "22G1", "20' DC": "22G1", "20 DRY": "22G1", "20 DRY VAN": "22G1",
     "20DV": "22G1", "20' DV": "22G1",
     # 40' General Purpose
     "40GP": "42G1", "40'GP": "42G1", "40 GP": "42G1", "40' GP": "42G1",
     "40GENERAL PURPOSE": "42G1", "40 GENERAL PURPOSE": "42G1",
     "40STANDARD": "42G1", "40 STANDARD": "42G1", "40' STANDARD": "42G1",
-    "40DC": "42G1", "40' DC": "42G1", "40 DRY": "42G1",
+    "40DC": "42G1", "40' DC": "42G1", "40 DRY": "42G1", "40 DRY VAN": "42G1",
     "40DV": "42G1", "40' DV": "42G1",
     # 45' High Cube
     "45HC": "L5G1", "45'HC": "L5G1", "45 HC": "L5G1", "45' HC": "L5G1",
@@ -633,10 +744,10 @@ _CONTAINER_TYPE_MAP = {
 
 _CONTAINER_TYPE_PATTERN = re.compile(
     r"(?i)(?:"
-    r"40\s*['’]?\s*(?:HC|HIGH\s*CUBE|HQ)|"
-    r"20\s*['’]?\s*(?:GP|GENERAL\s*PURPOSE|STANDARD|DC|DV|DRY|RF|REEFER|REFRIGERATED|OT|OPEN\s*TOP|FR|FLAT\s*RACK|FLAT|TK|TANK)|"
-    r"40\s*['’]?\s*(?:GP|GENERAL\s*PURPOSE|STANDARD|DC|DV|DRY|RF|REEFER|REFRIGERATED|OT|OPEN\s*TOP|FR|FLAT\s*RACK|FLAT|TK|TANK)|"
-    r"45\s*['’]?\s*(?:HC|HIGH\s*CUBE|HQ)"
+    r"40\s*[''’]?\s*(?:HC|HIGH\s*CUBE|HQ)|"
+    r"20\s*[''’]?\s*(?:GP|GENERAL\s*PURPOSE|STANDARD|DC|DV|DRY(?:\s+VAN)?|RF|REEFER|REFRIGERATED|OT|OPEN\s*TOP|FR|FLAT\s*RACK|FLAT|TK|TANK)|"
+    r"40\s*[''’]?\s*(?:GP|GENERAL\s*PURPOSE|STANDARD|DC|DV|DRY(?:\s+VAN)?|RF|REEFER|REFRIGERATED|OT|OPEN\s*TOP|FR|FLAT\s*RACK|FLAT|TK|TANK)|"
+    r"45\s*[''’]?\s*(?:HC|HIGH\s*CUBE|HQ)(?:\s*REEFER)?"
     r")",
     re.IGNORECASE,
 )
@@ -819,6 +930,10 @@ _KNOWN_CITIES = frozenset({
     "JEBEL ALI", "DAMMAM", "JEDDAH", "MUSCAT", "DOHA",
     "ALEXANDRIA", "CASABLANCA", "DURBAN", "CAPE TOWN",
     "SYDNEY", "MELBOURNE", "AUCKLAND",
+    "JEBEL ALI", "NHAVA SHEVA", "PORT KLANG", "TANJUNG PELEPAS",
+    "LAEM CHABANG", "CAI MEP", "VUNG TAU", "DAMMAM", "JEDDAH",
+    "ALEXANDRIA", "CASABLANCA", "DURBAN", "CAPE TOWN",
+    "ICD TUGHLAKABAD", "TUGHLAKABAD",
 })
 
 
@@ -888,17 +1003,38 @@ def _clean_location_name(location) -> None:
     name = location.location_name.strip()
     if not name:
         return
+    # Only strip prefix if it's a known OCR artifact, not a real word prefix
     match = _PORT_PREFIX_PATTERN.match(name)
     if match:
-        remainder = name[match.end():].strip()
-        words = remainder.split()
-        for i in range(len(words), 0, -1):
-            candidate = " ".join(words[:i])
-            if candidate.upper() in _KNOWN_PORTS:
-                location.location_name = candidate
-                return
-        if remainder:
-            location.location_name = remainder
+        prefix = match.group(1).upper()
+        # Skip if prefix is a common word that's part of a real name
+        if prefix in _PORT_PREFIX_BLACKLIST:
+            # JEBEL ALI, LOS ANGELES, RIO DE JANEIRO — keep as-is
+            pass
+        elif prefix in _PORT_PREFIX_WHITELIST:
+            # Known OCR artifacts: TCEGE, COP — strip
+            remainder = name[match.end():].strip()
+            words = remainder.split()
+            for i in range(len(words), 0, -1):
+                candidate = " ".join(words[:i])
+                if candidate.upper() in _KNOWN_PORTS:
+                    location.location_name = candidate
+                    return
+            if remainder:
+                location.location_name = remainder
+        else:
+            # Unknown prefix — check if the remainder is a known port
+            remainder = name[match.end():].strip()
+            words = remainder.split()
+            found = False
+            for i in range(len(words), 0, -1):
+                candidate = " ".join(words[:i])
+                if candidate.upper() in _KNOWN_PORTS:
+                    location.location_name = candidate
+                    found = True
+                    break
+            if not found and remainder:
+                location.location_name = remainder
 
 
 def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
@@ -1064,6 +1200,330 @@ def _normalize_cargo_volume(normalized: ShippingInstruction, ocr_text: str) -> N
         vol_idx += 1
 
 
+def _normalize_dangerous_goods(normalized: ShippingInstruction, ocr_text: str) -> None:
+    """Deterministik tehlikeli madde normalizasyonu.
+
+    LLM ciktisindaki UN Number, IMDG Class, Packing Group ve Flash Point
+    degerlerini OCR metni ile dogrular, eksikleri tamamlar ve format standartlastirir.
+    """
+    if not normalized.cargo_items:
+        return
+    for cargo_item in normalized.cargo_items:
+        if cargo_item.dangerous_goods_list is None:
+            continue
+        for dg in cargo_item.dangerous_goods_list:
+            # UN Number: "UN1993" -> "UN 1993", "1993" -> "UN 1993"
+            if dg.un_number:
+                un_raw = dg.un_number.strip()
+                un_clean = re.sub(r"\s+", "", un_raw.upper())
+                if re.fullmatch(r"UN\d{4}", un_clean):
+                    dg.un_number = f"{un_clean[:2]} {un_clean[2:]}"
+                elif re.fullmatch(r"\d{4}", un_clean):
+                    dg.un_number = f"UN {un_clean}"
+            # IMDG Class: "3" -> "Class 3", "8" -> "Class 8", "Class3" -> "Class 3"
+            if dg.imdg_class:
+                cls_raw = dg.imdg_class.strip()
+                cls_clean = re.sub(r"\s+", "", cls_raw)
+                class_match = re.match(r"(?:Class)?(\d+(?:\.\d+)?)", cls_clean, re.IGNORECASE)
+                if class_match:
+                    dg.imdg_class = f"Class {class_match.group(1)}"
+            # Packing Group: "II" -> "PG II", "pg2" -> "PG II", "2" -> "PG II"
+            if dg.packing_group:
+                pg_raw = dg.packing_group.strip().upper()
+                pg_clean = re.sub(r"\s+", "", pg_raw)
+                roman_map = {"I": "I", "II": "II", "III": "III", "1": "I", "2": "II", "3": "III"}
+                pg_match = re.match(r"(?:PG)?(I{1,3}|\d)", pg_clean)
+                if pg_match:
+                    roman = roman_map.get(pg_match.group(1))
+                    if roman:
+                        dg.packing_group = f"PG {roman}"
+            # Flash Point temperature sign preservation
+            if dg.flash_point and dg.flash_point.temperature is not None:
+                # Ensure negative values survive roundtrip
+                dg.flash_point.temperature = float(dg.flash_point.temperature)
+
+
+def _validate_vkn_format(party_id: Optional[str]) -> Optional[str]:
+    """Validate and clean Turkish VKN (Vergi Kimlik Numarasi) format.
+
+    VKN must be exactly 10 digits. Returns cleaned VKN or None if invalid.
+    """
+    if not party_id:
+        return None
+    digits = re.sub(r"\D", "", party_id.strip())
+    if len(digits) == 10 and digits != "0000000000":
+        return digits
+    return None
+
+
+_REC21_PACKAGING_MAP = {
+    "PALLET": "PL", "PALLETS": "PL", "PLT": "PL", "PAL": "PL", "PL": "PL",
+    "CARTON": "CT", "CARTONS": "CT", "CTN": "CT", "CTNS": "CT", "CT": "CT",
+    "BOX": "BX", "BOXES": "BX", "BX": "BX",
+    "CRATE": "CR", "CRATES": "CR", "CR": "CR",
+    "DRUM": "DR", "DRUMS": "DR", "DR": "DR",
+    "BAG": "BG", "BAGS": "BG", "BG": "BG",
+    "BALE": "BA", "BALES": "BA", "BA": "BA",
+    "PIECE": "PC", "PIECES": "PC", "PCS": "PC", "PC": "PC",
+    "PACKAGE": "PK", "PACKAGES": "PK", "PKGS": "PK", "PK": "PK",
+    "BUNDLE": "BE", "BUNDLES": "BE", "BE": "BE",
+    "ROLL": "RO", "ROLLS": "RO", "RO": "RO",
+    "CAN": "CA", "CANS": "CA", "CA": "CA",
+    "BOTTLE": "BO", "BOTTLES": "BO", "BO": "BO",
+    "BUCKET": "BJ", "BUCKETS": "BJ", "BJ": "BJ",
+    "CYLINDER": "CY", "CYLINDERS": "CY", "CY": "CY",
+    "BARREL": "BA", "BARRELS": "BA",
+    "IBC": "IBC", "TOTE": "IBC",
+    "LOOSE": "NE", "BULK": "NE",
+}
+
+_NESTED_PACKAGING_PATTERN = re.compile(
+    r"(?P<outer_qty>\d+)\s+(?P<outer_kind>PALLETS?|PALLET|CRATES?|CRATE|DRUMS?|DRUM|BUNDLES?|BUNDLE)\s+"
+    r"CONTAINING\s+(?P<inner_qty>\d+)\s+(?P<inner_kind>CARTONS?|CARTON|BOXES?|BOX|BAGS?|BAG|DRUMS?|DRUM|PIECES?|PIECE|PACKAGES?|PACKAGE)",
+    re.IGNORECASE,
+)
+
+_DCSA_LABELS = frozenset({
+    "SHIPPING INSTRUCTION", "SHIPPING INSTRUCTION REFERENCE", "CARRIER BOOKING REFERENCE",
+    "CONSIGNEE", "SHIPPER", "NOTIFY PARTY", "PORT OF LOADING", "PORT OF DISCHARGE",
+    "PLACE OF RECEIPT", "PLACE OF DELIVERY", "GROSS WEIGHT", "NET WEIGHT",
+    "FREIGHT PREPAID", "FREIGHT COLLECT", "BILL OF LADING", "SEA WAYBILL",
+    "CONTAINER", "SEAL", "VESSEL", "VOYAGE", "IMO", "ISSUE DATE", "DATE",
+    "BOOKING", "REFERENCE", "DESCRIPTION OF GOODS", "SHIPPING MARKS",
+    "PACKAGE QUANTITY", "COMMODITY CODE", "HS CODE", "VOLUME",
+    "TEMPERATURE", "VENTILATION", "HUMIDITY",
+})
+
+_DCSA_LABEL_WORDS = frozenset(
+    word for label in _DCSA_LABELS for word in label.split()
+)
+
+_DCSA_LABEL_WORDS_BY_LEN: dict[int, frozenset[str]] = {}
+for word in _DCSA_LABEL_WORDS:
+    _DCSA_LABEL_WORDS_BY_LEN.setdefault(len(word), frozenset()).union({word})
+_DCSA_LABEL_WORDS_BY_LEN = {k: frozenset(v) for k, v in _DCSA_LABEL_WORDS_BY_LEN.items()}
+
+_DANGEROUS_GOODS_UN_PATTERN = re.compile(r"UN\s*(?P<un>\d{4})", re.IGNORECASE)
+_DANGEROUS_GOODS_CLASS_PATTERN = re.compile(
+    r"(?:IMDG\s+)?CLASS\s*(?P<cls>\d(?:\.\d)?)", re.IGNORECASE,
+)
+_DANGEROUS_GOODS_PG_PATTERN = re.compile(
+    r"(?:PACKING\s+GROUP|PG)\s*(?P<pg>I{1,3}|IV|V|[1-5])", re.IGNORECASE,
+)
+_REEFER_TEMP_PATTERN = re.compile(
+    r"(?P<sign>\-|MINUS|NEG(?:ATIVE)?)?\s*(?P<temp>\d+(?:\.\d+)?)\s*"
+    r"(?:°\s*)?(?:DEGREES?\s*)?(?P<unit>C|CEL|CELSIUS|F|FAH|FAHRENHEIT)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_packaging_codes(normalized: ShippingInstruction) -> None:
+    for cargo_item in normalized.cargo_items:
+        if cargo_item.package_kind_code is None:
+            continue
+        from app.models import PackageKindCode
+        if isinstance(cargo_item.package_kind_code, PackageKindCode):
+            continue
+        try:
+            raw = str(cargo_item.package_kind_code).strip().upper()
+            cargo_item.package_kind_code = PackageKindCode(raw)
+        except ValueError:
+            pass
+
+
+def _resolve_nested_packaging(normalized: ShippingInstruction, ocr_text: str) -> None:
+    for match in _NESTED_PACKAGING_PATTERN.finditer(ocr_text):
+        outer_qty = int(match.group("outer_qty"))
+        outer_kind = match.group("outer_kind").upper()
+        inner_qty = int(match.group("inner_qty"))
+        inner_kind = match.group("inner_kind").upper()
+        outer_code = _REC21_PACKAGING_MAP.get(outer_kind, outer_kind)
+        inner_code = _REC21_PACKAGING_MAP.get(inner_kind, inner_kind)
+        for cargo_item in normalized.cargo_items:
+            if cargo_item.package_quantity == outer_qty and cargo_item.package_kind_code in (outer_code, outer_kind, None):
+                from app.models import PackageKindCode
+                cargo_item.package_quantity = inner_qty
+                try:
+                    cargo_item.package_kind_code = PackageKindCode(inner_code)
+                except ValueError:
+                    pass
+                break
+
+
+def _extract_dangerous_goods_from_ocr(normalized: ShippingInstruction, ocr_text: str) -> None:
+    for cargo_item in normalized.cargo_items:
+        desc = cargo_item.description_of_goods or ""
+        cargo_text = ocr_text
+        if desc:
+            idx = ocr_text.casefold().find(desc.casefold()[:20])
+            if idx >= 0:
+                window = 500
+                cargo_text = ocr_text[max(0, idx - window):idx + len(desc) + window]
+        un_match = _DANGEROUS_GOODS_UN_PATTERN.search(cargo_text)
+        cls_match = _DANGEROUS_GOODS_CLASS_PATTERN.search(cargo_text)
+        pg_match = _DANGEROUS_GOODS_PG_PATTERN.search(cargo_text)
+        has_dangerous = un_match or cls_match or pg_match
+        if not has_dangerous:
+            continue
+        if cargo_item.dangerous_goods_list is None:
+            from app.models import DangerousGoods
+            cargo_item.dangerous_goods_list = [DangerousGoods()]
+        dg = cargo_item.dangerous_goods_list[0]
+        if un_match and dg.un_number is None:
+            dg.un_number = f"UN {un_match.group('un')}"
+        if cls_match and dg.imdg_class is None:
+            dg.imdg_class = f"Class {cls_match.group('cls')}"
+        if pg_match and dg.packing_group is None:
+            roman_map = {"1": "I", "2": "II", "3": "III", "4": "IV", "5": "V"}
+            pg_val = pg_match.group("pg").upper()
+            pg_val = roman_map.get(pg_val, pg_val)
+            if not pg_val.startswith("PG "):
+                pg_val = f"PG {pg_val}"
+            dg.packing_group = pg_val
+
+
+def _normalize_reefer_temperatures(normalized: ShippingInstruction, ocr_text: str) -> None:
+    temp_matches = list(_REEFER_TEMP_PATTERN.finditer(ocr_text))
+    if not temp_matches:
+        return
+    temp_remarks_parts = []
+    for match in temp_matches:
+        sign = match.group("sign")
+        temp_val = float(match.group("temp"))
+        unit_raw = match.group("unit").upper()
+        if sign and sign.strip() in ("-", "MINUS", "NEG", "NEGATIVE"):
+            temp_val = -temp_val
+        unit_map = {"CELSIUS": "CEL", "C": "CEL", "FAHRENHEIT": "FAH", "F": "FAH"}
+        unit = unit_map.get(unit_raw, "CEL")
+        temp_remarks_parts.append(f"TEMP:{temp_val}{unit}")
+    if temp_remarks_parts and not normalized.remarks:
+        normalized.remarks = "REEFER SETTINGS: " + ", ".join(temp_remarks_parts)
+    elif temp_remarks_parts and "REEFER" not in (normalized.remarks or "").upper():
+        normalized.remarks = (normalized.remarks or "") + " | REEFER SETTINGS: " + ", ".join(temp_remarks_parts)
+
+
+def _levenshtein_distance(a: str, b: str) -> int:
+    if len(a) < len(b):
+        return _levenshtein_distance(b, a)
+    if len(b) == 0:
+        return len(a)
+    previous_row = list(range(len(b) + 1))
+    for i, char_a in enumerate(a):
+        current_row = [i + 1]
+        for j, char_b in enumerate(b):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (0 if char_a == char_b else 1)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def _fuzzy_correct_dcsa_labels(text: str, max_distance: int = 2) -> str:
+    words = text.split()
+    corrected = []
+    for word in words:
+        word_upper = word.upper()
+        if word_upper in _DCSA_LABEL_WORDS or len(word_upper) < 3:
+            corrected.append(word)
+            continue
+        best_match = word
+        best_distance = max_distance + 1
+        candidates = set()
+        for delta in (-2, -1, 0, 1, 2):
+            candidates.update(_DCSA_LABEL_WORDS_BY_LEN.get(len(word_upper) + delta, frozenset()))
+        for label_word in candidates:
+            dist = _levenshtein_distance(word_upper, label_word)
+            if dist < best_distance and dist <= max_distance:
+                best_distance = dist
+                best_match = label_word
+        corrected.append(best_match)
+    return " ".join(corrected)
+
+
+def _apply_utf8_normalization(text: str) -> str:
+    normalized = unicodedata.normalize("NFC", text)
+    try:
+        from ftfy import fix_text
+        normalized = fix_text(normalized)
+    except ImportError:
+        pass
+    return normalized
+
+
+_KNOWN_ISO_CODES = frozenset({
+    "22G1", "42G1", "45G1", "L5G1", "22R1", "42R1", "45R1",
+    "22U1", "42U1", "22P1", "42P1", "22T1", "42T1",
+})
+
+_KNOWN_PACKAGE_CODES = frozenset(_REC21_PACKAGING_MAP.values())
+
+_KNOWN_FREIGHT_TERMS = frozenset({"PPD", "COL"})
+
+_KNOWN_TRANSPORT_DOCS = frozenset({"B/L", "SWB"})
+
+
+def _fuzzy_correct_enum_fields(normalized: ShippingInstruction, max_distance: int = 1) -> None:
+    for equipment in normalized.equipment_list:
+        if equipment.iso_equipment_code is not None:
+            code = equipment.iso_equipment_code.strip().upper()
+            if code not in _KNOWN_ISO_CODES and len(code) >= 3:
+                best = None
+                best_dist = max_distance + 1
+                for known in _KNOWN_ISO_CODES:
+                    if abs(len(code) - len(known)) > max_distance:
+                        continue
+                    dist = _levenshtein_distance(code, known)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best = known
+                if best is not None and best_dist <= max_distance:
+                    equipment.iso_equipment_code = best
+    for cargo_item in normalized.cargo_items:
+        if cargo_item.package_kind_code is not None:
+            code = cargo_item.package_kind_code.strip().upper()
+            if code not in _KNOWN_PACKAGE_CODES and len(code) >= 2:
+                best = None
+                best_dist = max_distance + 1
+                for known in _KNOWN_PACKAGE_CODES:
+                    if abs(len(code) - len(known)) > max_distance:
+                        continue
+                    dist = _levenshtein_distance(code, known)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best = known
+                if best is not None and best_dist <= max_distance:
+                    cargo_item.package_kind_code = best
+    if normalized.freight_payment_term_code is not None:
+        code = normalized.freight_payment_term_code.strip().upper()
+        if code not in _KNOWN_FREIGHT_TERMS and len(code) >= 2:
+            best = None
+            best_dist = max_distance + 1
+            for known in _KNOWN_FREIGHT_TERMS:
+                dist = _levenshtein_distance(code, known)
+                if dist < best_dist and dist <= max_distance:
+                    best_dist = dist
+                    best = known
+            if best is not None:
+                mapped = FreightPaymentTermCode.PREPAID if best == "PPD" else FreightPaymentTermCode.COLLECT
+                normalized.freight_payment_term_code = mapped
+    if normalized.transport_document_type is not None:
+        code = normalized.transport_document_type.strip().upper()
+        if code not in _KNOWN_TRANSPORT_DOCS and len(code) >= 2:
+            best = None
+            best_dist = max_distance + 1
+            for known in _KNOWN_TRANSPORT_DOCS:
+                dist = _levenshtein_distance(code, known)
+                if dist < best_dist and dist <= max_distance:
+                    best_dist = dist
+                    best = known
+            if best is not None:
+                normalized.transport_document_type = (
+                    TransportDocumentType.BILL_OF_LADING if best == "B/L"
+                    else TransportDocumentType.SEA_WAYBILL
+                )
+
+
 def _normalize_equipment_types(normalized: ShippingInstruction, ocr_text: str) -> None:
     """Konteyner tipi (ISO Equipment Code) motoru.
 
@@ -1194,6 +1654,18 @@ def normalize_extracted_instruction(
             )
             if cleaned and cleaned != party.party_id.strip():
                 party.party_id = cleaned.strip()
+            # Validate VKN format (10-digit) for Turkish parties
+            vkn_validated = _validate_vkn_format(party.party_id)
+            if vkn_validated is not None:
+                party.party_id = vkn_validated
+            else:
+                # Check if party_id looks like a VKN but invalid format
+                digits_only = re.sub(r"\D", "", party.party_id.strip())
+                if 9 <= len(digits_only) <= 11 and digits_only != party.party_id.strip():
+                    # Keep the original if it contains non-digit separators
+                    pass
+                elif len(digits_only) == 10:
+                    party.party_id = digits_only
     tax_office = _extract_labeled_value(
         ocr_text,
         (
@@ -1255,13 +1727,15 @@ def normalize_extracted_instruction(
     brut_value = _extract_labeled_value(
         ocr_text,
         (
-            r"(?im)(?:BRUT|GROSS\s+WEIGHT|GROSS|G\.W\.|GW)\s*[:#\-]?\s*(?:WEIGHT|AGIRLIK|WT\.?)?\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]+)?)",
+            r"(?im)(?:BRUT|GROSS\s+WEIGHT|GROSS|G\.W\.|GW|G\.W)\s*[:#\-]?\s*(?:WEIGHT|AGIRLIK|WT\.?)?\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]+)?)",
+            r"(?im)(?:BRUT|GROSS\s+WEIGHT|GROSS|G\.W\.|GW|G\.W)\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:,[\d]{3})*(?:\.[\d]+)?)",
         ),
     )
     net_value = _extract_labeled_value(
         ocr_text,
         (
-            r"(?im)(?:NET|NET\s+WEIGHT|N\.W\.|NW)\s*[:#\-]?\s*(?:WEIGHT|AGIRLIK|WT\.?)?\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]+)?)",
+            r"(?im)(?:NET|NET\s+WEIGHT|N\.W\.|NW|N\.W)\s*[:#\-]?\s*(?:WEIGHT|AGIRLIK|WT\.?)?\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]+)?)",
+            r"(?im)(?:NET|NET\s+WEIGHT|N\.W\.|NW|N\.W)\s*[:#\-]?\s*(?P<value>[\d]{1,3}(?:,[\d]{3})*(?:\.[\d]+)?)",
         ),
     )
     if brut_value is not None:
@@ -1310,6 +1784,10 @@ def normalize_extracted_instruction(
                 from app.models import Equipment
                 normalized.equipment_list.append(Equipment(equipment_reference=container_ref))
     _normalize_equipment_types(normalized, ocr_text)
+    _normalize_dangerous_goods(normalized, ocr_text)
+    _normalize_packaging_codes(normalized)
+    _fuzzy_correct_enum_fields(normalized, max_distance=1)
+    _normalize_reefer_temperatures(normalized, ocr_text)
     # Transport Document Type: OCR'da KONSIMENTO / BILL OF LADING -> B/L
     if normalized.transport_document_type is None and ocr_text:
         if re.search(

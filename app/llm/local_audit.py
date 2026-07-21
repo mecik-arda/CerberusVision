@@ -215,11 +215,19 @@ def assess_local_result(
         ))
 
     roles = {party.party_role_code for party in si.parties}
-    if PartyRoleCode.SHIPPER not in roles or PartyRoleCode.CONSIGNEE not in roles:
+    if PartyRoleCode.SHIPPER_DCSA not in roles and PartyRoleCode.SHIPPER not in roles:
         findings.append(_finding(
             "parties",
             "missing_core_party_role",
-            "Shipper or consignee role is missing.",
+            "Shipper role is missing.",
+            "high",
+            20,
+        ))
+    if PartyRoleCode.CONSIGNEE_DCSA not in roles and PartyRoleCode.CONSIGNEE not in roles:
+        findings.append(_finding(
+            "parties",
+            "missing_core_party_role",
+            "Consignee role is missing.",
             "high",
             20,
         ))

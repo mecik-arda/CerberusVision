@@ -1,0 +1,125 @@
+{
+  "case_name": "Edge_Cases_Rule_Engine_Traps",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-EDGE-2026\nISSUE DATE: 2026-07-15\nBOOKING NO: BKG-EDGE-112233\n\nSHIPPER:\nGLOBAL EXPORT SOLUTIONS\nISTANBUL, TURKEY\nV.NO: 8820394156\n\nCONSIGNED TO ORDER OF:\nASIA TRADING HOUSE\nDUBAI, UAE\n\nNOTIFY PARTY:\nMEDITERRANEAN FORWARDING LTD\nANTALYA / TURKEY\n\nV.DAIRESI: ANTALYA KURUMLAR\nVERGI DAIRESI: BOGAZICI\nPLACE OF ISSUE: ISTANBUL\n\nPORT OF LOADING: TCEGE ALIAGA\nPORT OF DISCHARGE: COP RIO DE JANEIRO\nVESSEL: M/V MEDITERRANEAN BRIDGE / VOY: 125W\n\nCONTAINER: MSCU1234567 45 HC REEFER\nSEAL: TR-MS-112233\nBRUT: 26.080,00 KG\nNET: 24.776,00 KG\nTEMPERATURE: -18.0 CELSIUS\n28 PALLETS FROZEN SEAFOOD MIX\nSHIPPING MARKS: GES-DXB-2026\nVOLUME: 28.16 CBM\n\nCONTAINER: ABCD1234567 40 STANDARD\nSEAL: TR-MS-445566\nGROSS: 18,750.00 KG\nNET: 17,200.00 KG\n22 PALLETS TEXTILE PRODUCTS\nVOLUME: 19,30 CBM\n\nCONTAINER: TCLU3344556 20 STANDARD\nSEAL: TR-MS-778899\nG.W: 14.320,00 KG\nN.W: 13.580,00 KG\n18 CARTONS ELECTRONIC COMPONENTS\nVOLUME: 11.40 CBM\n\nFREIGHT COLLECT\nBILL OF LADING\nCARRIER: MSC",
+  "expected": {
+    "shipping_instruction_reference": "SI-EDGE-2026",
+    "carrier_booking_reference": "BKG-EDGE-112233",
+    "issue_date": "2026-07-15",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "COL",
+    "place_of_issue": {
+      "location_name": "ISTANBUL"
+    },
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "GLOBAL EXPORT SOLUTIONS",
+        "party_id": "8820394156"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "ASIA TRADING HOUSE"
+      },
+      {
+        "party_role_code": "N1",
+        "party_name": "MEDITERRANEAN FORWARDING LTD"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ALIAGA"
+        },
+        "port_of_discharge": {
+          "location_name": "RIO DE JANEIRO"
+        },
+        "carrier_voyage_number": "125W"
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MSCU1234567",
+        "iso_equipment_code": "45R1",
+        "cargo_gross_weight": {
+          "weight": 26080.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "TR-MS-112233"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "ABCD1234567",
+        "iso_equipment_code": "42G1",
+        "cargo_gross_weight": {
+          "weight": 18750.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "TR-MS-445566"
+          }
+        ]
+      },
+      {
+        "equipment_reference": "TCLU3344556",
+        "iso_equipment_code": "22G1",
+        "cargo_gross_weight": {
+          "weight": 14320.0,
+          "unit": "KGM"
+        },
+        "seals": [
+          {
+            "seal_number": "TR-MS-778899"
+          }
+        ]
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 28,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "FROZEN SEAFOOD MIX",
+        "shipping_marks": "GES-DXB-2026",
+        "weight": {
+          "weight_value": 24776.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 28.16,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 22,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "TEXTILE PRODUCTS",
+        "weight": {
+          "weight_value": 17200.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 19.30,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 18,
+        "package_kind_code": "CARTON",
+        "description_of_goods": "ELECTRONIC COMPONENTS",
+        "weight": {
+          "weight_value": 13580.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 11.40,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}
