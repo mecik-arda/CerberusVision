@@ -299,10 +299,6 @@ class RuntimeSettingsUpdate(BaseModel):
     stage_timeout_seconds: Optional[int] = Field(default=None, ge=60, le=1800)
 
 
-# ---------------------------------------------------------------------------
-# Batch (toplu isleme) modelleri
-# ---------------------------------------------------------------------------
-
 
 class BatchItemStatus(str, Enum):
     VALIDATING = "VALIDATING"

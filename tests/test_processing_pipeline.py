@@ -344,12 +344,6 @@ async def test_save_waits_for_same_session_cloud_review(tmp_path, monkeypatch):
     processing._session_models.pop(session_id, None)
     processing._session_locks.pop(session_id, None)
 
-
-# ---------------------------------------------------------------------------
-# Deterministik kural motoru testleri
-# ---------------------------------------------------------------------------
-
-
 class TestVolumeCbmEngine:
     """Hacim/CBM motoru testleri."""
 
@@ -648,10 +642,6 @@ class TestAddressParserEngine:
 
         assert si.parties[0].address is None
 
-
-# ---------------------------------------------------------------------------
-# Batch (toplu isleme) testleri
-# ---------------------------------------------------------------------------
 
 
 class TestBatchUpload:

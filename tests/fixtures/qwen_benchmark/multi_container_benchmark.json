@@ -1,0 +1,142 @@
+{
+  "case_name": "Multi_Container_5_Equipment",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SHIPPING INSTRUCTION SI-MULTI-001\nDATE: 2026-03-10\nBOOKING: BKG-998877\nSHIPPER: GLOBAL TRADE LTD, HAMBURG, DE\nCONSIGNEE: EASTERN IMPORTS, DUBAI, AE\nPORT OF LOADING: HAMBURG\nPORT OF DISCHARGE: JEBEL ALI\n\nCONTAINER DETAILS:\nMSKU1234567 40HC  GROSS: 26.080,00 KG  NET: 24.776,00 KG  32 PALLETS MDF LAMINATE FLOOR  VOLUME: 28.16 CBM\nTGHU7654321 20GP  GROSS: 12.500,00 KG  NET: 11.800,00 KG  18 PALLETS CERAMIC TILES  VOLUME: 15.40 CBM\nMSCU9988776 40HC  GROSS: 24.300,00 KG  NET: 22.900,00 KG  28 CRATES STEEL PIPES  VOLUME: 22.80 CBM\nCMAU5566778 20RF  GROSS: 8.200,00 KG  NET: 7.600,00 KG  10 PALLETS FROZEN VEGETABLES  VOLUME: 9.50 CBM\nOOLU1122334 40GP  GROSS: 18.750,00 KG  NET: 17.200,00 KG  22 BOXES TEXTILE FABRICS  VOLUME: 19.30 CBM\n\nFREIGHT PREPAID\nBILL OF LADING",
+  "expected": {
+    "shipping_instruction_reference": "SI-MULTI-001",
+    "carrier_booking_reference": "BKG-998877",
+    "issue_date": "2026-03-10",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "GLOBAL TRADE LTD"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "EASTERN IMPORTS"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "HAMBURG"
+        },
+        "port_of_discharge": {
+          "location_name": "JEBEL ALI"
+        }
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MSKU1234567",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 26080.0,
+          "unit": "KGM"
+        }
+      },
+      {
+        "equipment_reference": "TGHU7654321",
+        "iso_equipment_code": "22G1",
+        "cargo_gross_weight": {
+          "weight": 12500.0,
+          "unit": "KGM"
+        }
+      },
+      {
+        "equipment_reference": "MSCU9988776",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 24300.0,
+          "unit": "KGM"
+        }
+      },
+      {
+        "equipment_reference": "CMAU5566778",
+        "iso_equipment_code": "22R1",
+        "cargo_gross_weight": {
+          "weight": 8200.0,
+          "unit": "KGM"
+        }
+      },
+      {
+        "equipment_reference": "OOLU1122334",
+        "iso_equipment_code": "42G1",
+        "cargo_gross_weight": {
+          "weight": 18750.0,
+          "unit": "KGM"
+        }
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 32,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "MDF LAMINATE FLOOR",
+        "weight": {
+          "weight_value": 24776.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 28.16,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 18,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "CERAMIC TILES",
+        "weight": {
+          "weight_value": 11800.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 15.40,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 28,
+        "package_kind_code": "CRATE",
+        "description_of_goods": "STEEL PIPES",
+        "weight": {
+          "weight_value": 22900.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 22.80,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 10,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "FROZEN VEGETABLES",
+        "weight": {
+          "weight_value": 7600.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 9.50,
+          "unit": "CBM"
+        }
+      },
+      {
+        "package_quantity": 22,
+        "package_kind_code": "BOX",
+        "description_of_goods": "TEXTILE FABRICS",
+        "weight": {
+          "weight_value": 17200.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 19.30,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

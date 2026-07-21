@@ -1441,7 +1441,6 @@ async function startSelectedFiles() {
     selectionProcessing = true;
     renderDocumentQueue();
 
-    // Batch mod: 1'den fazla dosya varsa toplu yukleme kullan
     if (pendingJobs.length > 1) {
         await startBatchUpload(pendingJobs, requestId);
     } else {
@@ -1456,10 +1455,6 @@ async function startSelectedFiles() {
     selectionProcessing = false;
     renderDocumentQueue();
 }
-
-// ---------------------------------------------------------------------------
-// Batch (toplu isleme) fonksiyonlari
-// ---------------------------------------------------------------------------
 
 async function startBatchUpload(pendingJobs, requestId) {
     const batchProgressPanel = document.getElementById('batchProgressPanel');
@@ -1500,7 +1495,6 @@ async function startBatchUpload(pendingJobs, requestId) {
         const result = await response.json();
         activeBatchId = result.batch_id;
 
-        // Rejected dosyalari goster
         if (result.rejected_count > 0) {
             for (const rejected of result.rejected_items) {
                 const job = pendingJobs.find(j => j.file.name === rejected.original_filename);
@@ -1511,7 +1505,6 @@ async function startBatchUpload(pendingJobs, requestId) {
             }
         }
 
-        // Batch SSE'ye baglan
         await connectBatchStream(result.batch_id, pendingJobs, requestId);
     } catch (e) {
         console.error('Batch upload error:', e);
@@ -1549,13 +1542,11 @@ async function connectBatchStream(batchId, pendingJobs, requestId) {
                 try {
                     const event = JSON.parse(jsonStr);
                     if (event.status === 'COMPLETE') {
-                        // Batch tamamlandi
                         updateBatchProgress(100, event.completed_count || pendingJobs.length, pendingJobs.length);
                         batchCurrentFile.textContent = 'Islem tamamlandi.';
                         batchDownloadBtn.disabled = false;
                         showSpinner(false);
                         showStatusMessage('Batch isleme tamamlandi!', true, '', false);
-                        // Pending job'lari guncelle
                         try {
                             const statusResp = await apiFetch(`/api/batch/${batchId}/status`);
                             const status = await statusResp.json();

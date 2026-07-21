@@ -87,7 +87,6 @@ _stream_consumers: set[str] = set()
 _active_pipeline_sessions: set[str] = set()
 _active_pipeline_lock = asyncio.Lock()
 
-# Batch (toplu isleme) state
 _batch_store: dict[str, dict] = {}
 _batch_queues: dict[str, asyncio.Queue] = {}
 _batch_rate_limiter: dict[str, list[float]] = {}
@@ -1039,10 +1038,6 @@ async def stream_status(session_id: str):
     )
 
 
-# ============================================================================
-# Batch (toplu isleme) sistemi
-# ============================================================================
-
 
 def _check_batch_rate_limit(client_ip: str) -> int | None:
     """Batch endpoint'i icin kayan pencere rate limiter. None=gecer, int=Retry-After."""
@@ -1153,7 +1148,6 @@ async def _process_batch(batch_id: str) -> None:
         if item["status"] != BatchItemStatus.QUEUED.value:
             continue
 
-        # Pipeline slot bekle
         while not await _reserve_pipeline_slot(item["session_id"]):
             await asyncio.sleep(3)
 
@@ -1188,7 +1182,6 @@ async def _process_batch(batch_id: str) -> None:
             await _release_pipeline_slot(item["session_id"])
             _emit_batch_event(batch, item)
 
-    # Tum dosyalar islendi → ZIP olustur
     try:
         zip_path = await _build_batch_zip(batch_id)
         batch["zip_path"] = str(zip_path)
@@ -1197,7 +1190,6 @@ async def _process_batch(batch_id: str) -> None:
         logger.error("Batch ZIP olusturulamadi: %s", exc)
     batch["zip_ready"] = True
     _emit_batch_event(batch, item=None)
-    # Queue'ya None sentinel gonder (stream sonu)
     batch_queue = _batch_queues.get(batch_id)
     if batch_queue is not None:
         try:
@@ -1205,7 +1197,6 @@ async def _process_batch(batch_id: str) -> None:
         except asyncio.QueueFull:
             pass
 
-    # Temp dizini temizle (dosyalar zaten pipeline tarafindan silindi)
     try:
         import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1319,10 +1310,6 @@ async def _batch_event_generator(batch_id: str) -> AsyncGenerator[str, None]:
         _batch_queues.pop(batch_id, None)
 
 
-# ---------------------------------------------------------------------------
-# Batch endpoint'leri
-# ---------------------------------------------------------------------------
-
 
 @router.post("/batch/upload")
 async def batch_upload(
@@ -1333,7 +1320,6 @@ async def batch_upload(
     translation_enabled: bool = Form(True),
 ):
     """Toplu belge yukleme: 50'ye kadar PDF/DOCX/XML/PNG/JPEG."""
-    # Rate limit
     client_ip = request.client.host if request.client else "unknown"
     retry_after = _check_batch_rate_limit(client_ip)
     if retry_after is not None:
@@ -1343,10 +1329,8 @@ async def batch_upload(
             headers={"Retry-After": str(retry_after)},
         )
 
-    # Dil dogrulama
     doc_lang, out_lang = _validate_processing_languages(document_language, output_language)
 
-    # Dosya siniri
     if len(files) > _MAX_BATCH_FILES:
         return JSONResponse(
             status_code=422,
@@ -1355,7 +1339,6 @@ async def batch_upload(
     if not files:
         return JSONResponse(status_code=422, content={"detail": "En az bir dosya gerekli."})
 
-    # Gecici dizin ve eager validation
     temp_dir = tempfile.mkdtemp(prefix="cerberus_batch_")
     batch_id = _create_batch_id()
     items: list[dict] = []
@@ -1393,7 +1376,6 @@ async def batch_upload(
     total_count = queued_count + len(rejected)
     all_items = items + rejected
 
-    # Batch session olustur
     batch = {
         "batch_id": batch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1409,14 +1391,12 @@ async def batch_upload(
         "_temp_dir": temp_dir,
     }
     _batch_store[batch_id] = batch
-    # Batch store temizligi
     if len(_batch_store) > _MAX_BATCH_STORE:
         oldest = sorted(_batch_store.keys())[:max(1, len(_batch_store) - _MAX_BATCH_STORE)]
         for old_id in oldest:
             _batch_store.pop(old_id, None)
             _batch_queues.pop(old_id, None)
 
-    # Arka planda islemeye basla
     asyncio.create_task(_process_batch(batch_id))
 
     return BatchUploadResponse(
@@ -1520,7 +1500,6 @@ async def batch_cancel(batch_id: str):
     if batch is None:
         return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
 
-    # QUEUED ogeleri ERROR yap
     for item in batch["items"]:
         if item["status"] in (BatchItemStatus.QUEUED.value, BatchItemStatus.PROCESSING.value):
             item["status"] = BatchItemStatus.ERROR.value
@@ -1529,7 +1508,6 @@ async def batch_cancel(batch_id: str):
     batch["zip_ready"] = True
     _emit_batch_event(batch, item=None)
 
-    # Temp dizini temizle
     temp_dir = batch.pop("_temp_dir", None)
     if temp_dir:
         try:

@@ -23,6 +23,8 @@ from app.ocr.spatial_ocr import (
     process_pdf_with_region_ocr,
     process_pdf_with_spatial_ocr,
 )
+from app.xml.converter import shipping_instruction_to_xml
+from app.xml.validator import validate_xml_against_xsd
 
 FIELD_CATEGORIES = {
     "parties": re.compile(r"^parties"),
@@ -376,22 +378,24 @@ def _print_report(
 
     print()
     print("  Belge Bazli Sonuclar:")
-    print("-" * 72)
-    print(f"  {'Belge':<34} {'Alan':>6} {'Dogru':>6} {'Eksik':>6} {'Hata':>6} {'%Dog':>8}")
-    print("-" * 72)
+    print("-" * 88)
+    print(f"  {'Belge':<28} {'Alan':>5} {'Dogru':>5} {'Eksik':>5} {'Hata':>5} {'%Dog':>7} {'XSD':>6}")
+    print("-" * 88)
     for idx, result in enumerate(all_results):
         name = result.get("case_name", f"Belge {idx+1}")
-        if len(name) > 32:
-            name = name[:29] + "..."
+        if len(name) > 26:
+            name = name[:23] + "..."
+        xsd_status = "GECTI" if result.get("xsd_valid") else f"HATA({result.get('xsd_error_count', 0)})"
         print(
-            f"  {name:<34}"
-            f" {result['total_fields']:>6}"
-            f" {len(result['correct_fields']):>6}"
-            f" {len(result['missing_fields']):>6}"
-            f" {len(result['mismatched_fields']):>6}"
+            f"  {name:<28}"
+            f" {result['total_fields']:>5}"
+            f" {len(result['correct_fields']):>5}"
+            f" {len(result['missing_fields']):>5}"
+            f" {len(result['mismatched_fields']):>5}"
             f" {_format_percent(result['accuracy'])}"
+            f" {xsd_status:>6}"
         )
-    print("-" * 72)
+    print("-" * 88)
     print()
 
 
@@ -498,6 +502,9 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     )
     actual = instruction.model_dump(mode="json")
 
+    xml_str = shipping_instruction_to_xml(instruction)
+    xsd_valid, xsd_errors = validate_xml_against_xsd(xml_str)
+
     expected_sorted = _sort_arrays_by_key(dict(expected))
     actual_sorted = _sort_arrays_by_key(dict(actual))
     expected_flat = _flatten_ground_truth(expected_sorted)
@@ -518,6 +525,9 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
         "case_name": case_name,
         "source_path": case.get("_source_path", ""),
         "elapsed_seconds": round(elapsed, 2),
+        "xsd_valid": xsd_valid,
+        "xsd_error_count": len(xsd_errors),
+        "xsd_errors": xsd_errors if not xsd_valid else [],
         "category_metrics": category_metrics,
         **evaluation,
     }
@@ -573,7 +583,15 @@ def main() -> int:
     _print_report(all_results, category_stats, total_time)
 
     aggregated = aggregate_evaluations(all_results)
+    xsd_passed = sum(1 for r in all_results if r.get("xsd_valid"))
+    xsd_failed = sum(1 for r in all_results if not r.get("xsd_valid"))
     output_payload = {
+        "xsd_summary": {
+            "total": len(all_results),
+            "passed": xsd_passed,
+            "failed": xsd_failed,
+            "pass_rate_pct": round(xsd_passed / len(all_results) * 100, 1) if all_results else 0,
+        },
         "benchmark_date": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "total_time_seconds": round(total_time, 2),
         "category_breakdown": {
@@ -632,6 +650,9 @@ def _write_html_report(report: Dict[str, Any], output_path: Path) -> None:
             f"<td>{c.get('f1_score', 0):.1f}%</td></tr>\n"
         )
     overall_acc = report.get("accuracy", 0)
+    xsd_summary = report.get("xsd_summary", {})
+    xsd_pass_rate = xsd_summary.get("pass_rate_pct", 0)
+    xsd_color = "#20c997" if xsd_pass_rate >= 90 else ("#ffa94d" if xsd_pass_rate >= 70 else "#fa5252")
     color = "#20c997" if overall_acc >= 90 else ("#ffa94d" if overall_acc >= 70 else "#fa5252")
     html = f"""<!DOCTYPE html>
 <html lang="tr">
@@ -652,7 +673,12 @@ table{{width:100%;border-collapse:collapse}} th,td{{padding:10px 14px;text-align
 <p>{report.get('correct_fields', 0)} / {report.get('total_fields', 0)} alan dogru &middot; {report.get('missing_fields', 0)} eksik &middot; {report.get('mismatched_fields', 0)} hatali</p>
 </div>
 <div class="card">
-<h2>Kategori Bazli Metrikler</h2>
+<h2>XSD Schema Dogrulama</h2>
+	<div class="score" style="color:{xsd_color}">{xsd_pass_rate:.1f}%</div>
+	<p>{xsd_summary.get('passed', 0)} / {xsd_summary.get('total', 0)} belge XSD'den gecti &middot; {xsd_summary.get('failed', 0)} basarisiz</p>
+	</div>
+	<div class="card">
+	<h2>Kategori Bazli Metrikler</h2>
 <table>
 <tr><th>Kategori</th><th>Alan</th><th>Dogru</th><th>Dogruluk</th><th>Kesinlik</th><th>Geri Cagirma</th><th>F1-Skor</th></tr>
 {rows_html}

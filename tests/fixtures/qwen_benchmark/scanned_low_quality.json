@@ -1,0 +1,58 @@
+{
+  "case_name": "Scanned_Low_Quality_PDF",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "SH1PP1NG 1NSTRUCT10N\nS1-2026-SCN-001\nD4TE: 2O26-O5-17\nB00KING: BK-SCN-332211\n\nSH1PPER:\nMER1D1AN MAR1T1ME CORP.\n1ZM1R, TURKEY\n\nC0NS1GNEE:\nATL4NT1C D1STR1BUTORS LTD\nB4RCEL0NA, SPA1N\n\nP0RT 0F L0ADING: AL1AGA\nP0RT 0F D1SCH4RGE: BARCEL0NA\n\nC0NT41NER: MEDU4455667 40HC\nGR0SS: 14 . 320 , 00 KG\nNET: 13 . 580 , 00 KG\n22 P4LLETS TEXT1LE PR0DUCTS\nV0LUME: 18 . 75 CBM\n\nFR3IGHT C0LLECT\nB1LL 0F L4D1NG",
+  "expected": {
+    "shipping_instruction_reference": "SI-2026-SCN-001",
+    "carrier_booking_reference": "BK-SCN-332211",
+    "issue_date": "2026-05-17",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "COL",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "MERIDIAN MARITIME CORP."
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "ATLANTIC DISTRIBUTORS LTD"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "ALIAGA"
+        },
+        "port_of_discharge": {
+          "location_name": "BARCELONA"
+        }
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "MEDU4455667",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 14320.0,
+          "unit": "KGM"
+        }
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 22,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "TEXTILE PRODUCTS",
+        "weight": {
+          "weight_value": 13580.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 18.75,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "case_name": "DE_Frachtbrief_SI",
+  "document_language": "en",
+  "output_language": "en",
+  "ocr_text": "FRACHTBRIEF / SHIPPING INSTRUCTION SI-DE-2026\nAUSSTELLUNGSDATUM: 2026-04-22\nBUCHUNGSNUMMER: BUC-445566\nABLADEORT: HAMBURG\nEMPFANGSORT: SHANGHAI\n\nABSENDER:\nBAYERISCHE HOLZWERKE GMBH\nMUNCHEN, DEUTSCHLAND\n\nEMPFANGER:\nASIA PACIFIC TRADING CO LTD\nSHANGHAI, CHINA\n\nCONTAINER: TCLU9876543 40HC\n28 PALLETTEN SPERRHOLZPLATTEN\nBRUTTOGEWICHT: 22.400,00 KG\nNETTOGEWICHT: 21.100,00 KG\nVOLUMEN: 24.50 CBM\n\nFRACHT VORAUSBEZAHLT\nKONNOSSEMENT",
+  "expected": {
+    "shipping_instruction_reference": "SI-DE-2026",
+    "carrier_booking_reference": "BUC-445566",
+    "issue_date": "2026-04-22",
+    "transport_document_type": "B/L",
+    "freight_payment_term_code": "PPD",
+    "parties": [
+      {
+        "party_role_code": "CZ",
+        "party_name": "BAYERISCHE HOLZWERKE GMBH"
+      },
+      {
+        "party_role_code": "CN",
+        "party_name": "ASIA PACIFIC TRADING CO LTD"
+      }
+    ],
+    "transport_plans": [
+      {
+        "port_of_loading": {
+          "location_name": "HAMBURG"
+        },
+        "port_of_discharge": {
+          "location_name": "SHANGHAI"
+        }
+      }
+    ],
+    "equipment_list": [
+      {
+        "equipment_reference": "TCLU9876543",
+        "iso_equipment_code": "45G1",
+        "cargo_gross_weight": {
+          "weight": 22400.0,
+          "unit": "KGM"
+        }
+      }
+    ],
+    "cargo_items": [
+      {
+        "package_quantity": 28,
+        "package_kind_code": "PALLET",
+        "description_of_goods": "SPERRHOLZPLATTEN",
+        "weight": {
+          "weight_value": 21100.0,
+          "unit": "KGM"
+        },
+        "volume": {
+          "volume_value": 24.50,
+          "unit": "CBM"
+        }
+      }
+    ]
+  }
+}

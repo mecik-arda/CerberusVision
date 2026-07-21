@@ -8,7 +8,12 @@ import re
 from functools import lru_cache
 from typing import Optional, Dict, Any, Tuple
 from app.config import settings
-from app.models import DocumentStatusCode, ShippingInstruction
+from app.models import (
+    DocumentStatusCode,
+    FreightPaymentTermCode,
+    ShippingInstruction,
+    TransportDocumentType,
+)
 
 
 _llm_pipeline = None
@@ -909,7 +914,6 @@ def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
             continue
         address = party.address
 
-        # --- Ulke kodu cikarma ---
         country_already_valid = (
             address.country_code is not None
             and re.fullmatch(r"[A-Za-z]{2}", address.country_code or "")
@@ -944,7 +948,6 @@ def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
                     address.country_code = _COUNTRY_NAME_TO_CODE[city_upper]
                     address.city = None
 
-        # --- Sehir cikarma (sadece city None ise) ---
         if address.city is None and address.street:
             # street'i bol ve bilinen sehirleri ara
             tokens = re.split(r"\s*[,/\-]\s*|\s+MAH\.?\s*|\s+CAD\.?\s*|\s+CD\.?\s*|\s+SOK\.?\s*|\s+SK\.?\s*|\s+NO:?\s*|\s+NO\.?\s*", address.street)
@@ -962,13 +965,12 @@ def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
                 # Sehri street'ten cikar
                 escaped_city = re.escape(found_city)
                 address.street = re.sub(
-                    r"[,/\-]*\s*" + escaped_city + r"\s*[,/\-]*",
+                    r"[,/\-]?\s*" + escaped_city + r"\s*[,/\-]?",
                     "",
                     address.street,
                     count=1,
                 ).strip()
 
-        # --- Street temizligi ---
         if address.street is not None:
             cleaned = address.street.strip()
             cleaned = re.sub(r"^[,/\-\s]+", "", cleaned)
@@ -1182,6 +1184,16 @@ def normalize_extracted_instruction(
             and party.party_id.strip().casefold() == party.party_name.strip().casefold()
         ):
             party.party_id = None
+    # Party ID basindaki etiket on eklerini temizle (V.NO:, VKN:, TAX ID: vb.)
+    for party in normalized.parties:
+        if party.party_id:
+            cleaned = re.sub(
+                r"(?i)^\s*(?:V\.?\s*NO\.?\s*[:#\-]?|VKN\s*[:#\-]?|VERGI\s*NO\.?\s*[:#\-]?|TAX\s*ID\s*[:#\-]?|VAT\s*NO\.?\s*[:#\-]?)\s*",
+                "",
+                party.party_id.strip(),
+            )
+            if cleaned and cleaned != party.party_id.strip():
+                party.party_id = cleaned.strip()
     tax_office = _extract_labeled_value(
         ocr_text,
         (
@@ -1298,6 +1310,28 @@ def normalize_extracted_instruction(
                 from app.models import Equipment
                 normalized.equipment_list.append(Equipment(equipment_reference=container_ref))
     _normalize_equipment_types(normalized, ocr_text)
+    # Transport Document Type: OCR'da KONSIMENTO / BILL OF LADING -> B/L
+    if normalized.transport_document_type is None and ocr_text:
+        if re.search(
+            r"(?i)(?:KONSIMENTO|KONŞİMENTO|BILL\s+OF\s+LOADING|B/L|B\s*/\s*L)\b",
+            ocr_text,
+        ):
+            normalized.transport_document_type = TransportDocumentType.BILL_OF_LADING
+        elif re.search(r"(?i)(?:SEA\s+WAYBILL|SWB|DENIZ\s+KONŞİMENTOSU)\b", ocr_text):
+            normalized.transport_document_type = TransportDocumentType.SEA_WAYBILL
+    # Freight Payment Term: OCR'da NAVLUN ALICIYA AIT / FREIGHT COLLECT -> COL
+    if normalized.freight_payment_term_code is None and ocr_text:
+        if re.search(
+            r"(?i)(?:NAVLUN\s+ALICIYA\s+AİTTİR|NAVLUN\s+ALICIYA\s+AIT|FREIGHT\s+COLLECT|NAVLUN\s+TOPLANACAK|COLLECT)"
+            r"|ALICI\s+ÖDEMELİ",
+            ocr_text,
+        ):
+            normalized.freight_payment_term_code = FreightPaymentTermCode.COLLECT
+        elif re.search(
+            r"(?i)(?:NAVLUN\s+ÖDENMİŞTİR|FREIGHT\s+PREPAID|PREPAID|ÖDENMİŞ\s+NAVLUN)",
+            ocr_text,
+        ):
+            normalized.freight_payment_term_code = FreightPaymentTermCode.PREPAID
     return normalized
 
 
