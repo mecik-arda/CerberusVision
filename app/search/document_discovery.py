@@ -258,6 +258,19 @@ def download_candidate(
     for _ in range(6):
         _assert_public_url(current_url)
         with client.stream("GET", current_url, headers=headers, follow_redirects=False) as response:
+            stream = response.extensions.get("network_stream")
+            if stream is not None and hasattr(stream, "get_extra_info"):
+                sock = stream.get_extra_info("socket")
+                if sock is not None:
+                    try:
+                        remote_ip = sock.getpeername()[0]
+                        if not ipaddress.ip_address(remote_ip).is_global:
+                            raise ValueError("SSRF block: Connected to a non-global IP.")
+                    except Exception as e:
+                        if isinstance(e, ValueError) and "SSRF" in str(e):
+                            raise
+                        pass
+
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("location")
                 if not location:

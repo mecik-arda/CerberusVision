@@ -16,13 +16,14 @@ from app.llm.inference import run_inference_with_fallback
 
 def evaluate_case(path: Path) -> dict:
     case = json.loads(path.read_text(encoding="utf-8"))
+    ocr_text = case.get("ocr_text") or case.get("input") or case.get("text", "")
     instruction, raw_output = run_inference_with_fallback(
-        case["ocr_text"],
+        ocr_text,
         case.get("document_language", "auto"),
         case.get("output_language", "en"),
     )
     result = evaluate_expected_fields(
-        case["expected"],
+        case.get("expected", {}),
         instruction.model_dump(mode="json"),
     )
     result["case"] = path.name
@@ -40,7 +41,7 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    case_paths = sorted(args.dataset.glob("*.json"))
+    case_paths = [p for p in sorted(args.dataset.glob("*.json")) if p.name != "control_field_labels.json"]
     if not case_paths:
         raise SystemExit(f"No benchmark cases found in {args.dataset}")
     report = aggregate_evaluations([evaluate_case(path) for path in case_paths])

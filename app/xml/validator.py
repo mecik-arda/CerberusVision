@@ -31,12 +31,12 @@ COLLECTION_MANDATORY_FIELDS = {
 }
 
 PARTY_MANDATORY_FIELDS = {
-    PartyRoleCode.SHIPPER: (
+    PartyRoleCode.SHIPPER_DCSA: (
         "Shipper",
         [("party_name", "Name"), ("address.street", "Address"),
          ("address.city", "City"), ("address.country_code", "Country")],
     ),
-    PartyRoleCode.CONSIGNEE: (
+    PartyRoleCode.CONSIGNEE_DCSA: (
         "Consignee",
         [("party_name", "Name"), ("address.street", "Address"),
          ("address.city", "City"), ("address.country_code", "Country")],
@@ -55,7 +55,8 @@ def validate_xml_against_xsd(xml_content: str) -> Tuple[bool, List[str]]:
     errors: List[str] = []
     try:
         xml_bytes = xml_content.encode("UTF-8")
-        doc = etree.fromstring(xml_bytes)
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        doc = etree.fromstring(xml_bytes, parser=parser)
         schema = load_xsd_schema()
         is_valid = schema.validate(doc)
         if not is_valid:

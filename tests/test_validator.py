@@ -33,12 +33,12 @@ def create_complete_si() -> ShippingInstruction:
         place_of_issue=Location(location_name="ALIAGA"),
         parties=[
             Party(
-                party_role_code=PartyRoleCode.SHIPPER,
+                party_role_code=PartyRoleCode.SHIPPER_DCSA,
                 party_name="FORENTIS GLOBAL",
                 address=Address(street="MAH NO:3", city="ANTALYA", country_code="TR"),
             ),
             Party(
-                party_role_code=PartyRoleCode.CONSIGNEE,
+                party_role_code=PartyRoleCode.CONSIGNEE_DCSA,
                 party_name="SHAHEEN PLASTIC",
                 address=Address(street="OFF # 15", city="KARACHI", country_code="PK"),
             ),

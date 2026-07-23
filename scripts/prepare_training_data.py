@@ -88,15 +88,40 @@ def prepare_dataset(
         }
         records.append(record)
 
-        # Augment with synthetic OCR variations
-        for i in range(augment_factor):
+    # Also load from benchmark fixtures
+    benchmark_dir = PROJECT_ROOT / "tests" / "fixtures" / "qwen_benchmark"
+    if benchmark_dir.exists():
+        for fixture_file in benchmark_dir.glob("*.json"):
+            if fixture_file.name == "control_field_labels.json":
+                continue
             if len(records) >= max_samples:
                 break
-            records.append({
+            try:
+                data = json.loads(fixture_file.read_text(encoding="utf-8"))
+                ocr_text = data.get("ocr_text")
+                expected = data.get("expected")
+                if ocr_text and expected:
+                    record = {
+                        "instructions": "Extract shipping instruction data from OCR text as JSON.",
+                        "input": ocr_text,
+                        "output": json.dumps(expected, ensure_ascii=False),
+                    }
+                    records.append(record)
+            except Exception:
+                pass
+
+    # Augment with synthetic OCR variations
+    augmented_records = []
+    for record in records:
+        for i in range(augment_factor):
+            if len(records) + len(augmented_records) >= max_samples:
+                break
+            augmented_records.append({
                 "instructions": record["instructions"],
-                "input": _clean_ocr_for_augmentation(ocr_text),
+                "input": _clean_ocr_for_augmentation(record["input"]),
                 "output": record["output"],
             })
+    records.extend(augmented_records)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:

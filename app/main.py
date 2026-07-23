@@ -66,7 +66,7 @@ async def health():
 
     checks = {
         "dependencies": dependency_checks,
-        "model_path": {"ready": model_path.exists(), "path": str(model_path)},
+        "model_path": {"ready": model_path.exists()},
         "openvino_device": {
             "ready": device_ready,
             "requested": settings.model.device,

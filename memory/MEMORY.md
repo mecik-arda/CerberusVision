@@ -1,0 +1,1 @@
+- [No hash comments](no-hash-comments.md) — Kodda # ile başlayan açıklama satırı kullanılmaz

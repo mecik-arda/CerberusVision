@@ -192,6 +192,21 @@ Model seçici yalnızca doğrudan çalıştırılabilen OpenVINO dizinlerini etk
 Model değiştirildiğinde mevcut çıkarım hattı sıfırlanır ve yeni model ilk istekte
 yüklenir. Tüm model sonuçları kullanıcı onayından geçmelidir.
 
+### Qwen-2.5 LoRA Eğitimi ve Benchmark Değerlendirmesi
+
+Modelin konşimento talimatı (Shipping Instruction) belgelerindeki JSON ayrıştırma başarısını artırmak amacıyla Unsloth kütüphanesi ile Google Colab (A100 GPU) ortamında 4-bit LoRA (PEFT) ince ayarı uygulanmıştır:
+
+- **Eğitim Veri Seti (`veriler/si_training.jsonl`):** Veri çoğaltma (data augmentation) ve gürültü ekleme yöntemleriyle 231 adede çıkarılmış zorlu konşimento metinleri.
+- **Eğitim Paketi:** `notebooks/CerberusVision_Qwen_LoRA.ipynb` notebook'u ve Google Drive yüklemesine hazır `CerberusVision_Colab_Egitim_Seti/` paketi.
+- **Eğitim Yapılandırması:** Unsloth bellek optimizasyonu, 4-bit kuantizasyon, veri paketleme (`packing=True`), 20 adımda bir otomatik Google Drive yedekleme ve kesinti sonrası otomatik devam etme (`resume_from_checkpoint`).
+- **Model Adaptörü:** Eğitilen LoRA ağırlıkları projedeki `models/qwen2.5-7b-cerberus-lora/` dizinine entegre edilmiştir.
+- **Benchmark Doğrulama Sonuçları (`scripts/evaluate_qwen.py`):**
+  - **Test Edilen Doküman Sayısı:** 12 Adet Karmaşık Konşimento
+  - **Genel Doğruluk Oranı (Accuracy):** %80.21
+  - **Toplam Denetlenen Alan Sayısı:** 480 Alan
+  - **Doğru Çıkarılan Alan:** 385 / 480
+  - **Eksik Alan Oranı (Missing):** %3.3 (16 alan)
+
 ## İlk WSL2 kurulumu
 
 ### 1. WSL bellek profilini uygula

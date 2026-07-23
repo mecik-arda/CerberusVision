@@ -36,7 +36,9 @@ def log_webhook_attempt(session_id: str, attempt: int, status: str, detail: str)
         "detail": detail,
     }
     log_path = webhook_log_path(session_id)
-    log_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path = log_path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp_path, log_path)
 
 
 async def deliver_approved_xml(
@@ -54,6 +56,15 @@ async def deliver_approved_xml(
     if not webhook_url.startswith("https://") and not webhook_url.startswith("http://localhost"):
         logger.warning("Webhook URL must use HTTPS (or localhost for testing)")
         return False
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+    if env == "production" and webhook_url.startswith("http://localhost"):
+        logger.warning("Webhook localhost is blocked in production environment")
+        return False
+    if env == "production":
+        blocked = ("http://10.", "http://192.168.", "http://172.16.", "http://127.")
+        if any(webhook_url.startswith(prefix) for prefix in blocked):
+            logger.warning("Webhook internal IP is blocked in production environment")
+            return False
 
     api_key = os.environ.get("WEBHOOK_API_KEY")
     enabled = os.environ.get("WEBHOOK_ENABLED", "0") == "1"
