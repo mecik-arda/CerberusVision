@@ -12,11 +12,37 @@ _florence_pipeline = None
 
 def get_florence_pipeline():
     global _florence_pipeline
+    from app.config import settings
+    import torch
+    
+    current_lora_enabled = settings.lora_enabled
+    current_lora_path = settings.lora_adapter_path if settings.lora_adapter_path else ""
+    
     if _florence_pipeline is not None:
-        return _florence_pipeline
+        model, processor, cached_lora_enabled, cached_lora_path = _florence_pipeline
+        if cached_lora_enabled == current_lora_enabled and cached_lora_path == current_lora_path:
+            return model, processor
+        else:
+            logger.info("Florence-2 yapılandırması değişti, model yeniden yükleniyor...")
+            _florence_pipeline = None
+
     try:
-        import torch
-        from transformers import AutoProcessor, AutoModelForCausalLM
+        from transformers import AutoProcessor, AutoModelForCausalLM, PretrainedConfig, PreTrainedModel
+        from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+        
+        # Monkey-patch for Florence-2 compatibility with newer transformers versions
+        if not hasattr(PretrainedConfig, "forced_bos_token_id"):
+            PretrainedConfig.forced_bos_token_id = None
+        if not hasattr(PreTrainedModel, "_supports_sdpa"):
+            PreTrainedModel._supports_sdpa = False
+            
+        # Patch __getattr__ for tokenizer to fix Florence-2 AutoProcessor load
+        _orig_getattr = PreTrainedTokenizerBase.__getattr__
+        def _patched_getattr(self, key):
+            if key == "additional_special_tokens":
+                return []
+            return _orig_getattr(self, key)
+        PreTrainedTokenizerBase.__getattr__ = _patched_getattr
 
         model_id = "microsoft/Florence-2-base"
         if torch.cuda.is_available():
@@ -28,20 +54,32 @@ def get_florence_pipeline():
         else:
             device = "cpu"
             dtype = torch.bfloat16 if hasattr(torch, "bfloat16") else torch.float32
+            
+        logger.info(f"Yükleniyor: {model_id} (device={device}, dtype={dtype})")
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             torch_dtype=dtype,
             trust_remote_code=True,
+            attn_implementation="eager",
         ).to(device)
         processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-        logger.info("Florence-2 yuklendi: device=%s dtype=%s", device, str(dtype))
-        _florence_pipeline = (model, processor)
-        assert model is not None, "Florence-2 modeli yuklenemedi"
-        assert processor is not None, "Florence-2 processor yuklenemedi"
-        return _florence_pipeline
+        
+        if current_lora_enabled and current_lora_path:
+            logger.info(f"LoRA adaptörü yükleniyor: {current_lora_path}")
+            try:
+                from peft import PeftModel
+                model = PeftModel.from_pretrained(model, current_lora_path)
+                logger.info("LoRA adaptörü başarıyla yüklendi!")
+            except Exception as e:
+                logger.error(f"LoRA adaptörü yüklenirken hata oluştu: {e}", exc_info=True)
+                raise
+
+        logger.info("Florence-2 pipeline hazır.")
+        _florence_pipeline = (model, processor, current_lora_enabled, current_lora_path)
+        return model, processor
     except Exception:
-        logger.warning("Florence-2 yuklenemedi, Y-orani yontemine dusuluyor", exc_info=True)
-        raise RuntimeError("Florence-2 yuklenemedi") from None
+        logger.warning("Florence-2 yüklenemedi, Y-oranı yöntemine düşülüyor", exc_info=True)
+        raise RuntimeError("Florence-2 yüklenemedi") from None
 
 
 def reset_florence_pipeline() -> None:

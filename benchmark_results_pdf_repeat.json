@@ -1,0 +1,140 @@
+{
+  "xsd_summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "pass_rate_pct": 100.0
+  },
+  "benchmark_date": "2026-07-23T16:48:13",
+  "total_time_seconds": 99.78,
+  "category_breakdown": {
+    "parties": {
+      "accuracy": 100.0,
+      "precision": 47.06,
+      "recall": 100.0,
+      "f1_score": 64.0,
+      "tp": 8,
+      "fp": 9,
+      "fn": 0,
+      "total_fields": 8,
+      "correct_fields": 8
+    },
+    "transport_plans": {
+      "accuracy": 100.0,
+      "precision": 50.0,
+      "recall": 100.0,
+      "f1_score": 66.67,
+      "tp": 2,
+      "fp": 2,
+      "fn": 0,
+      "total_fields": 2,
+      "correct_fields": 2
+    },
+    "equipment_list": {
+      "accuracy": 100.0,
+      "precision": 0.0,
+      "recall": 100.0,
+      "f1_score": 0.0,
+      "tp": 0,
+      "fp": 5,
+      "fn": 0,
+      "total_fields": 0,
+      "correct_fields": 0
+    },
+    "cargo_items": {
+      "accuracy": 100.0,
+      "precision": 0.0,
+      "recall": 100.0,
+      "f1_score": 0.0,
+      "tp": 0,
+      "fp": 6,
+      "fn": 0,
+      "total_fields": 0,
+      "correct_fields": 0
+    },
+    "document_info": {
+      "accuracy": 33.33,
+      "precision": 100.0,
+      "recall": 33.33,
+      "f1_score": 50.0,
+      "tp": 1,
+      "fp": 0,
+      "fn": 2,
+      "total_fields": 3,
+      "correct_fields": 1
+    }
+  },
+  "documents": 1,
+  "accuracy": 84.62,
+  "total_fields": 13,
+  "correct_fields": 11,
+  "missing_fields": 2,
+  "mismatched_fields": 0,
+  "results": [
+    {
+      "case_name": "TR_Konsimento_Talimati",
+      "source_path": "tests/fixtures/qwen_benchmark/tr_konsimento.json",
+      "elapsed_seconds": 99.78,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 8,
+          "fp": 9,
+          "fn": 0,
+          "total": 8,
+          "correct": 8
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "cargo_items": {
+          "tp": 0,
+          "fp": 6,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "document_info": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 2,
+          "total": 3,
+          "correct": 1
+        }
+      },
+      "accuracy": 84.62,
+      "total_fields": 13,
+      "correct_fields": [
+        "document_status_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[0].party_id",
+        "parties[0].address.street",
+        "parties[0].address.country_code",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[1].address.country_code",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name"
+      ],
+      "missing_fields": [
+        "transport_document_type",
+        "freight_payment_term_code"
+      ],
+      "mismatched_fields": []
+    }
+  ]
+}

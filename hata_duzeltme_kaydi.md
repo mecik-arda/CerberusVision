@@ -1878,3 +1878,43 @@ Dışarıdan verilen URL'lerin güvenilir IP adreslerine gidip gitmediğini kont
 | 163 | 🔒 Güvenlik | YÜKSEK | `search/document_discovery.py` | DNS Rebinding (TOCTOU) SSRF zafiyeti | ✅ Düzeltildi |
 
 **V21 Sonuç:** 3 bulgunun **tamamı düzeltildi**. Projenin tüm bilinen mimari, mantıksal ve güvenlik açıkları sıfırlandı.
+
+---
+
+## V22 — Model Entegrasyon Düzeltmeleri (LoRA & Transformers)
+
+**Tarih/Saat:** 23.07.2026
+**Denetim Yöntemi:** Hata Tespiti & Canlı Test
+**Bulgu Sayısı:** 2
+**Düzeltilen:** 2
+
+### 164. LoRA İnce Ayar Butonu İşlevsizdi (Backend Bağlantısı Kopuk) (KRİTİK)
+
+**Tarih/Saat:** 23.07.2026
+**Dosya:** `app/ocr/vlm_region.py`
+
+**Problem:**
+Arayüzdeki "LoRA İnce Ayarını Etkinleştir" butonu seçimi backend'e başarılı şekilde iletiyor (`settings.lora_enabled` üzerinden) ancak Florence-2 modelini yükleyen `get_florence_pipeline()` fonksiyonu bu ayarı tamamen görmezden gelerek her zaman temel modeli (base model) yüklüyordu. 
+
+**Çözüm:**
+- `get_florence_pipeline` içerisine `settings` kontrolü eklendi.
+- Önbellek (cache) mekanizması güncellendi; eğer ayarlar değişirse eski model bellekten silinip yenisi yükleniyor.
+- `PeftModel.from_pretrained` ile LoRA adaptörünün dinamik olarak temel modele enjekte edilmesi sağlandı.
+
+### 165. Florence-2 Transformers Uyumluluk Hatası (AttributeError) (YÜKSEK)
+
+**Tarih/Saat:** 23.07.2026
+**Dosya:** `app/ocr/vlm_region.py`
+
+**Problem:**
+`transformers` kütüphanesinin güncel sürümlerinde (`>=4.45.0`) `PretrainedConfig` sınıfından `forced_bos_token_id` özelliğinin kaldırılması nedeniyle, `microsoft/Florence-2-base` modelinin uzaktan yüklenen kod parçası (`configuration_florence2.py`) başlatılamıyor ve `AttributeError: 'Florence2LanguageConfig' object has no attribute 'forced_bos_token_id'` hatası fırlatarak tüm OCR sürecini Y-Oranı Fallback'ine düşürüyordu.
+
+**Çözüm:**
+Model yüklenmeden hemen önce `PretrainedConfig` sınıfına `forced_bos_token_id = None` özelliği *monkey-patch* ile eklendi. Bu sayede model sorunsuz yüklenebiliyor.
+
+| # | Kategori | Önem | Dosya | Açıklama | Durum |
+|---|---|---|---|---|---|
+| 164 | 🔴 Hata | KRİTİK | `ocr/vlm_region.py` | LoRA adaptörü frontend'den seçilse bile backend tarafından yüklenmiyordu | ✅ Düzeltildi |
+| 165 | 🔴 Hata | YÜKSEK | `ocr/vlm_region.py` | Transformers kütüphanesi sürüm uyumsuzluğu Florence-2 yüklemesini bozuyordu | ✅ Düzeltildi |
+
+**V22 Sonuç:** 2 bulgunun **tamamı düzeltildi**. LoRA entegrasyonu tamamen aktif hale getirildi.

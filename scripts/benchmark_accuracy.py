@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import inspect
 import json
+import os
 import re
 import sys
 import time
@@ -18,6 +21,8 @@ from app.llm.evaluation import (
     evaluate_expected_fields,
     flatten_values,
 )
+from app.config import settings
+from app.llm import inference as inference_module
 from app.llm.inference import run_inference_with_fallback
 from app.ocr.spatial_ocr import (
     process_pdf_with_region_ocr,
@@ -39,6 +44,135 @@ FIELD_CATEGORIES = {
         r"document_status_code|document_references|customs_information|remarks)"
     ),
 }
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _sha256_text(value: str) -> str:
+    return _sha256_bytes(value.encode("utf-8"))
+
+
+def _canonical_json_sha256(value: Any) -> str:
+    return _sha256_text(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
+def _artifact_manifest(path_value: str) -> Dict[str, Any]:
+    if not path_value.strip():
+        return {
+            "path": None,
+            "exists": False,
+            "manifest_sha256": None,
+        }
+    artifact_path = Path(path_value).expanduser()
+    if not artifact_path.exists():
+        return {
+            "path": str(artifact_path),
+            "exists": False,
+            "manifest_sha256": None,
+        }
+    artifact_files = (
+        [artifact_path]
+        if artifact_path.is_file()
+        else sorted(path for path in artifact_path.rglob("*") if path.is_file())
+    )
+    entries = [
+        {
+            "path": (
+                path.name
+                if artifact_path.is_file()
+                else str(path.relative_to(artifact_path))
+            ),
+            "size": path.stat().st_size,
+        }
+        for path in artifact_files
+    ]
+    return {
+        "path": str(artifact_path.resolve()),
+        "exists": True,
+        "file_count": len(entries),
+        "manifest_sha256": _canonical_json_sha256(entries),
+    }
+
+
+def _benchmark_provenance() -> Dict[str, Any]:
+    prompt_payload = {
+        "system_prompt": inference_module._system_prompt,
+        "stage_prompts": inference_module._STAGE_PROMPTS,
+        "build_prompt_source": inspect.getsource(
+            inference_module.build_prompt
+        ),
+        "build_stage_prompt_source": inspect.getsource(
+            inference_module.build_stage_prompt
+        ),
+    }
+    generation_payload = {
+        "do_sample": False,
+        "max_new_tokens": settings.model.max_new_tokens,
+        "num_streams": 1,
+        "pipeline_reset_between_repeats": True,
+        "structured_schema_sha256": _canonical_json_sha256(
+            inference_module.get_json_schema()
+        ),
+        "inference_mode": settings.inference_mode,
+    }
+    return {
+        "llm_model": _artifact_manifest(settings.model.model_path),
+        "llm_adapter": {
+            "path": None,
+            "exists": False,
+            "runtime_mode": "merged_openvino_model",
+        },
+        "layout_adapter": _artifact_manifest(
+            settings.lora_adapter_path
+        ),
+        "layout_lora_enabled": settings.lora_enabled,
+        "prompt_sha256": _canonical_json_sha256(prompt_payload),
+        "generation_config": generation_payload,
+        "generation_config_sha256": _canonical_json_sha256(
+            generation_payload
+        ),
+    }
+
+
+def _load_frozen_ocr(
+    fixture_path_value: str,
+    expected_sha256: Optional[str],
+) -> Tuple[str, Optional[Tuple[str, str, str]], str]:
+    fixture_path = (PROJECT_ROOT / fixture_path_value).resolve()
+    fixture_bytes = fixture_path.read_bytes()
+    actual_sha256 = _sha256_bytes(fixture_bytes)
+    if expected_sha256 and expected_sha256 != actual_sha256:
+        raise ValueError(
+            f"Frozen OCR hash mismatch: expected={expected_sha256} "
+            f"actual={actual_sha256} path={fixture_path}"
+        )
+    payload = json.loads(fixture_bytes.decode("utf-8"))
+    upper = str(payload.get("upper", ""))
+    middle = str(payload.get("middle", ""))
+    lower = str(payload.get("lower", ""))
+    full_text = str(payload.get("full", ""))
+    if not full_text:
+        full_text = (
+            f"{upper}\n\n--- ORTA BOLGE ---\n\n{middle}"
+            f"\n\n--- ALT BOLGE ---\n\n{lower}"
+        )
+    segmented_ocr = (
+        (upper, middle, lower)
+        if any(value.strip() for value in (upper, middle, lower))
+        else None
+    )
+    if not full_text.strip():
+        raise ValueError(f"Frozen OCR fixture is empty: {fixture_path}")
+    return full_text, segmented_ocr, actual_sha256
 
 
 def _classify_field(path: str) -> str:
@@ -465,6 +599,7 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     case_name = case["case_name"]
     pdf_rel = case.get("pdf")
     ocr_text_raw = case.get("ocr_text")
+    ocr_fixture = case.get("ocr_fixture")
     document_language = case.get("document_language", "en")
     output_language = case.get("output_language", "en")
     expected = case.get("expected")
@@ -472,9 +607,15 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     print(f"  [{case_name}] Isleniyor...", end=" ", flush=True)
     t_start = time.time()
 
-    if ocr_text_raw:
+    if ocr_fixture:
+        full_ocr, segmented_ocr, ocr_sha256 = _load_frozen_ocr(
+            str(ocr_fixture),
+            case.get("ocr_sha256"),
+        )
+    elif ocr_text_raw:
         full_ocr = ocr_text_raw
         segmented_ocr = None
+        ocr_sha256 = _sha256_text(full_ocr)
     elif pdf_rel:
         pdf_path = (PROJECT_ROOT / pdf_rel).resolve()
         if not pdf_path.exists():
@@ -483,8 +624,11 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
             pdf_path,
             case.get("ocr_lang", "latin" if document_language == "tr" else "en"),
         )
+        ocr_sha256 = _sha256_text(full_ocr)
     else:
-        raise ValueError(f"'{case_name}': pdf veya ocr_text alani gerekli")
+        raise ValueError(
+            f"'{case_name}': ocr_fixture, pdf veya ocr_text alani gerekli"
+        )
 
     if expected is None and pdf_rel:
         xml_path = (PROJECT_ROOT / pdf_rel).with_suffix(".xml")
@@ -501,6 +645,8 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
         full_ocr, document_language, output_language, segmented_ocr,
     )
     actual = instruction.model_dump(mode="json")
+    actual_sha256 = _canonical_json_sha256(actual)
+    raw_output_sha256 = _sha256_text(raw_output)
 
     xml_str = shipping_instruction_to_xml(instruction)
     xsd_valid, xsd_errors = validate_xml_against_xsd(xml_str)
@@ -525,6 +671,9 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
         "case_name": case_name,
         "source_path": case.get("_source_path", ""),
         "elapsed_seconds": round(elapsed, 2),
+        "ocr_sha256": ocr_sha256,
+        "actual_sha256": actual_sha256,
+        "raw_output_sha256": raw_output_sha256,
         "xsd_valid": xsd_valid,
         "xsd_error_count": len(xsd_errors),
         "xsd_errors": xsd_errors if not xsd_valid else [],
@@ -534,6 +683,7 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> int:
+    os.environ["CERBERUS_BENCHMARK_DETERMINISTIC"] = "1"
     parser = argparse.ArgumentParser(
         description="CerberusVision Dogruluk Benchmark Suiti"
     )
@@ -559,13 +709,26 @@ def main() -> int:
         action="store_true",
         help="Sadece PDF iceren testleri calistir",
     )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="Ayni donmus girdilerle deterministik tekrar sayisi",
+    )
     args = parser.parse_args()
+    if args.repeat < 1:
+        raise SystemExit("--repeat en az 1 olmali")
 
     cases = _load_benchmark_cases(args.dataset)
 
     pdf_count = sum(1 for c in cases if c.get("pdf"))
     text_count = sum(1 for c in cases if c.get("ocr_text") and not c.get("pdf"))
-    print(f"Benchmark veri seti: {len(cases)} vaka ({pdf_count} PDF, {text_count} salt metin)")
+    frozen_count = sum(1 for c in cases if c.get("ocr_fixture"))
+    print(
+        f"Benchmark veri seti: {len(cases)} vaka "
+        f"({pdf_count} PDF, {text_count} salt metin, "
+        f"{frozen_count} donmus OCR)"
+    )
     print()
 
     if args.pdf_only:
@@ -576,8 +739,41 @@ def main() -> int:
         print()
 
     t_total = time.time()
-    all_results = [_evaluate_case(case) for case in cases]
+    repeated_results: List[List[Dict[str, Any]]] = []
+    for repeat_index in range(args.repeat):
+        if args.repeat > 1:
+            print(f"Deterministik tekrar {repeat_index + 1}/{args.repeat}")
+        inference_module.reset_llm_pipeline()
+        repeated_results.append([_evaluate_case(case) for case in cases])
     total_time = time.time() - t_total
+    all_results = repeated_results[0]
+    mismatches: List[Dict[str, Any]] = []
+    for repeat_index, repeat_results in enumerate(
+        repeated_results[1:],
+        start=2,
+    ):
+        baseline_by_case = {
+            result["case_name"]: result for result in all_results
+        }
+        for repeated_result in repeat_results:
+            baseline_result = baseline_by_case[repeated_result["case_name"]]
+            changed_hashes = [
+                hash_name
+                for hash_name in (
+                    "ocr_sha256",
+                    "actual_sha256",
+                    "raw_output_sha256",
+                )
+                if repeated_result[hash_name] != baseline_result[hash_name]
+            ]
+            if changed_hashes:
+                mismatches.append(
+                    {
+                        "repeat": repeat_index,
+                        "case_name": repeated_result["case_name"],
+                        "changed_hashes": changed_hashes,
+                    }
+                )
 
     category_stats = _compute_category_stats(all_results)
     _print_report(all_results, category_stats, total_time)
@@ -594,6 +790,12 @@ def main() -> int:
         },
         "benchmark_date": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "total_time_seconds": round(total_time, 2),
+        "provenance": _benchmark_provenance(),
+        "determinism": {
+            "repeat_count": args.repeat,
+            "passed": not mismatches,
+            "mismatches": mismatches,
+        },
         "category_breakdown": {
             cat_name: {
                 "accuracy": stats.accuracy,
@@ -623,6 +825,10 @@ def main() -> int:
         _write_html_report(output_payload, args.html)
         print(f"HTML raporu kaydedildi: {args.html}")
 
+    if mismatches:
+        raise SystemExit(
+            f"Deterministik benchmark basarisiz: {len(mismatches)} uyusmazlik"
+        )
     return 0
 
 

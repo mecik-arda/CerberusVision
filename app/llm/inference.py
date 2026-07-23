@@ -3,6 +3,7 @@ import ast
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import unicodedata
@@ -241,6 +242,8 @@ def get_llm_pipeline():
         "CACHE_MODE": "OPTIMIZE_SIZE",
         "PERFORMANCE_HINT": "LATENCY",
     }
+    if os.environ.get("CERBERUS_BENCHMARK_DETERMINISTIC") == "1":
+        pipeline_config["NUM_STREAMS"] = "1"
     weights_path = model_path / "openvino_model.bin"
     if weights_path.exists():
         pipeline_config["WEIGHTS_PATH"] = str(weights_path)
@@ -1049,6 +1052,12 @@ def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
         if party.address is None:
             continue
         address = party.address
+        for field_name in ("street", "city", "postal_code", "country_code"):
+            field_value = getattr(address, field_name)
+            if field_value is not None and not any(
+                character.isalnum() for character in field_value
+            ):
+                setattr(address, field_name, None)
 
         country_already_valid = (
             address.country_code is not None
@@ -1112,6 +1121,33 @@ def _normalize_party_addresses(normalized: ShippingInstruction) -> None:
             cleaned = re.sub(r"^[,/\-\s]+", "", cleaned)
             cleaned = re.sub(r"[,/\-\s]+$", "", cleaned)
             address.street = cleaned if cleaned else address.street
+        if all(
+            getattr(address, field_name) is None
+            for field_name in ("street", "city", "postal_code", "country_code")
+        ):
+            party.address = None
+
+
+def _deduplicate_bl_document_references(
+    normalized: ShippingInstruction,
+) -> None:
+    unique_bl_references: set[str] = set()
+    retained_references = []
+    for document_reference in normalized.document_references:
+        type_code = (document_reference.type_code or "").strip().casefold()
+        reference_number = document_reference.reference_number
+        if type_code != "bl" or reference_number is None:
+            retained_references.append(document_reference)
+            continue
+        normalized_reference_number = " ".join(reference_number.split()).casefold()
+        if not normalized_reference_number:
+            retained_references.append(document_reference)
+            continue
+        if normalized_reference_number in unique_bl_references:
+            continue
+        unique_bl_references.add(normalized_reference_number)
+        retained_references.append(document_reference)
+    normalized.document_references = retained_references
 
 
 def _parse_volume_number(raw: str) -> Optional[float]:
@@ -1719,6 +1755,7 @@ def normalize_extracted_instruction(
                     contact.phone_number = name_val
                 contact.name = None
     _normalize_party_addresses(normalized)
+    _deduplicate_bl_document_references(normalized)
     for plan in normalized.transport_plans:
         _clean_location_name(plan.port_of_loading)
         _clean_location_name(plan.port_of_discharge)

@@ -1,6 +1,8 @@
 {
   "case_name": "TR_Konsimento_Talimati",
   "pdf": "veriler/konsimentotalimatornek3s.pdf",
+  "ocr_fixture": "tests/fixtures/qwen_benchmark/frozen_ocr/tr_konsimento_ocr.json",
+  "ocr_sha256": "1485d2a39e80f3df80e92d35f3f9866db4bab52b3ed28cafbd51b9fb2f2af2cb",
   "document_language": "tr",
   "output_language": "tr",
   "ocr_lang": "latin",

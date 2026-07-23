@@ -1,16 +1,54 @@
 from __future__ import annotations
+import io
 from pathlib import Path
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from app.config import settings
 from app.ocr.line_grouper import (
+    build_line_text,
+    group_boxes_into_lines,
     parse_ocr_boxes,
-    process_ocr_results_to_layout_text,
     reconstruct_layout_text,
     reconstruct_region_texts,
     segment_boxes_by_region,
     TextBox,
 )
+
+_BOTTOM_BOILERPLATE_RATIO = 0.8
+_BOTTOM_BOILERPLATE_LINES = frozenset(
+    {
+        "bill of lading terms and conditions",
+        "received by the carrier in apparent good order",
+    }
+)
+
+
+def _normalize_boilerplate_line(text: str) -> str:
+    return " ".join(text.split()).casefold()
+
+
+def _filter_bottom_boilerplate_boxes(
+    boxes: List[TextBox],
+    page_height: float,
+) -> List[TextBox]:
+    if not boxes or page_height <= 0:
+        return list(boxes)
+    bottom_boundary = page_height * _BOTTOM_BOILERPLATE_RATIO
+    excluded_box_ids: set[int] = set()
+    for line_boxes in group_boxes_into_lines(boxes):
+        if min(box.y_min for box in line_boxes) < bottom_boundary:
+            continue
+        line_text = _normalize_boilerplate_line(build_line_text(line_boxes))
+        if line_text in _BOTTOM_BOILERPLATE_LINES:
+            excluded_box_ids.update(id(box) for box in line_boxes)
+    return [box for box in boxes if id(box) not in excluded_box_ids]
+
+
+def _get_image_height(image_bytes: bytes) -> float:
+    from PIL import Image
+
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        return float(image.height)
 
 
 @lru_cache(maxsize=2)
@@ -63,7 +101,12 @@ def process_pdf_with_spatial_ocr(
     all_pages_boxes: List[List[TextBox]] = []
     for img_bytes in images:
         raw_ocr = run_ocr_on_image(img_bytes, lang)
-        layout_text, boxes = process_ocr_results_to_layout_text(raw_ocr)
+        boxes = parse_ocr_boxes(raw_ocr)
+        boxes = _filter_bottom_boilerplate_boxes(
+            boxes,
+            _get_image_height(img_bytes),
+        )
+        layout_text = reconstruct_layout_text(boxes)
         all_pages_text.append(layout_text)
         all_pages_boxes.append(boxes)
     combined_text = "\n\n--- PAGE BREAK ---\n\n".join(all_pages_text)
@@ -74,8 +117,14 @@ def process_image_with_spatial_ocr(
     image_path: Path,
     lang: str = None,
 ) -> Tuple[str, List[List[TextBox]]]:
-    raw_ocr = run_ocr_on_image(image_path.read_bytes(), lang)
-    layout_text, boxes = process_ocr_results_to_layout_text(raw_ocr)
+    image_bytes = image_path.read_bytes()
+    raw_ocr = run_ocr_on_image(image_bytes, lang)
+    boxes = parse_ocr_boxes(raw_ocr)
+    boxes = _filter_bottom_boilerplate_boxes(
+        boxes,
+        _get_image_height(image_bytes),
+    )
+    layout_text = reconstruct_layout_text(boxes)
     return layout_text, [boxes]
 
 
@@ -99,6 +148,7 @@ def process_pdf_with_region_ocr(
             page_height = float(pix.height)
             raw_ocr = run_ocr_on_image(img_bytes, lang)
             boxes = parse_ocr_boxes(raw_ocr)
+            boxes = _filter_bottom_boilerplate_boxes(boxes, page_height)
             all_pages_boxes.append(boxes)
             upper_text, middle_text, lower_text = reconstruct_region_texts(
                 boxes, page_height
@@ -148,6 +198,7 @@ def process_pdf_with_florence_regions(
             page_height = float(pix.height)
             raw_ocr = run_ocr_on_image(img_bytes, lang)
             boxes = parse_ocr_boxes(raw_ocr)
+            boxes = _filter_bottom_boilerplate_boxes(boxes, page_height)
             all_pages_boxes.append(boxes)
             if use_florence and boxes:
                 try:

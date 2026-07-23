@@ -56,8 +56,8 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
-- Test sonucu: `179 passed` (Ubuntu WSL2)
-- Benchmark doğruluk skoru: `%80.21` (Temel model: `%69.40`, Net artış: `+%10.81` puan)
+- Test sonucu: `194 passed` (Ubuntu WSL2)
+- Regresyon benchmark v3: `%69.2` doğruluk, `%49.9` kesinlik, `%91.3` geri çağırma, `%64.5` F1 ve `%100` XSD geçişi
 
 Kod düzenleme, Git işlemleri, testler ve sunucu doğrudan WSL ext4 dosya sistemi
 içinde yürütülür. Windows tarafında ikinci bir kaynak kopya veya senkronizasyon
@@ -197,16 +197,39 @@ yüklenir. Tüm model sonuçları kullanıcı onayından geçmelidir.
 
 Modelin konşimento talimatı (Shipping Instruction) belgelerindeki JSON ayrıştırma başarısını artırmak amacıyla Unsloth kütüphanesi ile Google Colab (A100 GPU) ortamında 4-bit LoRA (PEFT) ince ayarı uygulanmıştır:
 
-- **Eğitim Veri Seti (`veriler/si_training.jsonl`):** Veri çoğaltma (data augmentation) ve gürültü ekleme yöntemleriyle 231 adede çıkarılmış zorlu konşimento metinleri.
+- **Eski Eğitim Veri Seti (`veriler/si_training.jsonl`):** Tam ve yakın benchmark türevleri içerdiği için yeni eğitimlerde kullanılmaz.
+- **Phase 3 Temiz Kaynak (`veriler/si_training_phase3_clean.jsonl`):** 213 kayıttan 42 tam veya yakın benchmark türevi çıkarıldıktan sonra kalan 171 kaynak kayıt.
 - **Eğitim Paketi:** `notebooks/CerberusVision_Qwen_LoRA.ipynb` notebook'u ve Google Drive yüklemesine hazır `CerberusVision_Colab_Egitim_Seti/` paketi.
 - **Eğitim Yapılandırması:** Unsloth bellek optimizasyonu, 4-bit kuantizasyon, veri paketleme (`packing=True`), 20 adımda bir otomatik Google Drive yedekleme ve kesinti sonrası otomatik devam etme (`resume_from_checkpoint`).
 - **Model Adaptörü:** Eğitilen LoRA ağırlıkları projedeki `models/qwen2.5-7b-cerberus-lora/` dizinine entegre edilmiştir.
-- **Benchmark Doğrulama Sonuçları (`scripts/evaluate_qwen.py`):**
-  - **Test Edilen Doküman Sayısı:** 12 Adet Karmaşık Konşimento
-  - **Genel Doğruluk Oranı (Accuracy):** %80.21 (Önceki baseline: %69.40, Net İyileşme: +%10.81 puan / %15.57 bağıl artış)
-  - **Toplam Denetlenen Alan Sayısı:** 480 Alan
-  - **Doğru Çıkarılan Alan:** 385 / 480
-  - **Eksik Alan Oranı (Missing):** %3.3 (16 alan)
+- **Geçmiş Deneysel Sonuç (`scripts/evaluate_qwen.py`):** 12 belge ve 480 alan üzerinde `%80.21` doğruluk raporlanmıştır. İlgili eğitim akışında benchmark fixture'ları eğitim verisine de dahil edildiği için bu sonuç bağımsız genelleme ölçümü değildir ve temel modele göre iyileşme kanıtı olarak kullanılmaz.
+- **Veri İzolasyonu:** `scripts/prepare_training_data.py` kaynak gruplarını train/validation ayrımından önce belirler, augmentation işlemini yalnızca train üzerinde uygular ve değerlendirme benzerliğinde fail-closed davranır.
+
+### Phase 3 temiz veri ve eğitim kapısı
+
+Tekrar üretilebilir temiz split ve manifest üretimi:
+
+```bash
+.venv/bin/python scripts/prepare_training_data.py --source-data veriler/si_training.jsonl --output-dir veriler/phase3_splits --sanitized-source-output veriler/si_training_phase3_clean.jsonl --drop-forbidden-overlaps --augment 1 --validation-ratio 0.2 --seed 3407
+```
+
+Üretilen sabit split:
+
+- 137 train kaynak kaydı
+- 132 güvenli augmentation kaydı
+- 34 saf validation kaydı
+- 42 dışlanan benchmark türevi
+- Validation ile çakıştığı için atlanan 5 augmentation türevi
+
+GPU eğitimi başlatılmadan önce hash ve split doğrulaması:
+
+```bash
+.venv/bin/python scripts/train_lora.py --train-data veriler/phase3_splits/train.jsonl --validation-data veriler/phase3_splits/validation.jsonl --manifest veriler/phase3_splits/manifest.json --output models/phase3-clean-run --qlora --dry-run
+```
+
+`--dry-run` kaldırıldığında eğitim yeni ve boş bir output dizini gerektirir.
+Eğitim en fazla 10 epoch sürer; 10 adımda bir validation/save yapılır ve
+validation loss üç değerlendirme boyunca iyileşmezse early stopping uygulanır.
 
 ## İlk WSL2 kurulumu
 
@@ -552,7 +575,7 @@ JSON raporu (`--output`) ve HTML raporu (`--html`).
 | `narrative_unstructured_benchmark.json` | E-posta formatı, tablosuz serbest metin | Yüksek | 47 |
 | `edge_cases_rule_traps.json` | 45 HC REEFER, US formatı, COP/RIO port prefix | Yüksek | 53 |
 
-### Benchmark sonuçları (v3, 2026-07-23)
+### Regresyon benchmark başlangıç sonuçları (v3, 2026-07-23)
 
 | Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
 |---|---|---|---|---|
@@ -565,14 +588,51 @@ JSON raporu (`--output`) ve HTML raporu (`--html`).
 
 Tüm 13 belge **XSD doğrulamasından geçti** (%100).
 
+Bu 13 vaka önceki eğitim akışında kullanılmış olabileceğinden yalnızca kod
+regresyonlarını karşılaştırmak için kullanılır. Model genellemesi, eğitim ve prompt
+geliştirme süreçlerinde hiç kullanılmamış ayrı bir holdout veri setiyle ölçülmelidir.
+
+### Precision safeguard doğrulaması (v4, 2026-07-23)
+
+Adres gürültüsü temizliği, muhafazakâr B/L tekilleştirmesi ve alt bölge matbu
+satır filtresi sonrasında 12 salt metin vakanın sonuçları v3 ile birebir aynı
+kalmıştır. İlk tam çalıştırmada tek PDF vaka `%23.1`, aynı vakanın tekrarında
+`%84.6` doğruluk üretmiştir. Filtre denetiminde bu PDF'den hiçbir OCR kutusu
+kaldırılmamıştır; fark OCR/model çalışma zamanı değişkenliğidir.
+
+PDF tekrar sonucu 12 sabit vakayla birleştirildiğinde genel metrikler `%69.01`
+doğruluk, `%50.53` kesinlik, `%90.76` geri çağırma, `%64.92` F1 ve `%100`
+XSD geçişidir. `%88` geri çağırma tabanı ve `%100` XSD kriteri korunmuş,
+ancak `%58` kesinlik hedefi sağlanmamıştır.
+
+### Donmuş OCR ve deterministik tekrar
+
+PDF tabanlı `TR_Konsimento_Talimati` vakasının üst, orta ve alt OCR bölgeleri
+`tests/fixtures/qwen_benchmark/frozen_ocr/tr_konsimento_ocr.json` içinde
+SHA-256 ile dondurulmuştur. Model değişiklikleri bu sabit OCR girdisiyle
+karşılaştırılır; canlı PDF OCR koşusu ayrı bir kararlılık testidir.
+
+```bash
+.venv/bin/python scripts/benchmark_accuracy.py --pdf-only --repeat 2 --output benchmark_results_frozen_ocr_repeat.json --html benchmark_report_frozen_ocr_repeat.html
+```
+
+Rapor; OCR, gerçek model çıktısı ve ham model çıktısı hash'lerini, Qwen model
+manifestini, Florence yerleşim adaptörü manifestini, prompt hash'ini ve
+generation config hash'ini içerir. Tekrarlar
+arasında hash değişirse komut başarısız sonuç koduyla kapanır.
+Benchmark çalışması Qwen pipeline'ını tekrarlar arasında sıfırlar ve OpenVINO
+çıkarımını desteklenen tek stream ayarıyla çalıştırır. Aynı komuttaki çıktı
+hash'leri karşılaştırılır; ayrı GPU süreçleri arasındaki olası sayısal oynaklık
+ayrı raporların hash'leri karşılaştırılarak izlenmelidir.
+
 ### Deterministik kural motorları
 
 LLM çıkarımı sonrası `normalize_extracted_instruction()` içinde çalışan bu kurallar
 modelin sayısal ve format hatalarını düzeltir, eksik verileri OCR'dan tamamlar:
 
-- **Spatial Y-Chunking (Faz 1):** Konteyner referanslarına (`[A-Z]{4}\d{7}`) göre
-  alt bölge metni izole parçalara bölünür; Stage 3 her konteyner için bağımsız
-  çalışarak kargo-konteyner karışmasını önler.
+- **Üç Aşamalı Bölgesel Çıkarım:** Stage 3, orta ve alt bölge metnini birlikte
+  işler. Konteyner bazlı spatial chunking, önceki benchmark gerilemesi nedeniyle
+  etkin değildir.
 - **ISO 6346 Konteyner Regex:** OCR metninde `[A-Z]{4}\d{7}` kalıbıyla konteyner
   numaraları taranır, kontrol basamağı doğrulanır ve LLM'in bulamadığı konteynerler
   `equipment_list`'e enjekte edilir.
