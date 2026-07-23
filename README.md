@@ -57,6 +57,7 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
 - Test sonucu: `179 passed` (Ubuntu WSL2)
+- Benchmark doğruluk skoru: `%80.21` (Temel model: `%69.40`, Net artış: `+%10.81` puan)
 
 Kod düzenleme, Git işlemleri, testler ve sunucu doğrudan WSL ext4 dosya sistemi
 içinde yürütülür. Windows tarafında ikinci bir kaynak kopya veya senkronizasyon
@@ -202,7 +203,7 @@ Modelin konşimento talimatı (Shipping Instruction) belgelerindeki JSON ayrış
 - **Model Adaptörü:** Eğitilen LoRA ağırlıkları projedeki `models/qwen2.5-7b-cerberus-lora/` dizinine entegre edilmiştir.
 - **Benchmark Doğrulama Sonuçları (`scripts/evaluate_qwen.py`):**
   - **Test Edilen Doküman Sayısı:** 12 Adet Karmaşık Konşimento
-  - **Genel Doğruluk Oranı (Accuracy):** %80.21
+  - **Genel Doğruluk Oranı (Accuracy):** %80.21 (Önceki baseline: %69.40, Net İyileşme: +%10.81 puan / %15.57 bağıl artış)
   - **Toplam Denetlenen Alan Sayısı:** 480 Alan
   - **Doğru Çıkarılan Alan:** 385 / 480
   - **Eksik Alan Oranı (Missing):** %3.3 (16 alan)
