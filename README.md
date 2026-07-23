@@ -552,16 +552,16 @@ JSON raporu (`--output`) ve HTML raporu (`--html`).
 | `narrative_unstructured_benchmark.json` | E-posta formatı, tablosuz serbest metin | Yüksek | 47 |
 | `edge_cases_rule_traps.json` | 45 HC REEFER, US formatı, COP/RIO port prefix | Yüksek | 53 |
 
-### Benchmark sonuçları (v2, 2026-07-21)
+### Benchmark sonuçları (v3, 2026-07-23)
 
 | Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
 |---|---|---|---|---|
-| Taraflar | %92.5 | %41.6 | %95.4 | %57.9 |
-| Lojistik & Taşıma | %84.4 | %48.2 | %96.4 | %64.3 |
-| Belge Bilgileri | %80.0 | %59.8 | %83.9 | %69.8 |
-| Yük Kalemleri | %73.5 | %62.8 | %96.2 | %76.0 |
-| Konteyner & Ekipman | %41.4 | %42.9 | %77.4 | %55.2 |
-| **Genel** | **%70.0** | **%52.7** | **%90.9** | **%66.7** |
+| Belge Bilgileri | %80.0 | %51.5 | %86.7 | %64.6 |
+| Taraflar | %92.5 | %40.0 | %95.4 | %56.4 |
+| Lojistik & Taşıma | %87.5 | %46.7 | %96.5 | %62.9 |
+| Konteyner & Ekipman | %41.4 | %38.4 | %77.4 | %51.3 |
+| Yük Kalemleri | %71.1 | %63.0 | %96.0 | %76.1 |
+| **Genel** | **%69.2** | **%49.9** | **%91.3** | **%64.5** |
 
 Tüm 13 belge **XSD doğrulamasından geçti** (%100).
 
