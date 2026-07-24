@@ -13,10 +13,14 @@ _florence_pipeline = None
 def get_florence_pipeline():
     global _florence_pipeline
     from app.config import settings
+    from app.llm.lora_adapter import classify_adapter
     import torch
     
-    current_lora_enabled = settings.lora_enabled
     current_lora_path = settings.lora_adapter_path if settings.lora_adapter_path else ""
+    current_lora_enabled = (
+        settings.lora_enabled
+        and classify_adapter(current_lora_path) == "florence"
+    )
     
     if _florence_pipeline is not None:
         model, processor, cached_lora_enabled, cached_lora_path = _florence_pipeline

@@ -56,7 +56,7 @@ Instruction üretmez. Nihai JSON/XML her zaman yerel model çıktısından üret
 - Python: `3.12.13` (`uv` tarafından yönetilir)
 - OpenVINO / OpenVINO GenAI: `2025.4`
 - GPU: Intel Arc 140V iGPU; OpenVINO aygıtları `CPU`, `GPU`
-- Test sonucu: `194 passed` (Ubuntu WSL2)
+- Test sonucu: `211 passed` (Ubuntu WSL2)
 - Regresyon benchmark v3: `%69.2` doğruluk, `%49.9` kesinlik, `%91.3` geri çağırma, `%64.5` F1 ve `%100` XSD geçişi
 
 Kod düzenleme, Git işlemleri, testler ve sunucu doğrudan WSL ext4 dosya sistemi
@@ -183,27 +183,77 @@ kontrol edilmelidir.
 
 ## Yerel model
 
-CerberusVision tek genel amaçlı yerel model kullanır: Qwen2.5-7B-Instruct INT4
-OpenVINO. Varsayılan aygıt Intel Arc 140V GPU'dur. İkinci bir genel amaçlı model
-aynı anda veya alternatif kalite profili olarak çalıştırılmaz; bellek ve bakım
-bütçesi 7B çıkarım, deterministik normalizasyon ve gerektiğinde yine aynı modelle
-yapılan düşük güvenli alan doğrulamasına ayrılır.
+CerberusVision tek temel yerel model kullanır: Qwen2.5-7B-Instruct INT4
+OpenVINO. Varsayılan aygıt Intel Arc 140V GPU'dur. Önceki ve Phase 4 eğitimleri
+ikinci bir 7B model kopyası oluşturmaz; PEFT safetensors adapter'ları
+`openvino_genai.AdapterConfig` ile aynı temel modele çalışma anında bağlanır.
+Bu yapı disk ve bellek maliyetini sınırlarken kullanıcıya eğitim profili seçimi
+sağlar.
 
 Model seçici yalnızca doğrudan çalıştırılabilen OpenVINO dizinlerini etkinleştirir.
 Model değiştirildiğinde mevcut çıkarım hattı sıfırlanır ve yeni model ilk istekte
 yüklenir. Tüm model sonuçları kullanıcı onayından geçmelidir.
 
+### Ayarlardan model eğitim profili seçimi
+
+Ayarlar ekranındaki **Model Eğitim Profili** alanı aşağıdaki çalışma modlarını
+sunar:
+
+- **Eğitilmiş adapter kullan kapalı:** Temel `Qwen-2.5-7B-Instruct-INT4`.
+- **`[Qwen] Önceki Eğitim`:** 23.07.2026 tarihli önceki Qwen LoRA adapter'ı.
+- **`[Qwen] Phase 4 - Temiz Veri`:** 24.07.2026 tarihli temiz eğitim adapter'ı.
+- **`[Florence] Mizanpaj`:** Yalnız Florence-2 bölge/mizanpaj adapter'ı.
+
+Adapter taban modeli `adapter_config.json` üzerinden sınıflandırılır. Qwen
+adapter'ı Florence pipeline'ına, Florence adapter'ı Qwen pipeline'ına
+yüklenmez. Seçim değiştiğinde Qwen pipeline önbelleği sıfırlanır. Runtime API
+yalnız `models/` altında keşfedilmiş adapter yollarını kabul eder.
+
+Kurulu Qwen adapter dizinleri:
+
+```text
+models/Qwen-2.5-7B-Instruct-Legacy-LoRA
+models/Qwen-2.5-7B-Instruct-Phase4-LoRA
+```
+
+Her iki dizindeki `training_origin.json`, kaynak ZIP adını ve ZIP SHA-256
+değerini taşır. Model ağırlıkları `models/` altında tutulduğu için Git'e
+eklenmez.
+
 ### Qwen-2.5 LoRA Eğitimi ve Benchmark Değerlendirmesi
 
-Modelin konşimento talimatı (Shipping Instruction) belgelerindeki JSON ayrıştırma başarısını artırmak amacıyla Unsloth kütüphanesi ile Google Colab (A100 GPU) ortamında 4-bit LoRA (PEFT) ince ayarı uygulanmıştır:
+Modelin konşimento talimatı belgelerindeki JSON ayrıştırma başarısını artırmak
+amacıyla Google Colab Pro A100 üzerinde temiz QLoRA eğitimi hazırlanmıştır:
 
 - **Eski Eğitim Veri Seti (`veriler/si_training.jsonl`):** Tam ve yakın benchmark türevleri içerdiği için yeni eğitimlerde kullanılmaz.
 - **Phase 3 Temiz Kaynak (`veriler/si_training_phase3_clean.jsonl`):** 213 kayıttan 42 tam veya yakın benchmark türevi çıkarıldıktan sonra kalan 171 kaynak kayıt.
-- **Eğitim Paketi:** `notebooks/CerberusVision_Qwen_LoRA.ipynb` notebook'u ve Google Drive yüklemesine hazır `CerberusVision_Colab_Egitim_Seti/` paketi.
-- **Eğitim Yapılandırması:** Unsloth bellek optimizasyonu, 4-bit kuantizasyon, veri paketleme (`packing=True`), 20 adımda bir otomatik Google Drive yedekleme ve kesinti sonrası otomatik devam etme (`resume_from_checkpoint`).
-- **Model Adaptörü:** Eğitilen LoRA ağırlıkları projedeki `models/qwen2.5-7b-cerberus-lora/` dizinine entegre edilmiştir.
+- **Phase 4 Eğitim Paketi:** Google Drive yüklemesine hazır `CerberusVision_Colab_Egitim_Seti/` dizini ayrı train/validation dosyalarını, split manifestini, deney sözleşmesini, notebook'u ve kullanım rehberini içerir.
+- **Eğitim Yapılandırması:** Standart Transformers, TRL ve PEFT ile NF4 QLoRA, completion-only loss, 2048 token sınırı, `packing=False`, 10 adımda validation/save ve early stopping.
+- **Temel Model Güvenliği:** `Qwen/Qwen2.5-7B-Instruct` modeli `a09a35458c702b33eeacc393d103063234e8bc28` revision'ına sabitlenir ve uzak model kodu çalıştırılmaz.
+- **Eski Model Adaptörü:** Önceki LoRA yeni eğitime başlangıç yapılmadan ayrı profil olarak korunur; Phase 4 eğitimi bu adaptörden veya eski checkpoint'lerden devam etmez.
 - **Geçmiş Deneysel Sonuç (`scripts/evaluate_qwen.py`):** 12 belge ve 480 alan üzerinde `%80.21` doğruluk raporlanmıştır. İlgili eğitim akışında benchmark fixture'ları eğitim verisine de dahil edildiği için bu sonuç bağımsız genelleme ölçümü değildir ve temel modele göre iyileşme kanıtı olarak kullanılmaz.
 - **Veri İzolasyonu:** `scripts/prepare_training_data.py` kaynak gruplarını train/validation ayrımından önce belirler, augmentation işlemini yalnızca train üzerinde uygular ve değerlendirme benzerliğinde fail-closed davranır.
+
+### Temel, önceki eğitim ve Phase 4 benchmark karşılaştırması
+
+Üç profil aynı 13 vaka, 484 beklenen alan, sabit fixture/donmuş OCR girdileri, tek
+deterministik tekrar ve aynı OpenVINO INT4 temel model üzerinde ölçüldü:
+
+| Profil | Doğruluk | Precision | Recall | F1 | XSD | Çıkarım Hatası | Süre |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Temel Qwen | %69,01 | %49,85 | %90,76 | %64,35 | 13/13 | 0 | 817,03 sn |
+| Önceki eğitim | %76,65 | %57,79 | %90,27 | %70,47 | 12/13 | 1 | 690,09 sn |
+| Phase 4 temiz eğitim | %76,86 | %53,45 | %91,18 | %67,39 | 12/13 | 1 | 963,18 sn |
+
+Önceki adapter en yüksek F1 değerini, Phase 4 en yüksek doğruluk ve recall
+değerini verdi. Ancak iki adapter da `TR_Konsimento_Talimati` vakasında uzun ve
+kapanmamış JSON üreterek çıkarım hatasına düştü. Bu nedenle adapter'lar
+arayüzden seçilebilir aday profillerdir; bağımsız holdout ve 13/13 XSD kapısı
+geçilmeden hiçbiri zorunlu üretim varsayılanı yapılmaz.
+
+Ham raporlar `logs/phase4_model_comparison/base.json`,
+`logs/phase4_model_comparison/legacy.json` ve
+`logs/phase4_model_comparison/phase4.json` yollarındadır.
 
 ### Phase 3 temiz veri ve eğitim kapısı
 
@@ -230,6 +280,50 @@ GPU eğitimi başlatılmadan önce hash ve split doğrulaması:
 `--dry-run` kaldırıldığında eğitim yeni ve boş bir output dizini gerektirir.
 Eğitim en fazla 10 epoch sürer; 10 adımda bir validation/save yapılır ve
 validation loss üç değerlendirme boyunca iyileşmezse early stopping uygulanır.
+
+### Phase 4 Colab A100 eğitimi
+
+Paket Google Drive ana dizinine `CerberusVision_Colab_Egitim_Seti` adıyla
+yüklenir ve aşağıdaki notebook sırayla çalıştırılır:
+
+```text
+CerberusVision_Colab_Egitim_Seti/CerberusVision_Qwen_LoRA.ipynb
+```
+
+Paket Colab'a yüklenmeden önce yerel bütünlük kontrolü:
+
+```bash
+.venv/bin/python scripts/validate_phase4_colab_package.py
+```
+
+Doğrulayıcı train, validation, manifest ve sözleşme hash'lerini; kayıt
+sayılarını; JSON çıktılarını; normalize split örtüşmesini; notebook Python
+hücrelerinin sözdizimini; eski veri dosyası kullanımını ve
+`trust_remote_code` yasağını kontrol eder.
+
+Phase 4 sözleşmesi:
+
+- 269 train kaydı
+- 34 validation kaydı
+- Sıfır normalize train/validation örtüşmesi
+- En fazla 1667 gözlenen token ve 2048 token eğitim sınırı
+- NF4 4-bit QLoRA, rank 16, alpha 32 ve dropout 0.05
+- Etkin batch 16
+- 9 warmup optimizer adımı
+- En fazla 10 epoch
+- Her 10 optimizer adımında validation ve checkpoint
+- Üç validation ölçümü boyunca iyileşme yoksa early stopping
+- En düşük `eval_loss` checkpoint'inin nihai adaptör olarak kaydedilmesi
+
+Tamamlanan A100 koşusunda eski adapter kullanılmadı, en iyi checkpoint 60.
+adımda seçildi, nihai global adım 90 ve en iyi validation loss
+`0.0009916166` olarak kaydedildi. Bu validation sonucu bağımsız holdout değildir;
+üretim kararı yukarıdaki donmuş benchmark ve ileride toplanacak yeni holdout
+belgeleriyle verilir.
+
+İlk koşuda `RESUME_FROM_MATCHING_CHECKPOINT=False` kalır. Resume yalnız aynı
+Phase 4 sözleşme hash'ine ait yarım kalmış checkpoint için açılır. Bağımsız
+holdout belgeleri Colab paketine yüklenmez ve model seçimi için kullanılmaz.
 
 ## İlk WSL2 kurulumu
 
@@ -410,6 +504,8 @@ Audit CLI:
 | `OPENVINO_DEVICE` | `GPU` | `GPU` veya `CPU` |
 | `OPENVINO_CACHE_DIR` | `.openvino_cache` | Derlenmiş OpenVINO önbelleği |
 | `OPENVINO_KV_CACHE_PRECISION` | `u8` | Daha düşük KV-cache bellek kullanımı |
+| `LORA_ENABLED` | `0` | Seçili eğitim veya mizanpaj adapter'ını etkinleştirir |
+| `LORA_ADAPTER_PATH` | boş | `models/` altında kurulu adapter dizini |
 | `SSE_TIMEOUT_SECONDS` | `1800` | Uzun yerel çıkarım için SSE bekleme süresi |
 | `CERBERUS_HOST` | `127.0.0.1` | Uvicorn dinleme adresi |
 | `CERBERUS_API_KEY` | boş | Loopback dışı erişimde zorunlu Bearer/API anahtarı |

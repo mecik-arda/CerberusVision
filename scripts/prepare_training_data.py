@@ -59,14 +59,22 @@ def _token_set(text: str) -> set[str]:
     return set(normalize_document_text(text).split())
 
 
-def token_jaccard_similarity(left: str, right: str) -> float:
-    left_tokens = _token_set(left)
-    right_tokens = _token_set(right)
+def _token_set_jaccard_similarity(
+    left_tokens: set[str],
+    right_tokens: set[str],
+) -> float:
     if not left_tokens and not right_tokens:
         return 1.0
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def token_jaccard_similarity(left: str, right: str) -> float:
+    return _token_set_jaccard_similarity(
+        _token_set(left),
+        _token_set(right),
+    )
 
 
 def _clean_ocr_for_augmentation(text: str, rng: random.Random) -> str:
@@ -183,9 +191,16 @@ def find_forbidden_overlaps(
     near_duplicate_threshold: float,
 ) -> list[dict[str, Any]]:
     overlaps: list[dict[str, Any]] = []
-    for record in records:
+    record_token_sets = [_token_set(record["input"]) for record in records]
+    fixture_token_sets = [
+        _token_set(fixture["text"]) for fixture in forbidden_fixtures
+    ]
+    for record, record_tokens in zip(records, record_token_sets):
         best_overlap: dict[str, Any] | None = None
-        for fixture in forbidden_fixtures:
+        for fixture, fixture_tokens in zip(
+            forbidden_fixtures,
+            fixture_token_sets,
+        ):
             if record["source_hash"] == fixture["source_hash"]:
                 best_overlap = {
                     "session_id": record["session_id"],
@@ -194,9 +209,9 @@ def find_forbidden_overlaps(
                     "similarity": 1.0,
                 }
                 break
-            similarity = token_jaccard_similarity(
-                record["input"],
-                fixture["text"],
+            similarity = _token_set_jaccard_similarity(
+                record_tokens,
+                fixture_tokens,
             )
             if similarity >= near_duplicate_threshold and (
                 best_overlap is None
@@ -266,6 +281,7 @@ def assign_source_groups(
     near_duplicate_threshold: float,
 ) -> list[dict[str, Any]]:
     parents = list(range(len(records)))
+    record_token_sets = [_token_set(record["input"]) for record in records]
 
     def find(index: int) -> int:
         while parents[index] != index:
@@ -285,9 +301,9 @@ def assign_source_groups(
             if left_record["source_hash"] == right_record["source_hash"]:
                 union(left_index, right_index)
                 continue
-            similarity = token_jaccard_similarity(
-                left_record["input"],
-                right_record["input"],
+            similarity = _token_set_jaccard_similarity(
+                record_token_sets[left_index],
+                record_token_sets[right_index],
             )
             if similarity >= near_duplicate_threshold:
                 union(left_index, right_index)

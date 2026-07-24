@@ -59,6 +59,7 @@ from app.llm.inference import (
     run_inference_with_fallback,
     run_refinement_with_fallback,
 )
+from app.llm.lora_adapter import classify_adapter
 from app.llm.translation import translate_instruction_content
 from app.llm.cloud_inference import run_deepseek_review
 from app.llm.local_audit import assess_local_result, should_run_automatic_cloud_review
@@ -199,10 +200,39 @@ def _discover_lora_adapters() -> list[dict]:
             continue
         adapter_name = candidate.name
         base_model = config_data.get("base_model_name_or_path", "")
+        adapter_target = classify_adapter(candidate)
+        origin_path = candidate / "training_origin.json"
+        try:
+            origin_data = json.loads(origin_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            origin_data = {}
+        configured_display_name = origin_data.get("display_name")
+        configured_profile = origin_data.get("profile")
+        if isinstance(configured_display_name, str) and isinstance(
+            configured_profile,
+            str,
+        ):
+            display_name = configured_display_name
+            profile = configured_profile
+        elif adapter_target == "qwen" and (candidate / "training_report.json").is_file():
+            display_name = "[Qwen] Phase 4 - Temiz Veri"
+            profile = "phase4_clean"
+        elif adapter_target == "qwen":
+            display_name = "[Qwen] Önceki Eğitim"
+            profile = "legacy"
+        elif adapter_target == "florence":
+            display_name = "[Florence] Mizanpaj"
+            profile = "layout"
+        else:
+            display_name = f"[Bilinmeyen] {adapter_name}"
+            profile = "unknown"
         adapters.append({
             "name": adapter_name,
+            "display_name": display_name,
             "path": str(candidate.resolve()),
             "base_model": base_model,
+            "target": adapter_target,
+            "profile": profile,
         })
     return adapters
 
@@ -908,10 +938,33 @@ async def update_runtime_settings(request: RuntimeSettingsUpdate):
         elif request.layout_engine == "hybrid":
             settings.region_segmentation_enabled = True
             settings.florence_enabled = True
+    previous_lora_configuration = (
+        settings.lora_enabled,
+        settings.lora_adapter_path,
+    )
+    requested_adapter_path = None
+    if request.lora_adapter_path is not None:
+        requested_adapter_path = request.lora_adapter_path.strip()
+        if requested_adapter_path:
+            requested_adapter_path = str(Path(requested_adapter_path).resolve())
+            selectable_adapter_paths = {
+                adapter["path"] for adapter in _discover_lora_adapters()
+            }
+            if requested_adapter_path not in selectable_adapter_paths:
+                return JSONResponse(
+                    status_code=422,
+                    content={"error": "Selected LoRA adapter is not installed."},
+                )
     if request.lora_enabled is not None:
         settings.lora_enabled = request.lora_enabled
-    if request.lora_adapter_path is not None:
-        settings.lora_adapter_path = request.lora_adapter_path
+    if requested_adapter_path is not None:
+        settings.lora_adapter_path = requested_adapter_path
+    current_lora_configuration = (
+        settings.lora_enabled,
+        settings.lora_adapter_path,
+    )
+    if current_lora_configuration != previous_lora_configuration:
+        reset_llm_pipeline()
     if request.region_upper_ratio is not None:
         settings.region_upper_ratio = request.region_upper_ratio
     if request.region_middle_ratio is not None:

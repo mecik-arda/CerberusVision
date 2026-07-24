@@ -175,10 +175,10 @@ const TRANSLATIONS = {
         'settings.engineYRatio': 'Y-Oranı Ayrıştırması (%35 / %65 Statik)',
         'settings.engineHybrid': 'Hibrit (Florence-2 VLM + Akıllı Fallback)',
         'settings.engineOff': 'Kapalı (Düz OCR)',
-        'settings.loraHeading': 'LoRA İnce Ayar',
-        'settings.loraEnable': 'LoRA İnce Ayarını Etkinleştir',
-        'settings.loraAdapter': 'LoRA Adapter Seçimi',
-        'settings.loraNone': 'Yüklü adapter yok',
+        'settings.loraHeading': 'Model Eğitim Profili',
+        'settings.loraEnable': 'Eğitilmiş adapter kullan',
+        'settings.loraAdapter': 'Model Sürümü',
+        'settings.loraNone': 'Temel Qwen (LoRA kapalı)',
         'settings.advancedHeading': 'Gelişmiş Parametreler',
         'settings.upperBoundary': 'Üst Bölge Sınırı',
         'settings.middleBoundary': 'Orta Bölge Sınırı',
@@ -383,10 +383,10 @@ const TRANSLATIONS = {
         'settings.engineYRatio': 'Y-Ratio Segmentation (35% / 65% Static)',
         'settings.engineHybrid': 'Hybrid (Florence-2 VLM + Smart Fallback)',
         'settings.engineOff': 'Off (Plain OCR)',
-        'settings.loraHeading': 'LoRA Fine-Tuning',
-        'settings.loraEnable': 'Enable LoRA Fine-Tuning',
-        'settings.loraAdapter': 'LoRA Adapter Selection',
-        'settings.loraNone': 'No adapters installed',
+        'settings.loraHeading': 'Model Training Profile',
+        'settings.loraEnable': 'Use a trained adapter',
+        'settings.loraAdapter': 'Model Version',
+        'settings.loraNone': 'Base Qwen (LoRA disabled)',
         'settings.advancedHeading': 'Advanced Parameters',
         'settings.upperBoundary': 'Upper Region Boundary',
         'settings.middleBoundary': 'Middle Region Boundary',
@@ -600,7 +600,7 @@ function renderRuntimeSettings(data) {
     loraEnabled.checked = inferenceConfig.lora_enabled || false;
     const adapterList = inferenceConfig.lora_adapters || [];
     loraAdapterPath.innerHTML = adapterList.length
-        ? adapterList.map(function (a) { return '<option value="' + escapeHtml(a.path || '') + '">' + escapeHtml(a.name || a.path || '') + '</option>'; }).join('')
+        ? adapterList.map(function (a) { return '<option value="' + escapeHtml(a.path || '') + '">' + escapeHtml(a.display_name || a.name || a.path || '') + '</option>'; }).join('')
         : '<option value="">' + t('settings.loraNone') + '</option>';
     if (inferenceConfig.lora_adapter_path && adapterList.some(function (a) { return a.path === inferenceConfig.lora_adapter_path; })) {
         loraAdapterPath.value = inferenceConfig.lora_adapter_path;

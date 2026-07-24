@@ -207,7 +207,6 @@ def load_model_with_quantization(
 
     tokenizer = AutoTokenizer.from_pretrained(
         base_model,
-        trust_remote_code=True,
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -219,14 +218,12 @@ def load_model_with_quantization(
             base_model,
             quantization_config=quantization_config,
             device_map="auto",
-            trust_remote_code=True,
         )
     else:
         model = AutoModelForCausalLM.from_pretrained(
             base_model,
             torch_dtype=torch.float16,
             device_map="auto",
-            trust_remote_code=True,
         )
     if model is None or tokenizer is None or tokenizer.pad_token is None:
         raise RuntimeError("Model or tokenizer initialization failed")
@@ -255,7 +252,6 @@ def export_to_openvino(
         base_model_id,
         torch_dtype=torch.float16,
         device_map="auto",
-        trust_remote_code=True,
     )
     model = PeftModel.from_pretrained(base_model, str(adapter_path))
     merged_model = model.merge_and_unload()
@@ -264,7 +260,6 @@ def export_to_openvino(
         merged_model.save_pretrained(str(merged_path))
         tokenizer = AutoTokenizer.from_pretrained(
             str(adapter_path),
-            trust_remote_code=True,
         )
         tokenizer.save_pretrained(str(merged_path))
         export_result = subprocess.run(

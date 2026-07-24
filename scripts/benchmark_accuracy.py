@@ -104,6 +104,8 @@ def _artifact_manifest(path_value: str) -> Dict[str, Any]:
 
 
 def _benchmark_provenance() -> Dict[str, Any]:
+    from app.llm.lora_adapter import enabled_adapter_path
+
     prompt_payload = {
         "system_prompt": inference_module._system_prompt,
         "stage_prompts": inference_module._STAGE_PROMPTS,
@@ -124,17 +126,43 @@ def _benchmark_provenance() -> Dict[str, Any]:
         ),
         "inference_mode": settings.inference_mode,
     }
+    qwen_adapter_path = enabled_adapter_path(
+        settings.lora_enabled,
+        settings.lora_adapter_path,
+        "qwen",
+    )
+    florence_adapter_path = enabled_adapter_path(
+        settings.lora_enabled,
+        settings.lora_adapter_path,
+        "florence",
+    )
+    llm_adapter_manifest = (
+        _artifact_manifest(str(qwen_adapter_path.parent))
+        if qwen_adapter_path
+        else {
+            "path": None,
+            "exists": False,
+        }
+    )
     return {
         "llm_model": _artifact_manifest(settings.model.model_path),
         "llm_adapter": {
-            "path": None,
-            "exists": False,
-            "runtime_mode": "merged_openvino_model",
+            **llm_adapter_manifest,
+            "runtime_mode": (
+                "openvino_genai_dynamic_lora"
+                if qwen_adapter_path
+                else "base_openvino_model"
+            ),
         },
-        "layout_adapter": _artifact_manifest(
-            settings.lora_adapter_path
+        "layout_adapter": (
+            _artifact_manifest(str(florence_adapter_path.parent))
+            if florence_adapter_path
+            else {
+                "path": None,
+                "exists": False,
+            }
         ),
-        "layout_lora_enabled": settings.lora_enabled,
+        "layout_lora_enabled": bool(florence_adapter_path),
         "prompt_sha256": _canonical_json_sha256(prompt_payload),
         "generation_config": generation_payload,
         "generation_config_sha256": _canonical_json_sha256(
@@ -327,10 +355,9 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
             eq["is_shipper_owned"] = _text(eq_el, "IsShipperOwned")
             gw_el = eq_el.find("dcsa:CargoGrossWeight", nsmap)
             if gw_el is not None:
+                weight_text = _text(gw_el, "Weight")
                 eq["cargo_gross_weight"] = {
-                    "weight": float(gw_el.find("dcsa:Weight", nsmap).text)
-                    if gw_el.find("dcsa:Weight", nsmap) is not None
-                    else None,
+                    "weight": float(weight_text) if weight_text else None,
                     "unit": _text(gw_el, "Unit"),
                 }
             seals: List[Dict[str, Any]] = []
@@ -419,6 +446,18 @@ def _compute_category_stats(
     return categories
 
 
+def _overall_category_stats(
+    category_stats: Dict[str, CategoryStats],
+) -> CategoryStats:
+    return CategoryStats(
+        tp=sum(stats.tp for stats in category_stats.values()),
+        fp=sum(stats.fp for stats in category_stats.values()),
+        fn=sum(stats.fn for stats in category_stats.values()),
+        total=sum(stats.total for stats in category_stats.values()),
+        correct=sum(stats.correct for stats in category_stats.values()),
+    )
+
+
 def _compute_precision_recall(
     expected_fields: Dict[str, Any],
     actual_fields: Dict[str, Any],
@@ -494,13 +533,7 @@ def _print_report(
             f"  {_format_percent(stats.f1):>13}"
         )
     print("-" * 72)
-    overall_cat = CategoryStats(
-        tp=sum(s.tp for s in category_stats.values()),
-        fp=sum(s.fp for s in category_stats.values()),
-        fn=sum(s.fn for s in category_stats.values()),
-        total=sum(s.total for s in category_stats.values()),
-        correct=sum(s.correct for s in category_stats.values()),
-    )
+    overall_cat = _overall_category_stats(category_stats)
     print(
         f"  {'GENEL TOPLAM':<36}"
         f"  {_format_percent(overall_cat.accuracy):>14}"
@@ -641,20 +674,37 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     if expected is None:
         raise ValueError(f"'{case_name}': expected alani gerekli")
 
-    instruction, raw_output = run_inference_with_fallback(
-        full_ocr, document_language, output_language, segmented_ocr,
-    )
-    actual = instruction.model_dump(mode="json")
-    actual_sha256 = _canonical_json_sha256(actual)
-    raw_output_sha256 = _sha256_text(raw_output)
-
-    xml_str = shipping_instruction_to_xml(instruction)
-    xsd_valid, xsd_errors = validate_xml_against_xsd(xml_str)
-
     expected_sorted = _sort_arrays_by_key(dict(expected))
-    actual_sorted = _sort_arrays_by_key(dict(actual))
     expected_flat = _flatten_ground_truth(expected_sorted)
-    actual_flat = flatten_values(actual_sorted)
+    inference_error = None
+    actual_sha256 = None
+    raw_output_sha256 = None
+    xsd_valid = False
+    xsd_errors: List[str] = []
+    try:
+        instruction, raw_output = run_inference_with_fallback(
+            full_ocr,
+            document_language,
+            output_language,
+            segmented_ocr,
+        )
+        actual = instruction.model_dump(mode="json")
+        actual_sha256 = _canonical_json_sha256(actual)
+        raw_output_sha256 = _sha256_text(raw_output)
+        xml_str = shipping_instruction_to_xml(instruction)
+        xsd_valid, xsd_errors = validate_xml_against_xsd(xml_str)
+        actual_sorted = _sort_arrays_by_key(dict(actual))
+        actual_flat = flatten_values(actual_sorted)
+    except Exception as error:
+        inference_error = {
+            "type": type(error).__name__,
+            "message": str(error)[:2000],
+        }
+        xsd_errors = [
+            f"Inference failed: {inference_error['type']}: "
+            f"{inference_error['message']}"
+        ]
+        actual_flat = {}
 
     evaluation = evaluate_expected_fields(
         dict(expected_flat),
@@ -665,7 +715,12 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     elapsed = time.time() - t_start
-    print(f"{elapsed:.1f}s (dogruluk: %{evaluation['accuracy']:.1f})")
+    status = (
+        f"hata: {inference_error['type']}"
+        if inference_error
+        else f"dogruluk: %{evaluation['accuracy']:.1f}"
+    )
+    print(f"{elapsed:.1f}s ({status})")
 
     return {
         "case_name": case_name,
@@ -674,6 +729,7 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
         "ocr_sha256": ocr_sha256,
         "actual_sha256": actual_sha256,
         "raw_output_sha256": raw_output_sha256,
+        "inference_error": inference_error,
         "xsd_valid": xsd_valid,
         "xsd_error_count": len(xsd_errors),
         "xsd_errors": xsd_errors if not xsd_valid else [],
@@ -776,6 +832,7 @@ def main() -> int:
                 )
 
     category_stats = _compute_category_stats(all_results)
+    overall_category_stats = _overall_category_stats(category_stats)
     _print_report(all_results, category_stats, total_time)
 
     aggregated = aggregate_evaluations(all_results)
@@ -809,6 +866,17 @@ def main() -> int:
                 "correct_fields": stats.correct,
             }
             for cat_name, stats in category_stats.items()
+        },
+        "overall_metrics": {
+            "accuracy": overall_category_stats.accuracy,
+            "precision": overall_category_stats.precision,
+            "recall": overall_category_stats.recall,
+            "f1_score": overall_category_stats.f1,
+            "tp": overall_category_stats.tp,
+            "fp": overall_category_stats.fp,
+            "fn": overall_category_stats.fn,
+            "total_fields": overall_category_stats.total,
+            "correct_fields": overall_category_stats.correct,
         },
         **aggregated,
     }

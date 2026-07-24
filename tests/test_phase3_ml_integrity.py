@@ -1,4 +1,5 @@
 import json
+import inspect
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -6,6 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.llm import inference as inference_module
+from app.llm import evidence_validator as evidence_validator_module
+from app.llm import lora_adapter
 from app.llm.evidence_validator import (
     EvidenceStatus,
     validate_field_evidence,
@@ -13,6 +16,7 @@ from app.llm.evidence_validator import (
 from scripts import benchmark_accuracy
 from scripts import prepare_training_data
 from scripts import train_lora
+from scripts import validate_phase4_colab_package
 
 
 def _source_record(
@@ -337,7 +341,16 @@ def test_benchmark_provenance_distinguishes_llm_and_layout_adapter(
     model_dir.mkdir()
     layout_adapter_dir.mkdir()
     (model_dir / "model.xml").write_text("model", encoding="utf-8")
-    (layout_adapter_dir / "adapter.json").write_text("adapter", encoding="utf-8")
+    (layout_adapter_dir / "adapter_config.json").write_text(
+        json.dumps(
+            {
+                "base_model_name_or_path": "microsoft/Florence-2-base",
+                "peft_type": "LORA",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (layout_adapter_dir / "adapter_model.safetensors").write_bytes(b"adapter")
 
     monkeypatch.setattr(
         benchmark_accuracy.settings.model,
@@ -355,9 +368,51 @@ def test_benchmark_provenance_distinguishes_llm_and_layout_adapter(
 
     assert provenance["llm_model"]["path"] == str(model_dir)
     assert provenance["llm_adapter"]["path"] is None
-    assert provenance["llm_adapter"]["runtime_mode"] == "merged_openvino_model"
+    assert provenance["llm_adapter"]["runtime_mode"] == "base_openvino_model"
     assert provenance["layout_adapter"]["path"] == str(layout_adapter_dir)
     assert provenance["layout_lora_enabled"] is True
+
+
+def test_benchmark_provenance_marks_qwen_adapter_only_as_llm(
+    tmp_path,
+    monkeypatch,
+):
+    model_dir = tmp_path / "qwen_openvino"
+    qwen_adapter_dir = tmp_path / "qwen_adapter"
+    model_dir.mkdir()
+    qwen_adapter_dir.mkdir()
+    (model_dir / "model.xml").write_text("model", encoding="utf-8")
+    (qwen_adapter_dir / "adapter_config.json").write_text(
+        json.dumps(
+            {
+                "base_model_name_or_path": "Qwen/Qwen2.5-7B-Instruct",
+                "peft_type": "LORA",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (qwen_adapter_dir / "adapter_model.safetensors").write_bytes(b"adapter")
+    monkeypatch.setattr(
+        benchmark_accuracy.settings.model,
+        "model_path",
+        str(model_dir),
+    )
+    monkeypatch.setattr(
+        benchmark_accuracy.settings,
+        "lora_adapter_path",
+        str(qwen_adapter_dir),
+    )
+    monkeypatch.setattr(benchmark_accuracy.settings, "lora_enabled", True)
+
+    provenance = benchmark_accuracy._benchmark_provenance()
+
+    assert provenance["llm_adapter"]["path"] == str(qwen_adapter_dir)
+    assert (
+        provenance["llm_adapter"]["runtime_mode"]
+        == "openvino_genai_dynamic_lora"
+    )
+    assert provenance["layout_adapter"]["path"] is None
+    assert provenance["layout_lora_enabled"] is False
 
 
 def test_benchmark_single_stream_configuration(
@@ -368,7 +423,7 @@ def test_benchmark_single_stream_configuration(
     model_dir.mkdir()
     captured = {}
 
-    def create_pipeline(model_path, device, config):
+    def create_pipeline(model_path, device, **config):
         captured["model_path"] = model_path
         captured["device"] = device
         captured["config"] = config
@@ -389,3 +444,292 @@ def test_benchmark_single_stream_configuration(
     assert captured["config"]["NUM_STREAMS"] == "1"
     assert "INFERENCE_NUM_THREADS" not in captured["config"]
     inference_module.reset_llm_pipeline()
+
+
+def test_benchmark_records_inference_failure_as_failed_case(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        benchmark_accuracy,
+        "run_inference_with_fallback",
+        lambda *args: (_ for _ in ()).throw(ValueError("malformed output")),
+    )
+    case = {
+        "case_name": "inference-failure",
+        "ocr_text": "BOOKING REFERENCE ABC123",
+        "expected": {
+            "carrier_booking_reference": "ABC123",
+        },
+    }
+
+    result = benchmark_accuracy._evaluate_case(case)
+
+    assert result["inference_error"]["type"] == "ValueError"
+    assert result["xsd_valid"] is False
+    assert result["correct_fields"] == []
+    assert result["missing_fields"] == ["carrier_booking_reference"]
+
+
+def test_qwen_adapter_is_attached_to_openvino_pipeline(
+    tmp_path,
+    monkeypatch,
+):
+    model_dir = tmp_path / "qwen_openvino"
+    adapter_dir = tmp_path / "qwen_adapter"
+    model_dir.mkdir()
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_config.json").write_text(
+        json.dumps(
+            {
+                "base_model_name_or_path": "Qwen/Qwen2.5-7B-Instruct",
+                "peft_type": "LORA",
+            }
+        ),
+        encoding="utf-8",
+    )
+    adapter_model = adapter_dir / "adapter_model.safetensors"
+    adapter_model.write_bytes(b"adapter")
+    captured = {}
+
+    class FakeAdapter:
+        def __init__(self, path):
+            self.path = path
+
+    class FakeAdapterConfig:
+        def __init__(self):
+            self.entries = []
+
+        def add(self, adapter, alpha):
+            self.entries.append((adapter, alpha))
+
+    def create_pipeline(model_path, device, **config):
+        captured["model_path"] = model_path
+        captured["device"] = device
+        captured["config"] = config
+        return object()
+
+    fake_openvino_genai = SimpleNamespace(
+        Adapter=FakeAdapter,
+        AdapterConfig=FakeAdapterConfig,
+        LLMPipeline=create_pipeline,
+    )
+    monkeypatch.setitem(sys.modules, "openvino_genai", fake_openvino_genai)
+    monkeypatch.setattr(
+        inference_module.settings.model,
+        "model_path",
+        str(model_dir),
+    )
+    monkeypatch.setattr(inference_module.settings, "lora_enabled", True)
+    monkeypatch.setattr(
+        inference_module.settings,
+        "lora_adapter_path",
+        str(adapter_dir),
+    )
+    inference_module.reset_llm_pipeline()
+
+    inference_module.get_llm_pipeline()
+
+    adapter_config = captured["config"]["adapters"]
+    assert len(adapter_config.entries) == 1
+    assert adapter_config.entries[0][0].path == str(adapter_model)
+    assert adapter_config.entries[0][1] == 1.0
+    inference_module.reset_llm_pipeline()
+
+
+@pytest.mark.parametrize(
+    ("base_model", "expected"),
+    [
+        ("Qwen/Qwen2.5-7B-Instruct", "qwen"),
+        ("microsoft/Florence-2-base", "florence"),
+        ("unknown/model", "unknown"),
+    ],
+)
+def test_adapter_classification_uses_base_model(
+    tmp_path,
+    base_model,
+    expected,
+):
+    adapter_dir = tmp_path / expected
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_config.json").write_text(
+        json.dumps({"base_model_name_or_path": base_model}),
+        encoding="utf-8",
+    )
+
+    assert lora_adapter.classify_adapter(adapter_dir) == expected
+
+
+def test_source_grouping_tokenizes_each_record_once(monkeypatch):
+    records = [
+        _source_record(
+            f"session-{index}",
+            f"DOCUMENT {index} SHIPPER ALPHA PORT IZMIR UNIQUE {index}",
+            "ALPHA",
+        )
+        for index in range(6)
+    ]
+    original_token_set = prepare_training_data._token_set
+    tokenization_count = 0
+
+    def counted_token_set(text):
+        nonlocal tokenization_count
+        tokenization_count += 1
+        return original_token_set(text)
+
+    monkeypatch.setattr(
+        prepare_training_data,
+        "_token_set",
+        counted_token_set,
+    )
+
+    prepare_training_data.assign_source_groups(records, 0.9)
+
+    assert tokenization_count == len(records)
+
+
+def test_forbidden_overlap_tokenizes_inputs_once(monkeypatch):
+    records = [
+        _source_record(
+            f"session-{index}",
+            f"DOCUMENT {index} SHIPPER ALPHA PORT IZMIR UNIQUE {index}",
+            "ALPHA",
+        )
+        for index in range(4)
+    ]
+    fixtures = [
+        {
+            "name": f"fixture-{index}.json",
+            "text": f"BENCHMARK {index} CONSIGNEE BETA PORT MERSIN",
+            "source_hash": f"fixture-hash-{index}",
+        }
+        for index in range(3)
+    ]
+    original_token_set = prepare_training_data._token_set
+    tokenization_count = 0
+
+    def counted_token_set(text):
+        nonlocal tokenization_count
+        tokenization_count += 1
+        return original_token_set(text)
+
+    monkeypatch.setattr(
+        prepare_training_data,
+        "_token_set",
+        counted_token_set,
+    )
+
+    prepare_training_data.find_forbidden_overlaps(records, fixtures, 0.9)
+
+    assert tokenization_count == len(records) + len(fixtures)
+
+
+def test_evidence_exact_tokens_skip_levenshtein(monkeypatch):
+    levenshtein_call_count = 0
+    original_levenshtein = evidence_validator_module.levenshtein_distance
+
+    def counted_levenshtein(left, right):
+        nonlocal levenshtein_call_count
+        levenshtein_call_count += 1
+        return original_levenshtein(left, right)
+
+    monkeypatch.setattr(
+        evidence_validator_module,
+        "levenshtein_distance",
+        counted_levenshtein,
+    )
+
+    result = validate_field_evidence(
+        "parties[0].party_name",
+        "ALPHA LOGISTICS",
+        "ALPHA ALPHA LOGISTICS LOGISTICS",
+    )
+
+    assert result.status == EvidenceStatus.SUPPORTED
+    assert levenshtein_call_count == 0
+
+
+def test_evidence_deduplicates_fuzzy_ocr_tokens(monkeypatch):
+    levenshtein_call_count = 0
+    original_levenshtein = evidence_validator_module.levenshtein_distance
+
+    def counted_levenshtein(left, right):
+        nonlocal levenshtein_call_count
+        levenshtein_call_count += 1
+        return original_levenshtein(left, right)
+
+    monkeypatch.setattr(
+        evidence_validator_module,
+        "levenshtein_distance",
+        counted_levenshtein,
+    )
+
+    result = validate_field_evidence(
+        "parties[0].party_name",
+        "FORENTIS",
+        " ".join(["F0RENT1S"] * 100),
+    )
+
+    assert result.status == EvidenceStatus.SUPPORTED
+    assert levenshtein_call_count == 1
+
+
+def test_training_model_loaders_disable_remote_code():
+    loader_source = inspect.getsource(
+        train_lora.load_model_with_quantization
+    )
+    export_source = inspect.getsource(train_lora.export_to_openvino)
+
+    assert "trust_remote_code" not in loader_source
+    assert "trust_remote_code" not in export_source
+
+
+@pytest.mark.parametrize(
+    ("weight_content", "expected_weight"),
+    [
+        ("", None),
+        ("   ", None),
+        ("1234.50", 1234.5),
+    ],
+)
+def test_xml_empty_cargo_weight_is_safe(
+    tmp_path,
+    weight_content,
+    expected_weight,
+):
+    namespace = "http:" + "/" + "/dcsa.org/schemas/si/v2"
+    xml_path = tmp_path / "weight.xml"
+    xml_path.write_text(
+        (
+            f'<dcsa:ShippingInstruction xmlns:dcsa="{namespace}">'
+            "<dcsa:EquipmentList><dcsa:Equipment>"
+            "<dcsa:CargoGrossWeight>"
+            f"<dcsa:Weight>{weight_content}</dcsa:Weight>"
+            "<dcsa:Unit>KGM</dcsa:Unit>"
+            "</dcsa:CargoGrossWeight>"
+            "</dcsa:Equipment></dcsa:EquipmentList>"
+            "</dcsa:ShippingInstruction>"
+        ),
+        encoding="utf-8",
+    )
+
+    expected = benchmark_accuracy._extract_expected_from_xml(xml_path)
+
+    assert (
+        expected["equipment_list"][0]["cargo_gross_weight"]["weight"]
+        == expected_weight
+    )
+
+
+def test_phase4_colab_package_is_self_consistent():
+    package_dir = (
+        validate_phase4_colab_package.PROJECT_ROOT
+        / "CerberusVision_Colab_Egitim_Seti"
+    )
+
+    report = validate_phase4_colab_package.validate_package(package_dir)
+
+    assert report["train_records"] == 269
+    assert report["validation_records"] == 34
+    assert report["normalized_overlap"] == 0
+    assert report["notebook"]["compiled_cells"] == 10
+    assert report["strategy"] == "fresh_qlora_from_base"

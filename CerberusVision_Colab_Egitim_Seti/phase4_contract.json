@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "phase": 4,
+  "run_name": "cerberus_qwen25_7b_phase4_clean_v1",
+  "training_strategy": "fresh_qlora_from_base",
+  "legacy_adapter_policy": "baseline_only_never_resume",
+  "base_model": {
+    "model_id": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "trust_remote_code": false
+  },
+  "dataset": {
+    "train_file": "train.jsonl",
+    "train_sha256": "576d3d2806086b22340be8561e216a74ce2b351d4ae7df12bd96b6c3ab487772",
+    "train_records": 269,
+    "validation_file": "validation.jsonl",
+    "validation_sha256": "2edc8a43c6d2800b4f909b4b89bf119cb5ee916b3b3b3e6ec7a245292157218d",
+    "validation_records": 34,
+    "split_manifest_file": "manifest.json",
+    "split_manifest_sha256": "2062d902da8c8a3ff6800257a97445294429516867915133b0ccaec33302152f",
+    "seed": 3407,
+    "maximum_observed_tokens": 1667,
+    "maximum_sequence_length": 2048,
+    "expected_truncation_count": 0
+  },
+  "qlora": {
+    "load_in_4bit": true,
+    "quant_type": "nf4",
+    "double_quantization": true,
+    "compute_dtype": "bfloat16",
+    "rank": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "bias": "none",
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "gate_proj",
+      "up_proj",
+      "down_proj"
+    ]
+  },
+  "training": {
+    "maximum_epochs": 10,
+    "learning_rate": 0.0002,
+    "per_device_train_batch_size": 4,
+    "per_device_eval_batch_size": 4,
+    "gradient_accumulation_steps": 4,
+    "effective_batch_size": 16,
+    "warmup_steps": 9,
+    "weight_decay": 0.01,
+    "evaluation_steps": 10,
+    "save_steps": 10,
+    "early_stopping_patience": 3,
+    "early_stopping_threshold": 0.0005,
+    "metric_for_best_model": "eval_loss",
+    "greater_is_better": false,
+    "packing": false,
+    "completion_only_loss": true
+  },
+  "packages": {
+    "transformers": "5.14.1",
+    "trl": "1.8.0",
+    "peft": "0.19.1",
+    "accelerate": "1.14.0",
+    "datasets": "5.0.0",
+    "bitsandbytes": "0.49.2"
+  }
+}

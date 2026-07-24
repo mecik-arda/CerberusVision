@@ -230,6 +230,7 @@ def get_llm_pipeline():
     if _llm_pipeline is not None:
         return _llm_pipeline
     import openvino_genai
+    from app.llm.lora_adapter import enabled_adapter_path
 
     model_path = Path(settings.model.model_path)
     if not model_path.exists():
@@ -249,8 +250,18 @@ def get_llm_pipeline():
         pipeline_config["WEIGHTS_PATH"] = str(weights_path)
     if settings.model.kv_cache_precision:
         pipeline_config["KV_CACHE_PRECISION"] = settings.model.kv_cache_precision
+    qwen_adapter_path = enabled_adapter_path(
+        settings.lora_enabled,
+        settings.lora_adapter_path,
+        "qwen",
+    )
+    if qwen_adapter_path is not None:
+        adapter = openvino_genai.Adapter(str(qwen_adapter_path))
+        adapter_config = openvino_genai.AdapterConfig()
+        adapter_config.add(adapter, 1.0)
+        pipeline_config["adapters"] = adapter_config
     _llm_pipeline = openvino_genai.LLMPipeline(
-        str(model_path), settings.model.device, pipeline_config
+        str(model_path), settings.model.device, **pipeline_config
     )
     return _llm_pipeline
 

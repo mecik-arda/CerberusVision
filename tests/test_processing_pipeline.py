@@ -220,6 +220,60 @@ async def test_runtime_settings_selects_one_openvino_model(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_runtime_settings_reset_qwen_pipeline_for_lora_change(
+    tmp_path,
+    monkeypatch,
+):
+    adapter_path = tmp_path / "qwen_adapter"
+    resets = []
+    monkeypatch.setattr(settings, "lora_enabled", False)
+    monkeypatch.setattr(settings, "lora_adapter_path", "")
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
+    monkeypatch.setattr(processing, "reset_llm_pipeline", lambda: resets.append(True))
+    monkeypatch.setattr(processing, "_runtime_settings_payload", lambda: {})
+    monkeypatch.setattr(
+        processing,
+        "_discover_lora_adapters",
+        lambda: [{"path": str(adapter_path.resolve())}],
+    )
+
+    response = await processing.update_runtime_settings(
+        processing.RuntimeSettingsUpdate(
+            lora_enabled=True,
+            lora_adapter_path=str(adapter_path),
+        )
+    )
+
+    assert response.status_code == 200
+    assert settings.lora_enabled is True
+    assert settings.lora_adapter_path == str(adapter_path)
+    assert resets == [True]
+
+
+@pytest.mark.asyncio
+async def test_runtime_settings_reject_uninstalled_lora_adapter(
+    tmp_path,
+    monkeypatch,
+):
+    external_adapter = tmp_path / "external_adapter"
+    monkeypatch.setattr(settings, "lora_enabled", False)
+    monkeypatch.setattr(settings, "lora_adapter_path", "")
+    monkeypatch.setattr(processing, "_discover_lora_adapters", lambda: [])
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
+
+    response = await processing.update_runtime_settings(
+        processing.RuntimeSettingsUpdate(
+            lora_enabled=True,
+            lora_adapter_path=str(external_adapter),
+        )
+    )
+
+    assert response.status_code == 422
+    assert settings.lora_enabled is False
+    assert settings.lora_adapter_path == ""
+
+
+@pytest.mark.asyncio
 async def test_draft_and_approval_regenerate_xml(tmp_path, monkeypatch):
     session_id = "save-test"
     instruction = create_complete_si()

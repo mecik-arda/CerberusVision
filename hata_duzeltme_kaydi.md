@@ -1731,8 +1731,8 @@ Kod tabanının kapsamlı analizi sonucu 4 majör/minör sorun tespit edilerek d
 
 **Tarih/Saat:** 21.07.2026
 **Denetim Yöntemi:** Kod incelemesi + manuel doğrulama — SHI/CON rol kontrolü, batch hata yönetimi, LBR enum, path traversal, task cancellation
-**Bulgu Sayısı:** 5
-**Düzeltilen:** 5
+**Bulgu Sayısı:** 7
+**Düzeltilen:** 7
 
 ### 155. Yanlış Rol Kontrolü — `assess_local_result()` SHI/CON Arıyor, Sistem CZ/CN Kullanıyor (KRİTİK)
 
@@ -1918,3 +1918,310 @@ Model yüklenmeden hemen önce `PretrainedConfig` sınıfına `forced_bos_token_
 | 165 | 🔴 Hata | YÜKSEK | `ocr/vlm_region.py` | Transformers kütüphanesi sürüm uyumsuzluğu Florence-2 yüklemesini bozuyordu | ✅ Düzeltildi |
 
 **V22 Sonuç:** 2 bulgunun **tamamı düzeltildi**. LoRA entegrasyonu tamamen aktif hale getirildi.
+
+---
+
+## V23 — Phase 4 Öncesi Performans, Güvenlik ve Benchmark Düzeltmeleri
+
+**Tarih/Saat:** 24.07.2026
+**Denetim Yöntemi:** Karmaşıklık Analizi, Güvenlik İncelemesi ve Regresyon Testi
+**Bulgu Sayısı:** 5
+**Düzeltilen:** 5
+
+### 166. Yakın Kopya Taramasında Tekrarlanan Tokenizasyon (YÜKSEK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `scripts/prepare_training_data.py`
+**Fonksiyonlar:** `assign_source_groups()`, `find_forbidden_overlaps()`
+
+**Problem:**
+Jaccard benzerliği için kullanılan metinler her ikili karşılaştırmada yeniden
+normalize edilip token kümesine dönüştürülüyordu. Kayıt sayısı büyüdükçe aynı
+belge yüzlerce veya binlerce kez tokenize ediliyor ve O(n²) karşılaştırma
+döngüsünün sabit maliyeti gereksiz biçimde yükseliyordu.
+
+**Çözüm:**
+Kayıt ve fixture token kümeleri karşılaştırma döngülerinden önce yalnız bir kez
+hesaplanacak şekilde önbelleğe alındı. İç döngüler yalnız hazır kümelerin
+kesişim ve birleşimlerini hesaplıyor. Genel eşleştirme sayısı O(n²) kalırken
+tekrarlanan normalizasyon ve tokenizasyon ortadan kaldırıldı.
+
+**Doğrulama:**
+Yeni regresyon testleri, kaynak gruplamada her kaydın bir kez ve yasaklı
+fixture taramasında her kayıt ile fixture'ın yalnız bir kez tokenize edildiğini
+ölçerek doğruluyor.
+
+### 167. OCR Kanıt Doğrulamada Tekrarlanan Levenshtein Hesapları (ORTA)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `app/llm/evidence_validator.py`
+**Fonksiyon:** `_token_coverage_evidence()`
+
+**Problem:**
+OCR metnindeki tekrarlanan kelimeler liste halinde tutuluyor, her alan tokeni
+için aynı OCR kelimesi tekrar tekrar fuzzy normalizasyona ve Levenshtein
+karşılaştırmasına giriyordu. Uzun OCR belgelerinde gereksiz CPU tüketimi
+oluşuyordu.
+
+**Çözüm:**
+OCR tokenleri küme ile tekilleştirildi, fuzzy-normalize karşılıkları önceden
+hesaplandı ve exact eşleşmeler O(1) membership kontrolüyle doğrudan kabul
+edildi. Levenshtein yalnız exact eşleşmeyen benzersiz token adaylarında
+çalıştırılıyor.
+
+**Doğrulama:**
+Exact tokenlerin Levenshtein çağırmadığını ve yüz kez tekrarlanan aynı OCR
+tokeninin yalnız bir fuzzy karşılaştırmaya düştüğünü ölçen testler eklendi.
+
+### 168. LoRA Eğitiminde Uzak Model Kodu Çalıştırma Riski (ORTA)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `scripts/train_lora.py`
+**Fonksiyonlar:** `load_model_with_quantization()`, `export_to_openvino()`
+
+**Problem:**
+Model ve tokenizer yüklemelerinde `trust_remote_code=True` kullanılıyordu.
+CLI üzerinden farklı bir model deposu seçildiğinde depo içindeki özel Python
+kodunun eğitim makinesinde çalıştırılması mümkün oluyordu.
+
+**Çözüm:**
+Eğitim ve OpenVINO export akışındaki tüm `trust_remote_code` kullanımları
+kaldırıldı. Qwen2.5 güncel Transformers içinde yerel desteklendiği için uzak
+Python koduna ihtiyaç duyulmuyor. Phase 4 Colab sözleşmesi temel model
+revision'ını sabit bir commit hash'ine kilitliyor.
+
+**Doğrulama:**
+Model yükleme ve export fonksiyonlarının kaynaklarında
+`trust_remote_code` bulunmadığını doğrulayan güvenlik regresyon testi eklendi.
+
+### 169. Boş CargoGrossWeight Değerinde Benchmark Çökmesi (DÜŞÜK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `scripts/benchmark_accuracy.py`
+**Fonksiyon:** `_extract_expected_from_xml()`
+
+**Problem:**
+`CargoGrossWeight/Weight` elementi mevcut fakat boş olduğunda `float(None)`,
+yalnız whitespace içerdiğinde ise `float(" ")` çağrısı benchmark sürecini
+çökertiyordu.
+
+**Çözüm:**
+Weight içeriği mevcut güvenli `_text()` yardımcısıyla okunuyor. Boş veya
+whitespace değer `None`, geçerli sayısal içerik ise `float` olarak işleniyor.
+
+**Doğrulama:**
+Boş element, whitespace içerik ve geçerli ondalık ağırlık için parametrik XML
+regresyon testleri eklendi.
+
+### 170. Phase 4 Notebook Paket API Uyumsuzluğu Riski (DÜŞÜK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosyalar:** `CerberusVision_Colab_Egitim_Seti/CerberusVision_Qwen_LoRA.ipynb`, `CerberusVision_Colab_Egitim_Seti/phase4_contract.json`
+
+**Problem:**
+Transformers 5.14.1 üzerinde `warmup_ratio` deprecated uyarısı üretiyor ve
+model yükleme API'sinde `torch_dtype` yerine `dtype` kullanımı tercih ediliyor.
+Colab ortamı güncellendiğinde bu alanların kaldırılması eğitimi başlatmadan
+hata oluşturabilirdi.
+
+**Çözüm:**
+Maksimum 170 optimizer adımının yüzde 5 warmup karşılığı olan 9 adım sözleşmeye
+sabitlendi ve notebook `warmup_steps=9` kullanacak şekilde güncellendi. Model
+yükleme parametresi `dtype=torch.bfloat16` olarak yeni API ile hizalandı.
+
+**Doğrulama:**
+Transformers 5.14.1, TRL 1.8.0, PEFT 0.19.1, Accelerate 1.14.0, Datasets 5.0.0
+ve bitsandbytes 0.49.2 sürümleri izole ortamda kuruldu. Notebook'taki
+`SFTConfig` gerçek sürümle oluşturuldu; completion-only loss, paged AdamW
+8-bit optimizer, early stopping ile ilgili parametreler ve
+`SFTTrainer.processing_class` API'si doğrulandı.
+
+### Phase 4 Temiz Eğitim Altyapısı Geçişi
+
+Eski LoRA adaptörünün sızıntı riski taşıyan önceki eğitim akışından gelmesi
+nedeniyle üstüne eğitim yapılmaması kararlaştırıldı. Phase 4, sabitlenmiş
+`Qwen/Qwen2.5-7B-Instruct` revision'ından yeni QLoRA adaptörü başlatacak.
+
+Google Colab Pro A100 paketi aşağıdaki güvenlik ve deney kontrolleriyle
+yenilendi:
+
+- Ayrı `train.jsonl` ve `validation.jsonl` dosyaları.
+- Veri, manifest ve deney sözleşmesi SHA-256 doğrulaması.
+- Train/validation exact normalize sızıntı kontrolü.
+- Sessiz truncation yerine 2048 token sınırı öncesi zorunlu uzunluk denetimi.
+- Validation loss, early stopping ve en iyi checkpoint geri yükleme.
+- Eski checkpoint'lerden ayrılmış sözleşme hash'li resume dizini.
+- Completion-only loss ve sabit seed.
+- Eğitim raporu, paket sürümleri, GPU bilgisi ve validation sağlık çıktıları.
+- Holdout verisinin eğitim paketinden fiziksel olarak ayrı tutulması.
+
+**V23 Sonuç:** Beş bulgunun tamamı düzeltildi ve Phase 4 temiz Colab eğitim
+paketi başlatıldı. Hedefli paket 24 testle, tüm proje 203 testle başarıyla
+geçti.
+
+---
+
+## V24 — Phase 4 Model Entegrasyonu ve Sürüm Seçimi
+
+**Tarih/Saat:** 24.07.2026
+**Denetim Yöntemi:** Arşiv Bütünlük Kontrolü, OpenVINO GenAI Çıkarım Testi ve Arayüz Regresyonu
+**Bulgu Sayısı:** 5
+**Düzeltilen:** 5
+
+### 171. Qwen LoRA Adapter Seçimi Yerel LLM Pipeline'ına Uygulanmıyordu (KRİTİK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosyalar:** `app/llm/inference.py`, `app/llm/lora_adapter.py`
+
+**Problem:**
+Ayarlar ekranındaki LoRA seçimi yalnız Florence-2 mizanpaj hattında okunuyordu.
+Qwen çıkarımı her durumda temel OpenVINO modelini yüklediği için önceki veya
+Phase 4 Qwen adapter'ının seçilmesi model sonucunu değiştirmiyordu.
+
+**Çözüm:**
+Adapter yapılandırmasındaki `base_model_name_or_path` alanı okunarak Qwen
+adapter'ları sınıflandırıldı. Seçili Qwen safetensors dosyası
+`openvino_genai.Adapter` ve `AdapterConfig` ile mevcut
+`Qwen-2.5-7B-Instruct-INT4` pipeline'ına dinamik olarak bağlandı.
+
+**Doğrulama:**
+Phase 4 ve önceki eğitim adapter'ları mevcut OpenVINO Qwen ile ayrı ayrı gerçek
+CPU çıkarımında yüklendi ve geçerli JSON üretti.
+
+### 172. Qwen ve Florence Adapter'ları Aynı Hedefmiş Gibi Yükleniyordu (YÜKSEK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosyalar:** `app/llm/lora_adapter.py`, `app/ocr/vlm_region.py`, `app/routes/processing.py`
+
+**Problem:**
+Tek LoRA seçicisi farklı mimarilere ait adapter'ları ayırmıyordu. Qwen
+adapter'ı seçildiğinde Florence-2 hattı aynı adapter'ı yüklemeyi deneyebiliyor,
+mimari uyuşmazlığı nedeniyle gereksiz hata ve fallback oluşturabiliyordu.
+
+**Çözüm:**
+Adapter'lar taban model kimliğine göre `qwen`, `florence` veya `unknown` olarak
+sınıflandırıldı. Her pipeline yalnız kendi mimarisiyle uyumlu adapter'ı
+yükleyecek şekilde sınırlandı. Arayüz seçeneklerine hedef ve eğitim profili
+etiketleri eklendi.
+
+**Doğrulama:**
+Qwen, Florence ve bilinmeyen taban modeller için parametrik sınıflandırma
+testleri eklendi.
+
+### 173. LoRA Ayarı Değiştiğinde Qwen Pipeline Önbelleği Yenilenmiyordu (YÜKSEK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `app/routes/processing.py`
+
+**Problem:**
+Model yolu değiştiğinde Qwen pipeline sıfırlanıyor, ancak LoRA etkinlik durumu
+veya adapter yolu değiştiğinde daha önce oluşturulan pipeline bellekte kalmaya
+devam ediyordu. Kullanıcı eski ve yeni eğitim sürümleri arasında geçiş yapsa
+bile önceki model çalışabiliyordu.
+
+**Çözüm:**
+LoRA etkinlik durumu ile adapter yolu tek bir yapılandırma çifti olarak
+karşılaştırılıyor. Değerlerden biri değiştiğinde Qwen pipeline tam bir kez
+sıfırlanıyor ve sonraki çıkarım seçilen adapter ile yeniden oluşturuluyor.
+
+**Doğrulama:**
+Adapter ve etkinlik durumunu birlikte değiştiren API regresyon testi,
+pipeline sıfırlamasının tam bir kez çağrıldığını doğruluyor.
+
+### 174. Runtime API Keşfedilmemiş Adapter Yollarını Kabul Ediyordu (ORTA)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `app/routes/processing.py`
+
+**Problem:**
+`lora_adapter_path` alanı API üzerinden doğrudan ayarlara yazılıyordu. Arayüz
+yalnız keşfedilen adapter'ları gösterse de doğrudan HTTP isteğiyle models
+dizini dışındaki rastgele bir yol seçilebiliyordu.
+
+**Çözüm:**
+İstenen yol normalize ediliyor ve yalnız `models` dizininde keşfedilmiş,
+geçerli `adapter_config.json` içeren adapter yollarından biri olması halinde
+kabul ediliyor. Geçersiz yol HTTP 422 ile reddediliyor ve mevcut çalışma
+durumu değiştirilmeden korunuyor.
+
+**Doğrulama:**
+Keşfedilmemiş harici adapter yolunun reddedildiğini ve ayarların kısmen
+değişmediğini doğrulayan API testi eklendi.
+
+### 175. Tek Model Çıkarım Hatası Tüm Benchmark Raporunu Kaybettiriyordu (YÜKSEK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `scripts/benchmark_accuracy.py`
+
+**Problem:**
+Önceki Qwen adapter'ı Türkçe konşimento vakasında ekipman listesini çıktı
+sınırına kadar tekrarlayıp kapanmamış JSON üretti. `_evaluate_case()` hatayı
+izole etmediği için on iki tamamlanmış vaka dahil bütün benchmark koşusu
+rapor yazılmadan sonlanıyordu.
+
+**Çözüm:**
+Model çıkarımı, JSON dönüştürme ve XSD üretimi vaka düzeyinde hata sınırına
+alındı. Başarısız vaka hata türü ve sınırlı hata mesajıyla rapora ekleniyor,
+beklenen alanları eksik kabul edilerek precision, recall ve F1 toplamlarına
+dahil ediliyor. Veri kümesi veya fixture yapılandırma hataları ise benchmark'ı
+durdurmaya devam ediyor.
+
+**Doğrulama:**
+Bozuk model çıktısını temsil eden kontrollü bir çıkarım istisnasının vaka
+raporuna kaydedildiğini, XSD başarısız sayıldığını ve beklenen alanın eksik
+olarak ölçüldüğünü doğrulayan regresyon testi eklendi.
+
+### 176. Benchmark Provenance Qwen Adapter'ını Florence Adapter'ı Olarak da Kaydediyordu (ORTA)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `scripts/benchmark_accuracy.py`
+
+**Problem:**
+Tek adapter ayarı nedeniyle seçili Qwen adapter'ı hem `llm_adapter` hem de
+`layout_adapter` alanına yazılıyor, `layout_lora_enabled` yanlış biçimde
+etkin görünüyordu. Rapor hangi model hattının değiştiğini kanıtlayamıyordu.
+
+**Çözüm:**
+Provenance üretimi adapter hedef sınıflandırmasını kullanacak şekilde
+güncellendi. Qwen adapter yalnız LLM, Florence adapter yalnız mizanpaj
+provenance alanına yazılıyor.
+
+**Doğrulama:**
+Qwen adapter seçiminin LLM runtime modunu dinamik LoRA olarak işaretlediğini,
+layout adapter alanını boş bıraktığını ve Florence fixture'ının ters davranışı
+ürettiğini doğrulayan testler eklendi.
+
+### 177. JSON Benchmark Raporunda Genel Precision, Recall ve F1 Saklanmıyordu (ORTA)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `scripts/benchmark_accuracy.py`
+
+**Problem:**
+Genel precision, recall ve F1 terminal tablosunda hesaplanıyor ancak JSON
+çıktısına yazılmıyordu. Sonradan model karşılaştırması yapmak için kategori
+TP, FP ve FN değerlerinin yeniden toplanması gerekiyordu.
+
+**Çözüm:**
+Kategori toplamlarından tek bir `overall_metrics` nesnesi üreten ortak
+hesaplama eklendi. JSON raporu accuracy, precision, recall, F1, TP, FP, FN,
+toplam ve doğru alan sayılarını doğrudan saklıyor.
+
+**Doğrulama:**
+Terminal ve JSON raporu aynı `CategoryStats` toplamını kullandığı için
+yuvarlama ve hesaplama yolu tekilleştirildi.
+
+### Model Sürümü Seçimi
+
+Ayarlar ekranındaki LoRA alanı model eğitim profili seçimine dönüştürüldü:
+
+- LoRA kapalıyken temel Qwen OpenVINO modeli.
+- `[Qwen] Önceki Eğitim` ile 23.07.2026 tarihli önceki adapter.
+- `[Qwen] Phase 4 - Temiz Veri` ile 24.07.2026 tarihli temiz eğitim adapter'ı.
+- `[Florence] Mizanpaj` ile yalnız Florence-2 bölge adapter'ı.
+
+Her Qwen adapter dizinine kaynak ZIP adı ve ZIP SHA-256 değerini taşıyan
+`training_origin.json` kanıtı eklendi.
+
+**V24 Sonuç:** Yedi bulgunun tamamı düzeltildi. Hedefli entegrasyon paketi
+66 testle, tüm proje 211 testle başarıyla geçti. JavaScript sözdizimi ve
+`git diff --check` kontrolleri temiz sonuçlandı.

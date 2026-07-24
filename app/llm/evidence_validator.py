@@ -107,6 +107,13 @@ def levenshtein_distance(left: str, right: str) -> int:
 def normalized_similarity(left: str, right: str) -> float:
     normalized_left = normalize_fuzzy_token(left)
     normalized_right = normalize_fuzzy_token(right)
+    return _normalized_token_similarity(normalized_left, normalized_right)
+
+
+def _normalized_token_similarity(
+    normalized_left: str,
+    normalized_right: str,
+) -> float:
     maximum_length = max(len(normalized_left), len(normalized_right))
     if maximum_length == 0:
         return 1.0
@@ -210,7 +217,11 @@ def _token_coverage_evidence(
     method: str,
 ) -> EvidenceResult:
     value_tokens = normalize_evidence_text(value).split()
-    ocr_tokens = normalize_evidence_text(ocr_text).split()
+    ocr_tokens = set(normalize_evidence_text(ocr_text).split())
+    normalized_ocr_tokens = {
+        ocr_token: normalize_fuzzy_token(ocr_token)
+        for ocr_token in ocr_tokens
+    }
     if not value_tokens:
         score = 0.0
         matched_ocr_tokens: set[str] = set()
@@ -218,12 +229,19 @@ def _token_coverage_evidence(
         matched_ocr_tokens = set()
         matched_count = 0
         for value_token in value_tokens:
+            if value_token in ocr_tokens:
+                matched_count += 1
+                matched_ocr_tokens.add(value_token)
+                continue
+            normalized_value_token = normalize_fuzzy_token(value_token)
             best_token = ""
             best_similarity = 0.0
-            for ocr_token in ocr_tokens:
-                similarity = normalized_similarity(
-                    value_token,
-                    ocr_token,
+            for ocr_token, normalized_ocr_token in (
+                normalized_ocr_tokens.items()
+            ):
+                similarity = _normalized_token_similarity(
+                    normalized_value_token,
+                    normalized_ocr_token,
                 )
                 if similarity > best_similarity:
                     best_similarity = similarity
