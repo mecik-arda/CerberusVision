@@ -2268,3 +2268,51 @@ Phase 4.1 (Continual Fine-Tuning) modeli projeye entegre edilip 13 vakalık benc
 **Çözüm (Geçici Geri Alma):**
 Phase 4.1 model ağırlıkları projeden silinmedi (gelecekte analiz için saklanıyor), ancak aktif olarak kullanımı iptal edildi. `.cerberus-settings.json` dosyasındaki `lora_adapter_path` ayarı, stabil çalışan bir önceki `Phase 4` modeline (`models/Qwen-2.5-7B-Instruct-Phase4-LoRA`) geri döndürüldü.
 Bir sonraki adım (Phase 5) olarak Qwen-2.5-7B-Instruct modelinin sıfırdan QLoRA ile eğitilmesi (Continual yerine From Scratch) kararlaştırıldı.
+
+---
+
+## V27 — Phase 5 Colab Eğitim Altyapısı Hata Düzeltmeleri
+
+**Tarih:** 24.07.2026
+**Kapsam:** Google Colab üzerinde Phase 5 eğitimine hazırlık sürecinde karşılaşılan kütüphane ve uyumluluk sorunlarının çözülmesi.
+
+### 180. TRL Sürüm Uyuşmazlığı ve Import Hatası (KRİTİK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `CerberusVision_Phase5_Colab_Qwen_QLoRA.ipynb`
+
+**Problem:**
+Google Colab'da `pip install -U trl` komutuyla kurulan en son TRL sürümünde (0.10+), `DataCollatorForCompletionOnlyLM` sınıfının ana dizindeki erişimi kaldırıldığı veya yeri değiştirildiği için SFTTrainer hücresinde `ImportError` fırlatıldı.
+
+**Çözüm:**
+Kurulum hücresindeki güncelleme parametreleri düzenlendi ve TRL sürümü stabil çalışan `trl==0.9.6` olarak sabitlendi. Notebook içerisindeki hücre şu şekilde güncellendi:
+`!pip install -q trl==0.9.6`
+
+---
+
+### 181. NumPy 2.0 İkili (Binary) Uyumsuzluğu ve "numpy.dtype size changed" Hatası (KRİTİK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `CerberusVision_Phase5_Colab_Qwen_QLoRA.ipynb`
+
+**Problem:**
+Colab'in varsayılan ortamındaki pre-compiled (önceden derlenmiş) kütüphaneler (OpenCV, JAX vb.) NumPy 2.0 mimarisine (96 byte) göre derlenmişken; `pip install -U` kullanılması veya hatalı şekilde NumPy 1.x'e (88 byte) zorla düşürülmesi (`numpy<2.0.0`), bu kütüphanelerin bellek yapısını (ABI) bozarak Python kernel'ının çökmesine (`Expected 96 from C header, got 88 from PyObject`) yol açtı.
+
+**Çözüm:**
+- `numpy<2.0.0` sürüm düşürmesi geri alınarak Colab'in 2.0.0 destekleyen orijinal ekosistemi korundu.
+- `pip install -U` argümanındaki agresif "Upgrade" zorlaması kaldırılarak paketlerin kendi doğal uyumluluklarını koruması sağlandı.
+- **Kök Çözüm:** Pip komutları sonrasında diske yazılan C-kütüphaneleri ile Colab RAM'inde (hafıza) asılı kalan eski zombi kütüphanelerin çakışmasını engellemek için, kurulum sonrası "Runtime -> Restart Session" yapılması zorunlu hale getirildi.
+
+---
+
+### 182. Transformers ve TRL API Değişikliği (TypeError: unexpected keyword argument 'tokenizer') (KRİTİK)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `CerberusVision_Phase5_Colab_Qwen_QLoRA.ipynb`
+
+**Problem:**
+TRL kütüphanesini `0.9.6`'ya sabitlememize rağmen, Google Colab ortamında en yeni `transformers` (v4.46+) sürümü yüklendiğinde, `SFTTrainer` (Trainer) mimarisinde `tokenizer` parametresi `processing_class` olarak yeniden adlandırılmıştı. TRL 0.9.6, arka planda hala `tokenizer` anahtar kelimesini yollamaya çalıştığı için API uyuşmazlığından dolayı çöktü.
+
+**Çözüm:**
+Kurulum hücresindeki `transformers` kütüphanesi sürümü, `tokenizer` argümanını hala destekleyen eski bir versiyona (`<4.45.0`) sabitlenerek API uyuşmazlığı giderildi:
+`!pip install -q "transformers<4.45.0"`
