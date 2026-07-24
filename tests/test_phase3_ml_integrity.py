@@ -429,7 +429,12 @@ def test_benchmark_single_stream_configuration(
         captured["config"] = config
         return object()
 
-    fake_openvino_genai = SimpleNamespace(LLMPipeline=create_pipeline)
+    class FakeAdapterConfig:
+        def set_alpha(self, alpha):
+            pass
+        def add(self, adapter, alpha=1.0):
+            pass
+    fake_openvino_genai = SimpleNamespace(LLMPipeline=create_pipeline, Adapter=lambda x: object(), AdapterConfig=FakeAdapterConfig)
     monkeypatch.setitem(sys.modules, "openvino_genai", fake_openvino_genai)
     monkeypatch.setattr(
         inference_module.settings.model,
@@ -534,6 +539,108 @@ def test_qwen_adapter_is_attached_to_openvino_pipeline(
     assert adapter_config.entries[0][0].path == str(adapter_model)
     assert adapter_config.entries[0][1] == 1.0
     inference_module.reset_llm_pipeline()
+
+
+def test_base_pipeline_excludes_selected_qwen_adapter(
+    tmp_path,
+    monkeypatch,
+):
+    model_dir = tmp_path / "qwen_openvino"
+    adapter_dir = tmp_path / "qwen_adapter"
+    model_dir.mkdir()
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_config.json").write_text(
+        json.dumps(
+            {
+                "base_model_name_or_path": "Qwen/Qwen2.5-7B-Instruct",
+                "peft_type": "LORA",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"adapter")
+    captured_configs = []
+
+    def create_pipeline(model_path, device, **config):
+        captured_configs.append(config)
+        return object()
+
+    fake_openvino_genai = SimpleNamespace(
+        LLMPipeline=create_pipeline,
+    )
+    monkeypatch.setitem(sys.modules, "openvino_genai", fake_openvino_genai)
+    monkeypatch.setattr(
+        inference_module.settings.model,
+        "model_path",
+        str(model_dir),
+    )
+    monkeypatch.setattr(inference_module.settings, "lora_enabled", True)
+    monkeypatch.setattr(
+        inference_module.settings,
+        "lora_adapter_path",
+        str(adapter_dir),
+    )
+    inference_module.reset_llm_pipeline()
+
+    inference_module.get_llm_pipeline(use_adapter=False)
+
+    assert "adapters" not in captured_configs[0]
+    inference_module.reset_llm_pipeline()
+
+
+def test_stage_adapter_failure_retries_once_with_base(
+    monkeypatch,
+):
+    calls = []
+    resets = []
+    expected = inference_module.ShippingInstruction(
+        carrier_booking_reference="BASE-RECOVERY"
+    )
+
+    def run_once(*args, **kwargs):
+        calls.append(kwargs["use_adapter"])
+        if kwargs["use_adapter"]:
+            raise ValueError("adapter output malformed")
+        return expected, '{"carrier_booking_reference":"BASE-RECOVERY"}'
+
+    monkeypatch.setattr(
+        inference_module,
+        "_run_stage_inference_once",
+        run_once,
+    )
+    monkeypatch.setattr(
+        inference_module,
+        "_qwen_adapter_runtime_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        inference_module,
+        "reset_llm_pipeline",
+        lambda: resets.append(True),
+    )
+
+    instruction, raw_output = inference_module.run_stage_inference(
+        "BOOKING BASE-RECOVERY",
+        1,
+    )
+
+    assert instruction.carrier_booking_reference == "BASE-RECOVERY"
+    assert "BASE-RECOVERY" in raw_output
+    assert calls == [True, False]
+    assert resets == [True, True]
+
+
+def test_repetition_guard_detects_runaway_json_without_short_false_positive():
+    repeated_block = (
+        '{"equipment_reference":"MSKU1234567","iso_equipment_code":"45G1"},'
+    )
+
+    assert inference_module._has_excessive_output_repetition(
+        repeated_block * 20
+    ) is True
+    assert inference_module._has_excessive_output_repetition(
+        '{"carrier_booking_reference":"BKG-123"}'
+    ) is False
 
 
 @pytest.mark.parametrize(

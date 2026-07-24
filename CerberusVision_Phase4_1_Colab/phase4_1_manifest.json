@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "phase": "4.1",
+  "files": {
+    "continuation_train.jsonl": "2ebd29665320292724cee17d6dd16c0e05a67636447d515b7bac017b98280114",
+    "validation.jsonl": "ae9ad1da1228f2eef4994766f044c0788ee1a35983285d4f9daa0aeb750f5a7c",
+    "hard_validation.jsonl": "0baad451711a0219002a188c454ad8ade5df7eff1ed267bd39e8aa6ed1879e45",
+    "selection_manifest.json": "4099c19c2fe9f451a7b0b78eea3a6ba389f4853c08618b19e7d712a881785e01",
+    "phase4_1_contract.json": "d1728351f3cdf53a2c2f689923a5551e31df131ceac0a8500984a61520ab1199"
+  }
+}

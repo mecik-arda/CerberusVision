@@ -2225,3 +2225,46 @@ Her Qwen adapter dizinine kaynak ZIP adı ve ZIP SHA-256 değerini taşıyan
 **V24 Sonuç:** Yedi bulgunun tamamı düzeltildi. Hedefli entegrasyon paketi
 66 testle, tüm proje 211 testle başarıyla geçti. JavaScript sözdizimi ve
 `git diff --check` kontrolleri temiz sonuçlandı.
+
+---
+
+## V25 — Phase 4.1 Entegrasyonu ve Test İyileştirmesi
+
+**Tarih:** 24.07.2026
+**Kapsam:** Phase 4.1 Continual Fine-Tuning modelinin WSL2 ve test ortamına entegrasyonu.
+
+### 178. FakeAdapterConfig Mock Sınıfında add Metodunun Eksik Olması (ORTA)
+
+**Tarih/Saat:** 24.07.2026
+**Dosya:** `tests/test_phase3_ml_integrity.py`
+
+**Problem:**
+`openvino_genai` kütüphanesini taklit eden `fake_openvino_genai` içerisindeki `FakeAdapterConfig` mock sınıfında `add` metodu tanımlanmamıştı. Phase 4.1 modeli entegre edilip `AdapterConfig().add()` çağrısı aktif hale gelince `test_benchmark_single_stream_configuration` testi `AttributeError: 'FakeAdapterConfig' object has no attribute 'add'` hatasıyla çöküyordu.
+
+**Çözüm:**
+`FakeAdapterConfig` mock sınıfına ilgili parametreleri kabul eden dummy bir `add(self, adapter, alpha=1.0)` metodu eklendi.
+
+**Doğrulama:**
+Tüm testler çalıştırıldı ve 217 regresyon/bütünlük testinin tamamı başarıyla geçti.
+
+### Model Sürümü Güncellemesi
+- `models/Qwen-2.5-7B-Instruct-Phase4_1-LoRA` ağırlıkları sisteme eklendi.
+- `.cerberus-settings.json` içerisindeki `lora_adapter_path` bu yeni Phase 4.1 modelini işaret edecek şekilde başarıyla güncellendi.
+
+---
+
+## V26 — Phase 4.1'in İptal Edilmesi ve Geri Alınması
+
+**Tarih:** 24.07.2026
+**Kapsam:** Phase 4.1 benchmark sonuçlarının değerlendirilmesi ve modelin geri alınması.
+
+### 179. Phase 4.1 Modelinde Repetition Loop (Aşırı Tekrar) Hatası (KRİTİK)
+
+**Tarih/Saat:** 24.07.2026
+
+**Problem:**
+Phase 4.1 (Continual Fine-Tuning) modeli projeye entegre edilip 13 vakalık benchmark'a sokulduğunda, F1 skorunda genel bir artış (%54.5'ten %62.7'ye) gözlenmesine rağmen iki belgede (`Multi_Container_5_Equipment` ve `TR_Konsimento_Talimati`) modelin aşırı tekrar (repetition loop) sarmalına girerek `RuntimeError` verdiği tespit edildi. Bu durum, modelin stop token'ını (`<|im_end|>`) unuttuğunu ve catastrophic forgetting (yıkıcı unutma) yaşadığını gösteriyor.
+
+**Çözüm (Geçici Geri Alma):**
+Phase 4.1 model ağırlıkları projeden silinmedi (gelecekte analiz için saklanıyor), ancak aktif olarak kullanımı iptal edildi. `.cerberus-settings.json` dosyasındaki `lora_adapter_path` ayarı, stabil çalışan bir önceki `Phase 4` modeline (`models/Qwen-2.5-7B-Instruct-Phase4-LoRA`) geri döndürüldü.
+Bir sonraki adım (Phase 5) olarak Qwen-2.5-7B-Instruct modelinin sıfırdan QLoRA ile eğitilmesi (Continual yerine From Scratch) kararlaştırıldı.

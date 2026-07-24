@@ -170,6 +170,8 @@ class Settings:
     region_middle_ratio: float = _env_float("REGION_MIDDLE_RATIO", 0.65)
     stage_timeout_seconds: int = _env_int("STAGE_TIMEOUT_SECONDS", 300)
     sse_timeout_seconds: int = max(30, _env_int("SSE_TIMEOUT_SECONDS", 1800))
+    repetition_penalty: float = _env_float("REPETITION_PENALTY", 1.0)
+    temperature: float = _env_float("TEMPERATURE", 0.2)
 
 
 settings = Settings()
@@ -231,6 +233,12 @@ def load_persistent_settings() -> None:
         if isinstance(inference_payload.get("stage_timeout_seconds"), (int, float)):
             val = inference_payload["stage_timeout_seconds"]
             settings.stage_timeout_seconds = max(60, min(1800, int(val)))
+        if isinstance(inference_payload.get("repetition_penalty"), (int, float)):
+            val = inference_payload["repetition_penalty"]
+            settings.repetition_penalty = max(1.0, min(2.0, float(val)))
+        if isinstance(inference_payload.get("temperature"), (int, float)):
+            val = inference_payload["temperature"]
+            settings.temperature = max(0.0, min(1.0, float(val)))
 
 
 def save_persistent_settings() -> None:
@@ -253,6 +261,8 @@ def save_persistent_settings() -> None:
             "region_upper_ratio": settings.region_upper_ratio,
             "region_middle_ratio": settings.region_middle_ratio,
             "stage_timeout_seconds": settings.stage_timeout_seconds,
+            "repetition_penalty": settings.repetition_penalty,
+            "temperature": settings.temperature,
         },
     }
     temporary_path = SETTINGS_FILE.with_suffix(".tmp")

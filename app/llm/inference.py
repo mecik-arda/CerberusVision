@@ -19,6 +19,7 @@ from app.models import (
 
 
 _llm_pipeline = None
+_llm_pipeline_key: Optional[str] = None
 logger = logging.getLogger(__name__)
 _system_prompt = (
     "You are a shipping instruction document parser. "
@@ -225,10 +226,8 @@ _STAGE_PROMPTS = {
 }
 
 
-def get_llm_pipeline():
-    global _llm_pipeline
-    if _llm_pipeline is not None:
-        return _llm_pipeline
+def get_llm_pipeline(use_adapter: bool = True):
+    global _llm_pipeline, _llm_pipeline_key
     import openvino_genai
     from app.llm.lora_adapter import enabled_adapter_path
 
@@ -238,6 +237,24 @@ def get_llm_pipeline():
             f"Model not found at {model_path}. "
             "Run scripts/wsl_model_setup.sh or set QWEN_MODEL_PATH to an OpenVINO model."
         )
+    qwen_adapter_path = (
+        enabled_adapter_path(
+            settings.lora_enabled,
+            settings.lora_adapter_path,
+            "qwen",
+        )
+        if use_adapter
+        else None
+    )
+    pipeline_key = "|".join(
+        (
+            str(model_path.resolve()),
+            settings.model.device,
+            str(qwen_adapter_path or ""),
+        )
+    )
+    if _llm_pipeline is not None and _llm_pipeline_key == pipeline_key:
+        return _llm_pipeline
     pipeline_config = {
         "CACHE_DIR": settings.model.cache_dir,
         "CACHE_MODE": "OPTIMIZE_SIZE",
@@ -250,11 +267,6 @@ def get_llm_pipeline():
         pipeline_config["WEIGHTS_PATH"] = str(weights_path)
     if settings.model.kv_cache_precision:
         pipeline_config["KV_CACHE_PRECISION"] = settings.model.kv_cache_precision
-    qwen_adapter_path = enabled_adapter_path(
-        settings.lora_enabled,
-        settings.lora_adapter_path,
-        "qwen",
-    )
     if qwen_adapter_path is not None:
         adapter = openvino_genai.Adapter(str(qwen_adapter_path))
         adapter_config = openvino_genai.AdapterConfig()
@@ -263,12 +275,14 @@ def get_llm_pipeline():
     _llm_pipeline = openvino_genai.LLMPipeline(
         str(model_path), settings.model.device, **pipeline_config
     )
+    _llm_pipeline_key = pipeline_key
     return _llm_pipeline
 
 
 def reset_llm_pipeline() -> None:
-    global _llm_pipeline
+    global _llm_pipeline, _llm_pipeline_key
     _llm_pipeline = None
+    _llm_pipeline_key = None
 
 
 @lru_cache(maxsize=1)
@@ -322,19 +336,48 @@ def build_stage_prompt(
     return prompt
 
 
-def run_stage_inference(
+def _has_excessive_output_repetition(raw_output: str) -> bool:
+    tokens = re.findall(r"\w+|[^\w\s]", raw_output.casefold())
+    window_size = 24
+    if len(tokens) < window_size * 4:
+        return False
+    occurrence_counts: Dict[Tuple[str, ...], int] = {}
+    for start_index in range(0, len(tokens) - window_size + 1, 8):
+        token_window = tuple(tokens[start_index:start_index + window_size])
+        occurrence_counts[token_window] = (
+            occurrence_counts.get(token_window, 0) + 1
+        )
+        if occurrence_counts[token_window] >= 4:
+            return True
+    return False
+
+
+def _qwen_adapter_runtime_enabled() -> bool:
+    from app.llm.lora_adapter import enabled_adapter_path
+
+    return enabled_adapter_path(
+        settings.lora_enabled,
+        settings.lora_adapter_path,
+        "qwen",
+    ) is not None
+
+
+def _run_stage_inference_once(
     ocr_text: str,
     stage: int,
     document_language: str = "en",
     output_language: str = "en",
+    use_adapter: bool = True,
 ) -> Tuple[ShippingInstruction, str]:
-    pipe = get_llm_pipeline()
+    pipe = get_llm_pipeline(use_adapter=use_adapter)
     prompt = build_stage_prompt(ocr_text, stage, document_language, output_language)
     schema = get_stage_schema(stage)
     config = _build_generation_config_for_schema(schema)
     result = pipe.generate(prompt, config)
     raw_output = str(result)
     assert raw_output.strip(), f"Asama {stage} LLM ciktisi bos"
+    if _has_excessive_output_repetition(raw_output):
+        raise ValueError(f"Asama {stage} LLM ciktisi asiri tekrar iceriyor")
     try:
         cleaned = _extract_json(raw_output)
         data = json.loads(cleaned)
@@ -344,6 +387,43 @@ def run_stage_inference(
         data = _parse_json_with_fallback(cleaned)
         instruction = ShippingInstruction.model_validate(data)
     return instruction, raw_output
+
+
+def run_stage_inference(
+    ocr_text: str,
+    stage: int,
+    document_language: str = "en",
+    output_language: str = "en",
+) -> Tuple[ShippingInstruction, str]:
+    try:
+        return _run_stage_inference_once(
+            ocr_text,
+            stage,
+            document_language,
+            output_language,
+            use_adapter=True,
+        )
+    except Exception as adapter_error:
+        if not _qwen_adapter_runtime_enabled():
+            raise
+        logger.warning(
+            "Qwen adapter stage %s failed, retrying with base model: %s",
+            stage,
+            adapter_error,
+        )
+        reset_llm_pipeline()
+        try:
+            return _run_stage_inference_once(
+                ocr_text,
+                stage,
+                document_language,
+                output_language,
+                use_adapter=False,
+            )
+        except Exception as base_error:
+            raise base_error from adapter_error
+        finally:
+            reset_llm_pipeline()
 
 
 def merge_stage_results(
@@ -494,12 +574,16 @@ def run_guided_inference(
     ocr_text: str,
     document_language: str = "en",
     output_language: str = "en",
+    use_adapter: bool = True,
 ) -> str:
-    pipe = get_llm_pipeline()
+    pipe = get_llm_pipeline(use_adapter=use_adapter)
     prompt = build_prompt(ocr_text, document_language, output_language)
     config = _build_generation_config()
     result = pipe.generate(prompt, config)
-    return str(result)
+    raw_output = str(result)
+    if _has_excessive_output_repetition(raw_output):
+        raise ValueError("LLM ciktisi asiri tekrar iceriyor")
+    return raw_output
 
 
 def _build_generation_config():
@@ -511,7 +595,16 @@ def _build_generation_config_for_schema(schema: Dict[str, Any]):
 
     config = openvino_genai.GenerationConfig()
     config.max_new_tokens = settings.model.max_new_tokens
-    config.do_sample = False
+    if settings.temperature > 0.0:
+        config.do_sample = True
+        config.temperature = settings.temperature
+    else:
+        config.do_sample = False
+        
+    try:
+        config.repetition_penalty = settings.repetition_penalty
+    except AttributeError:
+        pass
     structured_output_mode = _configure_structured_output(
         config,
         openvino_genai,
@@ -1886,6 +1979,19 @@ def _parse_json_with_fallback(text: str) -> Dict[str, Any]:
     return data
 
 
+def _normalize_raw_inference_output(
+    raw_output: str,
+    ocr_text: str,
+) -> ShippingInstruction:
+    try:
+        parsed_instruction = parse_llm_output(raw_output)
+    except Exception:
+        cleaned = _extract_json(raw_output)
+        data = _parse_json_with_fallback(cleaned)
+        parsed_instruction = ShippingInstruction.model_validate(data)
+    return normalize_extracted_instruction(parsed_instruction, ocr_text)
+
+
 def run_inference_with_fallback(
     ocr_text: str,
     document_language: str = "en",
@@ -1903,19 +2009,37 @@ def run_inference_with_fallback(
             ensure_ascii=False,
         )
         return merged, combined_raw
-    raw_output = run_guided_inference(ocr_text, document_language, output_language)
     try:
-        return normalize_extracted_instruction(
-            parse_llm_output(raw_output),
+        raw_output = run_guided_inference(
             ocr_text,
-        ), raw_output
-    except Exception:
-        cleaned = _extract_json(raw_output)
-        data = _parse_json_with_fallback(cleaned)
-        return normalize_extracted_instruction(
-            ShippingInstruction.model_validate(data),
-            ocr_text,
-        ), raw_output
+            document_language,
+            output_language,
+            use_adapter=True,
+        )
+        return _normalize_raw_inference_output(raw_output, ocr_text), raw_output
+    except Exception as adapter_error:
+        if not _qwen_adapter_runtime_enabled():
+            raise
+        logger.warning(
+            "Qwen adapter inference failed, retrying with base model: %s",
+            adapter_error,
+        )
+        reset_llm_pipeline()
+        try:
+            base_raw_output = run_guided_inference(
+                ocr_text,
+                document_language,
+                output_language,
+                use_adapter=False,
+            )
+            return (
+                _normalize_raw_inference_output(base_raw_output, ocr_text),
+                base_raw_output,
+            )
+        except Exception as base_error:
+            raise base_error from adapter_error
+        finally:
+            reset_llm_pipeline()
 
 
 def _extract_targeted_ocr_excerpt(

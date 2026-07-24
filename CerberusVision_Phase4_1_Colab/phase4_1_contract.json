@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "phase": "4.1",
+  "run_name": "cerberus_qwen25_7b_phase4_1_continual_v1",
+  "training_strategy": "continual_qlora_from_phase4_adapter",
+  "base_model": {
+    "model_id": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "trust_remote_code": false
+  },
+  "parent_adapter": {
+    "directory_name": "phase4_adapter",
+    "adapter_model_sha256": "ef99c4313a98dc1060e7aa97aa8b92962b13b24a65a6a8d7840c32095c0e5faf",
+    "adapter_config_sha256": "78cd1b0760239244d9036be3ca56224ec4515d141009c71f7fe71f68a5cadbcb",
+    "source_archive_sha256": "9465948e92d7fe9b7a0a66b4de7c245801d1d86c6de231c0a85ee75c27656769",
+    "legacy_adapter_used": false
+  },
+  "dataset": {
+    "continuation_train_file": "continuation_train.jsonl",
+    "continuation_train_sha256": "2ebd29665320292724cee17d6dd16c0e05a67636447d515b7bac017b98280114",
+    "continuation_train_records": 404,
+    "validation_file": "validation.jsonl",
+    "validation_sha256": "ae9ad1da1228f2eef4994766f044c0788ee1a35983285d4f9daa0aeb750f5a7c",
+    "validation_records": 34,
+    "hard_validation_file": "hard_validation.jsonl",
+    "hard_validation_sha256": "0baad451711a0219002a188c454ad8ade5df7eff1ed267bd39e8aa6ed1879e45",
+    "hard_validation_records": 16,
+    "selection_manifest_file": "selection_manifest.json",
+    "selection_manifest_sha256": "4099c19c2fe9f451a7b0b78eea3a6ba389f4853c08618b19e7d712a881785e01",
+    "benchmark_fixture_policy": "forbidden_from_training",
+    "near_duplicate_threshold": 0.92
+  },
+  "training": {
+    "maximum_epochs": 2,
+    "learning_rate": 2e-05,
+    "per_device_train_batch_size": 4,
+    "per_device_eval_batch_size": 4,
+    "gradient_accumulation_steps": 4,
+    "effective_batch_size": 16,
+    "warmup_steps": 3,
+    "weight_decay": 0.01,
+    "evaluation_steps": 5,
+    "save_steps": 5,
+    "early_stopping_patience": 2,
+    "early_stopping_threshold": 0.0002,
+    "metric_for_best_model": "eval_loss",
+    "greater_is_better": false,
+    "completion_only_loss": true,
+    "maximum_sequence_length": 2048
+  },
+  "acceptance_gate": {
+    "benchmark_cases": 13,
+    "minimum_precision": 58.0,
+    "minimum_recall": 90.0,
+    "minimum_f1_score": 69.0,
+    "minimum_xsd_valid_cases": 13,
+    "maximum_inference_errors": 0,
+    "maximum_deterministic_mismatches": 0
+  },
+  "source_phase4_report": {
+    "package_dir": "/home/ardam/projects/CerberusVision/CerberusVision_Colab_Egitim_Seti",
+    "train_records": 269,
+    "validation_records": 34,
+    "normalized_overlap": 0,
+    "hashes": {
+      "train.jsonl": "576d3d2806086b22340be8561e216a74ce2b351d4ae7df12bd96b6c3ab487772",
+      "validation.jsonl": "2edc8a43c6d2800b4f909b4b89bf119cb5ee916b3b3b3e6ec7a245292157218d",
+      "manifest.json": "2062d902da8c8a3ff6800257a97445294429516867915133b0ccaec33302152f"
+    },
+    "contract_sha256": "b6d941b577881324d4dc5275681d90aced27deca6215055190c49f1ef6afd0ee",
+    "notebook": {
+      "cells": 24,
+      "code_cells": 11,
+      "compiled_cells": 10
+    },
+    "strategy": "fresh_qlora_from_base",
+    "legacy_adapter_policy": "baseline_only_never_resume"
+  }
+}
