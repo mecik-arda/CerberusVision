@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  cerberusvision:
+    build: .
+    ports:
+      - "18000:18000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env:ro
+    environment:
+      - OPENVINO_DEVICE=CPU
+      - QWEN_MODEL_PATH=/app/models/Qwen-2.5-7B-Instruct-INT4
+    restart: unless-stopped
