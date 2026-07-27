@@ -1,6 +1,7 @@
 {
   "name": "cerberusvision-ui",
   "private": true,
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build:css": "tailwindcss -i ./static/tailwind.input.css -o ./static/app.css --minify",
     "test:frontend": "playwright test"
