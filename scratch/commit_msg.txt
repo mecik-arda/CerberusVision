@@ -1,0 +1,10 @@
+V28 CI duzeltmesi ve altyapi tamamlama
+
+- requirements-wsl.txt: huggingface-hub versiyon uyumsuzlugu giderildi (>=0.26.0,<1.0)
+- Dockerfile: Python 3.12 + Node.js + Playwright + OpenVINO CPU
+- docker-compose.yml: volume baglantili konteyner yapilandirmasi
+- .github/workflows/ci.yml: backend pytest 270 test + frontend Playwright
+- diagnostics.py ve discovery.py routerlari main.py entegrasyonu
+- .env: OPENVINO_DEVICE=CPU OOM hatasi onlendi
+- .gitignore: package-lock.json eklendi (pnpm kullaniliyor)
+- scratch gecici dosyalari temizlendi
