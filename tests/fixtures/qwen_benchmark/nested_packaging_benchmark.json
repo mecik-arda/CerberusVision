@@ -73,7 +73,7 @@
     "cargo_items": [
       {
         "package_quantity": 400,
-        "package_kind_code": "CARTON",
+        "package_kind_code": "CT",
         "description_of_goods": "SPARE PARTS FOR AGRICULTURAL MACHINERY",
         "shipping_marks": "MAT-LOS-2026",
         "weight": {
@@ -87,7 +87,7 @@
       },
       {
         "package_quantity": 96,
-        "package_kind_code": "DRUM",
+        "package_kind_code": "DR",
         "description_of_goods": "INDUSTRIAL LUBRICANT OIL",
         "shipping_marks": "MAT-LOS-OIL",
         "weight": {
@@ -101,7 +101,7 @@
       },
       {
         "package_quantity": 12,
-        "package_kind_code": "DRUM",
+        "package_kind_code": "DR",
         "description_of_goods": "HYDRAULIC FLUID",
         "shipping_marks": "MAT-LOS-OIL",
         "weight": {
@@ -115,7 +115,7 @@
       },
       {
         "package_quantity": 20,
-        "package_kind_code": "CRATE",
+        "package_kind_code": "CR",
         "description_of_goods": "STEEL CONSTRUCTION BEAMS",
         "weight": {
           "weight_value": 15600.0,

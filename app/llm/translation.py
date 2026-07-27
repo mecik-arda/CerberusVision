@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,7 +17,7 @@ class TranslatedValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str
-    value: Optional[str] = None
+    value: str | None = None
 
 
 class TranslationResult(BaseModel):
@@ -32,8 +31,8 @@ _language_names = {"tr": "Turkish", "en": "English"}
 
 def _translation_targets(
     instruction: ShippingInstruction,
-) -> Dict[str, tuple[object, str]]:
-    targets: Dict[str, tuple[object, str]] = {}
+) -> dict[str, tuple[object, str]]:
+    targets: dict[str, tuple[object, str]] = {}
     if instruction.remarks:
         targets["remarks"] = (instruction, "remarks")
     if instruction.customs_information and instruction.customs_information.fta_declaration:

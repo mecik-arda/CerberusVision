@@ -42,7 +42,7 @@
     "cargo_items": [
       {
         "package_quantity": 22,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "TEXTILE PRODUCTS",
         "weight": {
           "weight_value": 13580.0,

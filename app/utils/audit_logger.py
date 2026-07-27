@@ -1,16 +1,20 @@
 from __future__ import annotations
+
 import json
 import re
+import secrets
 import shutil
 import time
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, List, Tuple
+from typing import Any
+
 from app.config import settings
 
-
-_SESSION_DIR_PATTERN = re.compile(r"^\d{8}_\d{6}_\d{6}$")
+SESSION_ID_PATTERN = re.compile(
+    r"^\d{8}_\d{6}_\d{6}(?:_[A-Za-z0-9_-]{8})?$"
+)
 
 _PII_FIELDS = {"party_name", "party_id", "email", "phone_number", "name",
                "street", "postal_code", "PartyName", "PartyID", "Email",
@@ -29,10 +33,10 @@ def _mask_pii(data: Any) -> Any:
     if isinstance(data, list):
         return [_mask_pii(item) for item in data]
     return data
-_last_cleanup_at: Optional[float] = None
+_last_cleanup_at: float | None = None
 
 
-def cleanup_expired_sessions(now: Optional[float] = None) -> int:
+def cleanup_expired_sessions(now: float | None = None) -> int:
     timestamp = time.time() if now is None else now
     cutoff = timestamp - settings.server.log_retention_days * 86400
     removed = 0
@@ -42,7 +46,7 @@ def cleanup_expired_sessions(now: Optional[float] = None) -> int:
         try:
             if (
                 session_dir.is_dir()
-                and _SESSION_DIR_PATTERN.fullmatch(session_dir.name)
+                and SESSION_ID_PATTERN.fullmatch(session_dir.name)
                 and session_dir.stat().st_mtime < cutoff
             ):
                 shutil.rmtree(session_dir)
@@ -66,7 +70,9 @@ def _maybe_cleanup_expired_sessions() -> None:
 
 def create_session_id() -> str:
     _maybe_cleanup_expired_sessions()
-    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    token = secrets.token_urlsafe(6)
+    return f"{timestamp}_{token}"
 
 
 def get_session_dir(session_id: str) -> Path:
@@ -75,7 +81,7 @@ def get_session_dir(session_id: str) -> Path:
     return session_dir
 
 
-def log_ocr_result(session_id: str, layout_text: str, boxes_data: Optional[Any] = None) -> Path:
+def log_ocr_result(session_id: str, layout_text: str, boxes_data: Any | None = None) -> Path:
     session_dir = get_session_dir(session_id)
     ocr_path = session_dir / "ocr_layout_text.txt"
     ocr_path.write_text(layout_text, encoding="utf-8")
@@ -102,8 +108,8 @@ def log_xml_result(session_id: str, xml_content: str) -> Path:
 def log_validation_report(
     session_id: str,
     is_valid: bool,
-    errors: List[str],
-    missing_fields: List[dict],
+    errors: list[str],
+    missing_fields: list[dict],
     status: str,
 ) -> Path:
     session_dir = get_session_dir(session_id)
@@ -124,11 +130,11 @@ def log_processing_summary(
     session_id: str,
     filename: str,
     status: str,
-    ocr_path: Optional[str] = None,
-    llm_path: Optional[str] = None,
-    xml_path: Optional[str] = None,
-    validation_path: Optional[str] = None,
-    cloud_review_path: Optional[str] = None,
+    ocr_path: str | None = None,
+    llm_path: str | None = None,
+    xml_path: str | None = None,
+    validation_path: str | None = None,
+    cloud_review_path: str | None = None,
 ) -> Path:
     session_dir = get_session_dir(session_id)
     summary = {
@@ -153,10 +159,10 @@ def log_cloud_review_report(
     session_id: str,
     local_assessment: dict,
     cloud_review_used: bool,
-    review: Optional[dict] = None,
-    sent_payload: Optional[dict] = None,
-    raw_output: Optional[str] = None,
-    error: Optional[str] = None,
+    review: dict | None = None,
+    sent_payload: dict | None = None,
+    raw_output: str | None = None,
+    error: str | None = None,
     label: str = "initial",
 ) -> Path:
     session_dir = get_session_dir(session_id)
@@ -186,9 +192,9 @@ def log_user_revision(
     instruction_data: dict,
     xml_content: str,
     is_valid: bool,
-    errors: List[str],
-    missing_fields: List[dict],
-) -> Tuple[Path, Path, Path]:
+    errors: list[str],
+    missing_fields: list[dict],
+) -> tuple[Path, Path, Path]:
     session_dir = get_session_dir(session_id)
     safe_action = "approved" if action == "approved" else "draft"
     json_path = session_dir / f"{safe_action}_instruction.json"

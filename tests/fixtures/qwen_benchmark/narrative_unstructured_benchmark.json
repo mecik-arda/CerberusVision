@@ -72,7 +72,7 @@
     "cargo_items": [
       {
         "package_quantity": 32,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "MDF LAMINATE FLOORING",
         "shipping_marks": "EXP-MUM-2026",
         "commodity_code": "4411.13",
@@ -87,7 +87,7 @@
       },
       {
         "package_quantity": 18,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "CERAMIC WALL TILES",
         "commodity_code": "6908.90",
         "weight": {

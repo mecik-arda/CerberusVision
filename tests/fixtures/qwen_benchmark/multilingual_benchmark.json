@@ -55,7 +55,7 @@
     "cargo_items": [
       {
         "package_quantity": 32,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "ELEKTRONİK KOMPONENTLER",
         "shipping_marks": "GTC-DUBAI-2026",
         "weight": {

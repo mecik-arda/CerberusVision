@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from app.ocr.line_grouper import TextBox, segment_boxes_by_region
 
@@ -12,9 +12,10 @@ _florence_pipeline = None
 
 def get_florence_pipeline():
     global _florence_pipeline
+    import torch
+
     from app.config import settings
     from app.llm.lora_adapter import classify_adapter
-    import torch
     
     current_lora_path = settings.lora_adapter_path if settings.lora_adapter_path else ""
     current_lora_enabled = (
@@ -31,7 +32,12 @@ def get_florence_pipeline():
             _florence_pipeline = None
 
     try:
-        from transformers import AutoProcessor, AutoModelForCausalLM, PretrainedConfig, PreTrainedModel
+        from transformers import (
+            AutoModelForCausalLM,
+            AutoProcessor,
+            PretrainedConfig,
+            PreTrainedModel,
+        )
         from transformers.tokenization_utils_base import PreTrainedTokenizerBase
         
         # Monkey-patch for Florence-2 compatibility with newer transformers versions
@@ -57,7 +63,7 @@ def get_florence_pipeline():
             dtype = torch.float16
         else:
             device = "cpu"
-            dtype = torch.bfloat16 if hasattr(torch, "bfloat16") else torch.float32
+            dtype = torch.float32
             
         logger.info(f"Yükleniyor: {model_id} (device={device}, dtype={dtype})")
         model = AutoModelForCausalLM.from_pretrained(
@@ -93,7 +99,7 @@ def reset_florence_pipeline() -> None:
 
 def detect_regions_with_florence(
     image_bytes: bytes,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     import io
 
     from PIL import Image
@@ -103,9 +109,22 @@ def detect_regions_with_florence(
     img_width, img_height = image.size
     task_prompt = "<OD>"
     inputs = processor(text=task_prompt, images=image, return_tensors="pt")
+    model_parameter = next(model.parameters())
+    model_device = model_parameter.device
+    model_dtype = model_parameter.dtype
+    generation_inputs = {
+        "input_ids": inputs["input_ids"].to(model_device),
+        "pixel_values": inputs["pixel_values"].to(
+            device=model_device,
+            dtype=model_dtype,
+        ),
+    }
+    if "attention_mask" in inputs:
+        generation_inputs["attention_mask"] = inputs["attention_mask"].to(
+            model_device
+        )
     generated_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        pixel_values=inputs["pixel_values"],
+        **generation_inputs,
         max_new_tokens=1024,
         num_beams=3,
         do_sample=False,
@@ -117,8 +136,8 @@ def detect_regions_with_florence(
     parsed = result.get(task_prompt, {})
     labels_list = parsed.get("labels", [])
     bboxes_list = parsed.get("bboxes", [])
-    text_regions: List[Dict[str, Any]] = []
-    tables: List[Dict[str, Any]] = []
+    text_regions: list[dict[str, Any]] = []
+    tables: list[dict[str, Any]] = []
     for label, bbox in zip(labels_list, bboxes_list):
         region = {"label": label, "bbox": bbox}
         if label in ("table", "table column", "table row", "table cell"):
@@ -139,15 +158,16 @@ def detect_regions_with_florence(
 
 
 def map_florence_regions_to_paddle_boxes(
-    florence_result: Dict[str, Any],
-    paddle_boxes: List[TextBox],
+    florence_result: dict[str, Any],
+    paddle_boxes: list[TextBox],
     page_height: float,
-) -> Tuple[List[TextBox], List[TextBox], List[TextBox]]:
+) -> tuple[list[TextBox], list[TextBox], list[TextBox]]:
     tables = florence_result.get("tables", [])
     text_regions = florence_result.get("text_regions", [])
-    upper_boxes: List[TextBox] = []
-    middle_boxes: List[TextBox] = []
-    lower_boxes: List[TextBox] = []
+    upper_boxes: list[TextBox] = []
+    middle_boxes: list[TextBox] = []
+    lower_boxes: list[TextBox] = []
+    table_boxes: list[TextBox] = []  # Faz 6.2a: SLANet HTML'e dönüştürülecek kutular
     assigned_indices: set[int] = set()
     table_regions = []
     for table in tables:
@@ -165,7 +185,9 @@ def map_florence_regions_to_paddle_boxes(
         assigned = False
         for top, bottom, left, right in table_regions:
             if top <= box_center_y <= bottom and left <= box_center_x <= right:
-                lower_boxes.append(box)
+                # Faz 6.2a: Tablo içi metinler ham OCR'a karışmasın,
+                # onların yerini SLANet HTML tabloları alacak
+                table_boxes.append(box)
                 assigned_indices.add(i)
                 assigned = True
                 break
@@ -185,7 +207,12 @@ def map_florence_regions_to_paddle_boxes(
         upper_boxes.extend(ru)
         middle_boxes.extend(rm)
         lower_boxes.extend(rl)
-    total = len(upper_boxes) + len(middle_boxes) + len(lower_boxes)
+    total = (
+        len(upper_boxes)
+        + len(middle_boxes)
+        + len(lower_boxes)
+        + len(table_boxes)
+    )
     assert total == len(paddle_boxes), (
         f"Florence esleme kutu kaybina yol acti: "
         f"ust={len(upper_boxes)} orta={len(middle_boxes)} "
@@ -198,6 +225,8 @@ def map_florence_regions_to_paddle_boxes(
         assigned_ids.add(id(box))
     for box in lower_boxes:
         assigned_ids.add(id(box))
+    for box in table_boxes:
+        assigned_ids.add(id(box))  # Faz 6.2a: tablo kutuları da takip edilmeli
     for box in paddle_boxes:
         assert id(box) in assigned_ids, f"Kutu kayboldu: {box.text[:30]}"
     return upper_boxes, middle_boxes, lower_boxes

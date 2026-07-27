@@ -8,6 +8,8 @@ const uploadProgressBar = document.getElementById('uploadProgressBar');
 const uploadProgressLabel = document.getElementById('uploadProgressLabel');
 const pdfPlaceholder = document.getElementById('pdfPlaceholder');
 const pdfIframe = document.getElementById('pdfIframe');
+const imagePreview = document.getElementById('imagePreview');
+const documentTextPreview = document.getElementById('documentTextPreview');
 const pdfViewerFileName = document.getElementById('pdfViewerFileName');
 const thumbnailSidebar = document.getElementById('thumbnailSidebar');
 const pdfFooter = document.getElementById('pdfFooter');
@@ -16,6 +18,7 @@ const auditScoreBadge = document.getElementById('auditScoreBadge');
 const auditReviewPanel = document.getElementById('auditReviewPanel');
 const auditReviewSource = document.getElementById('auditReviewSource');
 const auditReviewSummary = document.getElementById('auditReviewSummary');
+const auditSuspiciousFields = document.getElementById('auditSuspiciousFields');
 const statusMessageBar = document.getElementById('statusMessageBar');
 const statusMessage = document.getElementById('statusMessage');
 const processingSpinner = document.getElementById('processingSpinner');
@@ -24,6 +27,7 @@ const itemsTableBody = document.getElementById('itemsTableBody');
 const copyXmlBtn = document.getElementById('copyXmlBtn');
 const saveDraftBtn = document.getElementById('saveDraftBtn');
 const approveDataBtn = document.getElementById('approveDataBtn');
+const sendToErpBtn = document.getElementById('sendToErpBtn');
 const runCloudReviewBtn = document.getElementById('runCloudReviewBtn');
 const themeToggle = document.getElementById('themeToggle');
 const themeLabel = document.getElementById('themeLabel');
@@ -85,7 +89,6 @@ const profileLanguage = document.getElementById('profileLanguage');
 const profileTheme = document.getElementById('profileTheme');
 const profileSession = document.getElementById('profileSession');
 const pdfViewerPanel = document.getElementById('pdfViewerPanel');
-const pdfCopyBtn = document.getElementById('pdfCopyBtn');
 const pdfZoomBtn = document.getElementById('pdfZoomBtn');
 const pdfZoomLevel = document.getElementById('pdfZoomLevel');
 const pdfFullscreenBtn = document.getElementById('pdfFullscreenBtn');
@@ -100,9 +103,17 @@ const selectionActions = document.getElementById('selectionActions');
 const startProcessingBtn = document.getElementById('startProcessingBtn');
 const clearSelectionBtn = document.getElementById('clearSelectionBtn');
 const validationSummary = document.getElementById('validationSummary');
+const correctionDialog = document.getElementById('correctionDialog');
+const correctionFields = document.getElementById('correctionFields');
+const correctionCancelBtn = document.getElementById('correctionCancelBtn');
+const correctionSaveBtn = document.getElementById('correctionSaveBtn');
+const appNavigation = document.querySelector('nav');
+const appMain = document.querySelector('main');
 
 const TRANSLATIONS = {
     tr: {
+        'settings.unsavedChanges': 'İstek sırasında yeni değişiklik yapıldı. Yeni seçimleriniz korunuyor; yeniden kaydedin.',
+        'batch.zipFailed': 'Toplu işleme tamamlandı ancak ZIP oluşturulamadı: {message}',
         'page.title': 'CerberusVision — Belge İşleme',
         'nav.languageSelection': 'Dil seçimi',
         'nav.search': 'Arama',
@@ -164,6 +175,8 @@ const TRANSLATIONS = {
         'settings.loading': 'Model bilgileri yükleniyor...',
         'settings.saving': 'Ayarlar kaydediliyor...',
         'settings.saved': 'Ayarlar kaydedildi. DeepSeek: {state}',
+        'settings.inferenceSaved': 'Çıkarım ayarı kaydedildi.',
+        'settings.inferenceSaveFailed': 'Çıkarım ayarı kaydedilemedi',
         'settings.configured': 'yapılandırıldı',
         'settings.notConfigured': 'yapılandırılmadı',
         'settings.loadFailed': 'Ayarlar alınamadı',
@@ -200,13 +213,33 @@ const TRANSLATIONS = {
         'upload.title': 'Belge Yükle',
         'upload.dropPrompt': 'Belgeleri sürükleyip bırakın veya',
         'upload.browse': 'Göz Atın',
-        'upload.supported': 'PDF, DOCX, XML, PNG ve JPEG · en fazla 10 dosya',
+        'upload.supported': 'PDF, DOCX, XML, PNG ve JPEG · en fazla 50 dosya · dosya başına 50 MB',
         'upload.invalidDocument': 'Desteklenmeyen dosya var. PDF, DOCX, XML, PNG veya JPEG seçin.',
-        'upload.tooMany': 'Tek seferde en fazla 10 dosya seçebilirsiniz.',
+        'upload.tooMany': 'Tek seferde en fazla 50 dosya seçebilirsiniz.',
+        'upload.tooLarge': 'Her dosya en fazla 50 MB olabilir.',
         'upload.queue': '{done}/{total} belge tamamlandı',
         'upload.previewUnavailable': 'Bu DOCX belgesi için tarayıcı önizlemesi kullanılamıyor.',
         'upload.uploading': 'Dosya yükleniyor...',
         'upload.ready': 'Dosyalar hazır. Ayarları kontrol edip analizi başlatın.',
+        'batch.uploading': 'Toplu dosyalar yükleniyor ve doğrulanıyor...',
+        'batch.completed': 'Toplu işleme tamamlandı.',
+        'batch.timeout': 'Toplu işlem zaman aşımına uğradı.',
+        'batch.processing': 'İşleniyor: {file}',
+        'batch.ready': 'ZIP hazır. İndirebilirsiniz.',
+        'batch.cancelled': 'Toplu işlem iptal edildi.',
+        'batch.uploadFailed': 'Toplu yükleme başarısız oldu: {message}',
+        'batch.streamFailed': 'Toplu işlem bağlantısı kesildi: {message}',
+        'batch.downloadFailed': 'ZIP indirilemedi: {message}',
+        'batch.cancelFailed': 'Toplu işlem iptal edilemedi: {message}',
+        'batch.uploadPending': 'Toplu yükleme başlatılıyor; işlem kimliği oluşana kadar bekleyin.',
+        'batch.invalidEvent': 'Toplu işlem sunucusundan geçersiz bir olay alındı.',
+        'batch.streamEnded': 'Toplu işlem bağlantısı tamamlanma olayı gelmeden kapandı.',
+        'correction.open': 'Eksik Alanları Düzelt',
+        'correction.title': 'Eksik Alanları Düzelt',
+        'correction.hint': 'Onay için gereken alanları tamamlayın. Kaydetme sonrasında XML yeniden üretilir.',
+        'correction.cancel': 'Vazgeç',
+        'correction.save': 'Düzeltmeleri Kaydet',
+        'correction.stale': 'Belge değiştiği için eski düzeltmeler kaydedilmedi.',
         'processing.documentLanguage': 'Belge dili',
         'processing.languageAuto': 'Otomatik / Çok dilli',
         'processing.translationEnabled': 'XML açıklama alanlarını hedef dile çevir',
@@ -214,6 +247,8 @@ const TRANSLATIONS = {
         'processing.outputHint': 'DCSA XML etiketleri standart gereği sabit kalır; açıklama ve not değerleri seçilen dilde üretilir.',
         'pdf.noneLoaded': 'Belge yüklenmedi',
         'pdf.previewPrompt': 'Önizlemek için bir PDF yükleyin',
+        'pdf.previewFrame': 'PDF önizleme',
+        'preview.imageAlt': 'Yüklenen belge görseli',
         'pdf.copyLink': 'PDF bağlantısını kopyala',
         'pdf.linkCopied': 'PDF bağlantısı kopyalandı.',
         'pdf.noDocument': 'Önce bir PDF yükleyin.',
@@ -247,6 +282,9 @@ const TRANSLATIONS = {
         'status.draft': 'Taslak oluşturuldu; eksik alanlar mevcut.',
         'status.saved': 'Taslak kaydedildi.',
         'status.approved': 'Veriler onaylandı.',
+        'status.erpSuccess': 'ERP\'ye başarıyla aktarıldı.',
+        'status.erpFailed': 'ERP aktarımı başarısız oldu.',
+        'status.erpNotApproved': 'ERP\'ye yalnızca onaylanmış belgeler gönderilebilir.',
         'status.cloudCompleted': 'DeepSeek kısa denetimi tamamlandı.',
         'audit.confidenceTitle': 'Belge denetim güveni',
         'audit.deepSeek': 'DeepSeek Denetimi',
@@ -256,6 +294,7 @@ const TRANSLATIONS = {
         'audit.deepSeekSource': 'DeepSeek kısa incelemesi',
         'audit.localSource': 'Yerel deterministik kontroller',
         'audit.completed': 'Denetim tamamlandı.',
+        'audit.suspiciousHeading': 'Şüpheli alanlar',
         'audit.suspiciousField': 'Bu alan belge denetim kontrolleri tarafından işaretlendi',
         'form.documentInfo': 'Belge Bilgileri',
         'form.documentId': 'Belge Kimliği',
@@ -296,6 +335,7 @@ const TRANSLATIONS = {
         'actions.cloudReview': 'Bulut Denetimini Çalıştır',
         'actions.saveDraft': 'Taslak Kaydet',
         'actions.approve': 'Verileri Onayla',
+        'actions.sendToErp': 'ERP\'ye Aktar',
         'actions.startProcessing': 'Analizi Başlat',
         'actions.exportAll': 'ZIP İndir',
         'actions.clearSelection': 'Seçimi Temizle',
@@ -304,10 +344,14 @@ const TRANSLATIONS = {
         'error.prefix': 'Hata',
         'error.uploadFailed': 'Yükleme başarısız',
         'error.requestFailed': 'İstek başarısız',
+        'error.streamEnded': 'İşlem bağlantısı tamamlanma olayı gelmeden kapandı.',
+        'export.failed': 'ZIP dışa aktarılamadı: {message}',
         'error.approvalBlocked': 'Zorunlu alanlar veya XSD doğrulama hataları onayı engelliyor.',
         'auth.apiKeyPrompt': 'Sunucu erişimi için CerberusVision API anahtarını girin:',
     },
     en: {
+        'settings.unsavedChanges': 'You changed settings while the request was running. Your new selections were preserved; save again.',
+        'batch.zipFailed': 'Batch processing completed but the ZIP could not be created: {message}',
         'page.title': 'CerberusVision — Document Processing',
         'nav.languageSelection': 'Language selection',
         'nav.search': 'Search',
@@ -372,6 +416,8 @@ const TRANSLATIONS = {
         'settings.loading': 'Loading model information...',
         'settings.saving': 'Saving settings...',
         'settings.saved': 'Settings saved. DeepSeek: {state}',
+        'settings.inferenceSaved': 'Inference setting saved.',
+        'settings.inferenceSaveFailed': 'Could not save inference setting',
         'settings.configured': 'configured',
         'settings.notConfigured': 'not configured',
         'settings.loadFailed': 'Could not load settings',
@@ -408,13 +454,33 @@ const TRANSLATIONS = {
         'upload.title': 'Upload Document',
         'upload.dropPrompt': 'Drag & drop documents or',
         'upload.browse': 'Browse',
-        'upload.supported': 'PDF, DOCX, XML, PNG and JPEG · up to 10 files',
+        'upload.supported': 'PDF, DOCX, XML, PNG and JPEG · up to 50 files · 50 MB per file',
         'upload.invalidDocument': 'An unsupported file was selected. Choose PDF, DOCX, XML, PNG or JPEG.',
-        'upload.tooMany': 'You can select up to 10 files at once.',
+        'upload.tooMany': 'You can select up to 50 files at once.',
+        'upload.tooLarge': 'Each file can be up to 50 MB.',
         'upload.queue': '{done}/{total} documents completed',
         'upload.previewUnavailable': 'Browser preview is unavailable for this DOCX document.',
         'upload.uploading': 'Uploading file...',
         'upload.ready': 'Files are ready. Check the settings and start analysis.',
+        'batch.uploading': 'Batch files are being uploaded and validated...',
+        'batch.completed': 'Batch processing completed.',
+        'batch.timeout': 'Batch processing timed out.',
+        'batch.processing': 'Processing: {file}',
+        'batch.ready': 'ZIP is ready to download.',
+        'batch.cancelled': 'Batch processing was cancelled.',
+        'batch.uploadFailed': 'Batch upload failed: {message}',
+        'batch.streamFailed': 'Batch connection failed: {message}',
+        'batch.downloadFailed': 'ZIP download failed: {message}',
+        'batch.cancelFailed': 'Batch cancellation failed: {message}',
+        'batch.uploadPending': 'Batch upload is starting; wait until its operation ID is available.',
+        'batch.invalidEvent': 'An invalid event was received from the batch server.',
+        'batch.streamEnded': 'The batch connection closed before a completion event arrived.',
+        'correction.open': 'Correct Missing Fields',
+        'correction.title': 'Correct Missing Fields',
+        'correction.hint': 'Complete the fields required for approval. The XML will be regenerated after saving.',
+        'correction.cancel': 'Cancel',
+        'correction.save': 'Save Corrections',
+        'correction.stale': 'The document changed, so the previous corrections were not saved.',
         'processing.documentLanguage': 'Document language',
         'processing.languageAuto': 'Automatic / Multilingual',
         'processing.translationEnabled': 'Translate XML descriptive fields to the target language',
@@ -422,6 +488,8 @@ const TRANSLATIONS = {
         'processing.outputHint': 'DCSA XML element names remain fixed by the standard; descriptions and remarks are generated in the selected language.',
         'pdf.noneLoaded': 'No document loaded',
         'pdf.previewPrompt': 'Upload a PDF to preview',
+        'pdf.previewFrame': 'PDF preview',
+        'preview.imageAlt': 'Uploaded document image',
         'pdf.copyLink': 'Copy PDF link',
         'pdf.linkCopied': 'PDF link copied.',
         'pdf.noDocument': 'Upload a PDF first.',
@@ -455,6 +523,9 @@ const TRANSLATIONS = {
         'status.draft': 'Draft created; required fields are missing.',
         'status.saved': 'Draft saved.',
         'status.approved': 'Data approved.',
+        'status.erpSuccess': 'Successfully sent to ERP.',
+        'status.erpFailed': 'ERP transfer failed.',
+        'status.erpNotApproved': 'Only approved documents can be sent to ERP.',
         'status.cloudCompleted': 'Short DeepSeek audit completed.',
         'audit.confidenceTitle': 'Document audit confidence',
         'audit.deepSeek': 'DeepSeek Audit',
@@ -464,6 +535,7 @@ const TRANSLATIONS = {
         'audit.deepSeekSource': 'DeepSeek short review',
         'audit.localSource': 'Local deterministic checks',
         'audit.completed': 'Audit completed.',
+        'audit.suspiciousHeading': 'Suspicious fields',
         'audit.suspiciousField': 'This field was flagged by document audit checks',
         'form.documentInfo': 'Document Info',
         'form.documentId': 'Document ID',
@@ -504,6 +576,7 @@ const TRANSLATIONS = {
         'actions.cloudReview': 'Run Cloud Review',
         'actions.saveDraft': 'Save Draft',
         'actions.approve': 'Approve Data',
+        'actions.sendToErp': 'Send to ERP',
         'actions.startProcessing': 'Start Analysis',
         'actions.exportAll': 'Download ZIP',
         'actions.clearSelection': 'Clear Selection',
@@ -512,6 +585,8 @@ const TRANSLATIONS = {
         'error.prefix': 'Error',
         'error.uploadFailed': 'Upload failed',
         'error.requestFailed': 'Request failed',
+        'error.streamEnded': 'The processing connection closed before a completion event arrived.',
+        'export.failed': 'ZIP export failed: {message}',
         'error.approvalBlocked': 'Mandatory fields or XSD validation errors prevent approval.',
         'auth.apiKeyPrompt': 'Enter the CerberusVision API key to access the server:',
     },
@@ -535,12 +610,22 @@ function t(key, values = {}) {
     );
 }
 
-async function apiFetch(resource, options = {}, allowCredentialRetry = true) {
+async function apiFetch(
+    resource,
+    options = {},
+    allowCredentialRetry = true,
+    apiKeyOverride = null,
+) {
     const headers = new Headers(options.headers || {});
-    const apiKey = sessionStorage.getItem('cerberus-api-key');
+    const apiKey = apiKeyOverride || sessionStorage.getItem('cerberus-api-key');
     if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
     const response = await fetch(resource, { ...options, headers });
-    if (response.status !== 401 || !allowCredentialRetry) return response;
+    if (response.status !== 401) return response;
+    if (apiKeyOverride !== null) return response;
+    if (apiKey && sessionStorage.getItem('cerberus-api-key') === apiKey) {
+        sessionStorage.removeItem('cerberus-api-key');
+    }
+    if (!allowCredentialRetry) return response;
     const suppliedKey = window.prompt(t('auth.apiKeyPrompt'));
     if (!suppliedKey) return response;
     sessionStorage.setItem('cerberus-api-key', suppliedKey.trim());
@@ -548,9 +633,9 @@ async function apiFetch(resource, options = {}, allowCredentialRetry = true) {
         const originalForm = options.body;
         const yeniForm = new FormData();
         for (const [key, value] of originalForm.entries()) { yeniForm.append(key, value); }
-        return apiFetch(resource, { ...options, body: yeniForm }, false);
+        return apiFetch(resource, { ...options, body: yeniForm }, false, null);
     }
-    return apiFetch(resource, options, false);
+    return apiFetch(resource, options, false, null);
 }
 
 function renderDetectedModels(models = []) {
@@ -597,6 +682,7 @@ function renderRuntimeSettings(data) {
     }
     inferenceMode.value = inferenceConfig.mode || 'multi_stage';
     layoutEngine.value = inferenceConfig.layout_engine || 'y_ratio';
+    nmtEnabled.checked = inferenceConfig.nmt_enabled ?? true;
     loraEnabled.checked = inferenceConfig.lora_enabled || false;
     const adapterList = inferenceConfig.lora_adapters || [];
     loraAdapterPath.innerHTML = adapterList.length
@@ -640,12 +726,18 @@ function renderRuntimeSettings(data) {
 }
 
 async function loadRuntimeSettings(allowCredentialRetry = true) {
+    const requestedRevision = runtimeSettingsEditRevision;
     settingsRefreshBtn.disabled = true;
     settingsStatus.textContent = t('settings.loading');
     try {
         const response = await apiFetch('/api/runtime-settings', {}, allowCredentialRetry);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || response.statusText);
+        if (runtimeSettingsEditRevision !== requestedRevision) {
+            currentRuntimeSettings = data;
+            settingsStatus.textContent = t('settings.unsavedChanges');
+            return;
+        }
         renderRuntimeSettings(data);
     } catch (error) {
         settingsStatus.textContent = `${t('settings.loadFailed')}: ${error.message}`;
@@ -655,10 +747,10 @@ async function loadRuntimeSettings(allowCredentialRetry = true) {
 }
 
 async function saveRuntimeSettings() {
+    const submittedRevision = runtimeSettingsEditRevision;
     settingsSaveBtn.disabled = true;
     settingsStatus.textContent = t('settings.saving');
     const serverKey = serverApiKeyInput.value.trim();
-    if (serverKey) sessionStorage.setItem('cerberus-api-key', serverKey);
     const payload = {
         clear_deepseek_api_key: clearDeepSeekKey.checked,
         deepseek_review_mode: deepSeekReviewMode.value,
@@ -685,22 +777,83 @@ async function saveRuntimeSettings() {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-        });
+        }, true, serverKey || null);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || response.statusText);
-        deepSeekApiKeyInput.value = '';
-        clearDeepSeekKey.checked = false;
-        renderRuntimeSettings(data);
-        settingsStatus.textContent = t('settings.saved', {
-            state: t(data.deepseek?.configured ? 'settings.configured' : 'settings.notConfigured'),
-        });
+        if (serverKey) sessionStorage.setItem('cerberus-api-key', serverKey);
+        const settingsChangedDuringRequest = runtimeSettingsEditRevision !== submittedRevision;
+        currentRuntimeSettings = data;
+        if (settingsChangedDuringRequest) {
+            settingsStatus.textContent = t('settings.unsavedChanges');
+        } else {
+            serverApiKeyInput.value = '';
+            deepSeekApiKeyInput.value = '';
+            clearDeepSeekKey.checked = false;
+            renderRuntimeSettings(data);
+            settingsStatus.textContent = t('settings.saved', {
+                state: t(data.deepseek?.configured ? 'settings.configured' : 'settings.notConfigured'),
+            });
+        }
         currentCloudReviewAvailable = Boolean(data.deepseek?.configured && data.deepseek?.review_mode !== 'off');
         updateResultActionAvailability();
+        return !settingsChangedDuringRequest;
     } catch (error) {
         settingsStatus.textContent = `${t('error.prefix')}: ${error.message}`;
+        return false;
     } finally {
         settingsSaveBtn.disabled = false;
     }
+}
+
+async function persistInferenceSelection(
+    requestField,
+    responseField,
+    selectedValue,
+    control,
+) {
+    const previousValue = currentRuntimeSettings?.inference?.[responseField]
+        ?? control.value;
+    control.disabled = true;
+    settingsSaveBtn.disabled = true;
+    startProcessingBtn.disabled = true;
+    settingsStatus.textContent = t('settings.saving');
+    try {
+        const response = await apiFetch('/api/runtime-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [requestField]: selectedValue }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        currentRuntimeSettings = data;
+        control.value = data.inference?.[responseField] ?? selectedValue;
+        settingsStatus.textContent = t('settings.inferenceSaved');
+        return true;
+    } catch (error) {
+        control.value = previousValue;
+        settingsStatus.textContent = `${t('settings.inferenceSaveFailed')}: ${error.message}`;
+        return false;
+    } finally {
+        control.disabled = false;
+        settingsSaveBtn.disabled = false;
+        renderDocumentQueue();
+    }
+}
+
+function queueInferenceSelection(
+    requestField,
+    responseField,
+    selectedValue,
+    control,
+) {
+    runtimeInferenceSavePromise = runtimeInferenceSavePromise.then(
+        () => persistInferenceSelection(
+            requestField,
+            responseField,
+            selectedValue,
+            control,
+        ),
+    );
 }
 
 let uploadedPdfUrl = null;
@@ -709,8 +862,14 @@ let currentPreviewKind = null;
 let documentQueue = [];
 const SUPPORTED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'docx', 'xml', 'png', 'jpg', 'jpeg']);
 const MAX_BATCH_FILES = 50;
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const PDF_PAGE_SCAN_BYTES = 2 * 1024 * 1024;
+const MAX_RENDERED_THUMBNAILS = 200;
 let activeBatchId = null;
 let activeBatchController = null;
+let activeBatchRunning = false;
+let batchUploadPending = false;
+let batchCancellationPending = false;
 let currentPage = 1;
 let totalPages = 1;
 let currentZoom = 100;
@@ -729,38 +888,30 @@ let activeUploadController = null;
 let activeUploadRequestId = 0;
 let latestNotification = null;
 let currentRuntimeSettings = null;
+let runtimeInferenceSavePromise = Promise.resolve(true);
+let runtimeSettingsSavePromise = Promise.resolve(true);
+let runtimeSettingsEditRevision = 0;
 let runtimePreferencesHydrated = false;
 let currentApprovalReady = false;
+let currentMissingFields = [];
+let currentValidationErrors = [];
 let selectionProcessing = false;
+let correctionContext = null;
+let correctionPreviousFocus = null;
+let correctionSaving = false;
 let liveLogAbortController = null;
 let liveLogReconnectTimer = null;
 let liveLogStreamingEnabled = false;
+let liveLogReconnectAttempts = 0;
 let lastLiveLogEventId = 0;
+let cloudReviewAbortController = null;
+let erpAbortController = null;
+let instructionPersistAbortController = null;
+let erpTransferredSessionId = null;
 
 const MAX_RENDERED_LOGS = 500;
-
-const MANDATORY_EDITABLE_PATHS = [
-    'shipping_instruction_reference',
-    'shipping_instruction_date_time',
-    'carrier_booking_reference',
-    'issue_date',
-    'place_of_issue.location_name',
-    'parties[0].party_name',
-    'parties[0].address.street',
-    'parties[0].address.city',
-    'parties[0].address.country_code',
-    'parties[1].party_name',
-    'parties[1].address.street',
-    'parties[1].address.city',
-    'parties[1].address.country_code',
-    'transport_plans[0].port_of_loading.location_name',
-    'transport_plans[0].port_of_discharge.location_name',
-    'equipment_list[0].equipment_reference',
-    'equipment_list[0].cargo_gross_weight.weight',
-    'cargo_items[0].package_quantity',
-    'cargo_items[0].description_of_goods',
-    'cargo_items[0].weight.weight_value',
-];
+const LIVE_LOG_RECONNECT_BASE_MS = 2000;
+const LIVE_LOG_RECONNECT_MAX_MS = 30000;
 
 const STATUS_BADGE_MAP = {
     PENDING: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
@@ -776,19 +927,6 @@ const STATUS_BADGE_MAP = {
 
 const SEARCH_TARGETS = [
     { key: 'upload.title', selector: '#dropZone' },
-    { key: 'form.documentId', selector: "[data-field='shipping_instruction_reference']" },
-    { key: 'form.date', selector: "[data-field='issue_date']" },
-    { key: 'form.vendor', selector: "[data-field='parties[0].party_name']" },
-    { key: 'form.vendorAddress', selector: "[data-field='parties[0].address.street']" },
-    { key: 'form.taxId', selector: "[data-field='parties[0].party_id']" },
-    { key: 'form.totalAmount', selector: "[data-field='cargo_items[0].weight.weight_value']" },
-    { key: 'form.carrierBookingReference', selector: "[data-field='carrier_booking_reference']" },
-    { key: 'form.transportDocumentType', selector: "[data-field='transport_document_type']" },
-    { key: 'form.portOfLoading', selector: "[data-field='transport_plans[0].port_of_loading.location_name']" },
-    { key: 'form.portOfDischarge', selector: "[data-field='transport_plans[0].port_of_discharge.location_name']" },
-    { key: 'form.equipmentReference', selector: "[data-field='equipment_list[0].equipment_reference']" },
-    { key: 'form.cargoGrossWeight', selector: "[data-field='equipment_list[0].cargo_gross_weight.weight']" },
-    { key: 'items.title', selector: '#itemsTableBody' },
     { key: 'xml.title', selector: '#xmlOutput' },
 ];
 
@@ -801,10 +939,21 @@ function closeTopPanels(except = null) {
         [profilePanel, profileBtn],
     ].forEach(([panel, button]) => {
         if (panel !== except) {
+            if (panel === logsPanel && !panel.classList.contains('hidden')) stopLiveLogs();
             panel.classList.add('hidden');
             button.setAttribute('aria-expanded', 'false');
         }
     });
+}
+
+function stopLiveLogs() {
+    liveLogStreamingEnabled = false;
+    if (liveLogAbortController) liveLogAbortController.abort();
+    liveLogAbortController = null;
+    if (liveLogReconnectTimer) clearTimeout(liveLogReconnectTimer);
+    liveLogReconnectTimer = null;
+    liveLogReconnectAttempts = 0;
+    updateLiveLogConnectionState('disconnected');
 }
 
 function updateLiveLogConnectionState(state) {
@@ -817,9 +966,16 @@ function updateLiveLogConnectionState(state) {
     logsConnectionStatus.textContent = t(`logs.${state}`);
 }
 
+function trimLiveLogOutput() {
+    while (logsOutput.children.length > MAX_RENDERED_LOGS) {
+        logsOutput.firstElementChild.remove();
+    }
+}
+
 function appendLiveLogEntry(entry) {
     if (!entry || !Number.isFinite(Number(entry.id))) return;
     lastLiveLogEventId = Math.max(lastLiveLogEventId, Number(entry.id));
+    liveLogReconnectAttempts = 0;
     if (logsEmptyState) {
         logsEmptyState.remove();
         logsEmptyState = null;
@@ -841,9 +997,7 @@ function appendLiveLogEntry(entry) {
     line.className = levelClasses[level] || levelClasses.INFO;
     line.textContent = `[${timeText}] ${level.padEnd(8)} ${entry.source || 'cerberus'}  ${entry.message || ''}`;
     logsOutput.appendChild(line);
-    while (logsOutput.children.length > MAX_RENDERED_LOGS) {
-        logsOutput.firstElementChild.remove();
-    }
+    trimLiveLogOutput();
     if (logsAutoScroll.checked) logsOutput.scrollTop = logsOutput.scrollHeight;
 }
 
@@ -852,6 +1006,7 @@ function appendLiveLogError(message, translationKey = 'logs.streamError') {
     line.className = 'text-red-300';
     line.textContent = t(translationKey, { message });
     logsOutput.appendChild(line);
+    trimLiveLogOutput();
     if (logsAutoScroll.checked) logsOutput.scrollTop = logsOutput.scrollHeight;
 }
 
@@ -907,7 +1062,13 @@ async function connectLiveLogs() {
         if (liveLogAbortController === controller) liveLogAbortController = null;
         if (!controller.signal.aborted && liveLogStreamingEnabled) {
             updateLiveLogConnectionState('disconnected');
-            liveLogReconnectTimer = setTimeout(connectLiveLogs, 2000);
+            liveLogReconnectAttempts += 1;
+            const backoff = Math.min(
+                LIVE_LOG_RECONNECT_MAX_MS,
+                LIVE_LOG_RECONNECT_BASE_MS * (2 ** (liveLogReconnectAttempts - 1)),
+            );
+            const jitter = Math.floor(Math.random() * Math.min(1000, backoff * 0.2));
+            liveLogReconnectTimer = setTimeout(connectLiveLogs, backoff + jitter);
         }
     }
 }
@@ -995,7 +1156,15 @@ function updateProfileSummary() {
 }
 
 async function estimatePdfPageCount(file) {
-    const source = new TextDecoder('latin1').decode(new Uint8Array(await file.arrayBuffer()));
+    const headEnd = Math.min(file.size, PDF_PAGE_SCAN_BYTES);
+    const tailStart = Math.max(headEnd, file.size - PDF_PAGE_SCAN_BYTES);
+    const [headBuffer, tailBuffer] = await Promise.all([
+        file.slice(0, headEnd).arrayBuffer(),
+        file.slice(tailStart).arrayBuffer(),
+    ]);
+    const decoder = new TextDecoder('latin1');
+    const source = decoder.decode(new Uint8Array(headBuffer))
+        + decoder.decode(new Uint8Array(tailBuffer));
     const pageObjects = source.match(/\/Type\s*\/Page(?!s)\b/g)?.length || 0;
     let maximumCount = 0;
     for (const match of source.matchAll(/\/Count\s+(\d+)/g)) {
@@ -1006,8 +1175,12 @@ async function estimatePdfPageCount(file) {
 }
 
 function renderPageThumbnails() {
-    thumbnailSidebar.innerHTML = Array.from({ length: totalPages }, (_, index) => {
-        const pageNumber = index + 1;
+    const renderedCount = Math.min(totalPages, MAX_RENDERED_THUMBNAILS);
+    const maximumStart = Math.max(1, totalPages - renderedCount + 1);
+    const requestedStart = currentPage - Math.floor(renderedCount / 2);
+    const startPage = Math.min(Math.max(1, requestedStart), maximumStart);
+    thumbnailSidebar.innerHTML = Array.from({ length: renderedCount }, (_, index) => {
+        const pageNumber = startPage + index;
         const selected = pageNumber === currentPage;
         return `<button type="button" data-pdf-page="${pageNumber}" aria-label="${escapeHtml(`${t('pdf.page')} ${pageNumber}`)}" aria-current="${selected ? 'page' : 'false'}" class="flex aspect-[3/4] w-full items-center justify-center rounded-lg border text-xs font-semibold transition ${selected
             ? 'border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300'
@@ -1022,7 +1195,6 @@ function updatePdfControls() {
     currentPageLabel.textContent = String(currentPage);
     totalPagesLabel.textContent = String(totalPages);
     pdfZoomLevel.textContent = `${currentZoom}%`;
-    pdfCopyBtn.disabled = !hasPreview;
     pdfZoomBtn.disabled = !hasPdf;
     pdfFullscreenBtn.disabled = !hasPreview;
     prevPageBtn.disabled = !hasPdf || currentPage <= 1;
@@ -1037,10 +1209,8 @@ function updatePdfControls() {
 }
 
 function refreshPdfViewer() {
-    if (!uploadedPdfUrl) return;
-    pdfIframe.src = currentPreviewKind === 'pdf'
-        ? `${uploadedPdfUrl}#page=${currentPage}&zoom=${currentZoom}`
-        : uploadedPdfUrl;
+    if (!uploadedPdfUrl || currentPreviewKind !== 'pdf') return;
+    pdfIframe.src = `${uploadedPdfUrl}#page=${currentPage}&zoom=${currentZoom}`;
     updatePdfControls();
 }
 
@@ -1059,19 +1229,6 @@ function cyclePdfZoom() {
     refreshPdfViewer();
 }
 
-async function copyPdfLink() {
-    if (!uploadedPdfUrl) {
-        showStatusMessage('', true, 'pdf.noDocument');
-        return;
-    }
-    try {
-        await navigator.clipboard.writeText(`${uploadedPdfUrl}#page=${currentPage}&zoom=${currentZoom}`);
-        showStatusMessage('', true, 'pdf.linkCopied');
-    } catch (error) {
-        showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
-    }
-}
-
 async function togglePdfFullscreen() {
     if (!uploadedPdfUrl) return;
     try {
@@ -1085,11 +1242,29 @@ async function togglePdfFullscreen() {
     }
 }
 
+function renderSuspiciousFields(suspiciousFields = []) {
+    auditSuspiciousFields.replaceChildren();
+    auditSuspiciousFields.classList.toggle('hidden', suspiciousFields.length === 0);
+    if (suspiciousFields.length === 0) return;
+    const heading = document.createElement('p');
+    heading.className = 'text-xs font-semibold text-violet-800 dark:text-violet-200';
+    heading.textContent = t('audit.suspiciousHeading');
+    const list = document.createElement('ul');
+    list.className = 'mt-1 list-disc space-y-0.5 pl-5 text-xs text-violet-800 dark:text-violet-200';
+    suspiciousFields.forEach((fieldPath) => {
+        const item = document.createElement('li');
+        item.textContent = fieldPath;
+        list.appendChild(item);
+    });
+    auditSuspiciousFields.append(heading, list);
+}
+
 function updateAuditDisplay(score, cloudReviewUsed, localRiskScore, summary, suspiciousFields = [], refinementUsed = false) {
     if (typeof score !== 'number') {
         currentAuditState = null;
         auditScoreBadge.classList.add('hidden');
         auditReviewPanel.classList.add('hidden');
+        renderSuspiciousFields([]);
         return;
     }
     currentAuditState = { score, cloudReviewUsed, localRiskScore, summary, suspiciousFields, refinementUsed };
@@ -1107,6 +1282,7 @@ function updateAuditDisplay(score, cloudReviewUsed, localRiskScore, summary, sus
     if (refinementUsed) kaynakMetin += ' (' + t('audit.refinementUsed') + ')';
     auditReviewSource.textContent = kaynakMetin;
     auditReviewSummary.textContent = translateServerMessage(summary) || t('audit.completed');
+    renderSuspiciousFields(suspiciousFields);
     auditReviewPanel.classList.remove('hidden');
 }
 
@@ -1191,6 +1367,9 @@ function applyLanguage(language, persist = true) {
     document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
         element.setAttribute('aria-label', t(element.dataset.i18nAriaLabel));
     });
+    document.querySelectorAll('[data-i18n-alt]').forEach((element) => {
+        element.alt = t(element.dataset.i18nAlt);
+    });
     document.querySelectorAll('[data-language]').forEach((button) => {
         const active = button.dataset.language === currentLanguage;
         button.setAttribute('aria-pressed', String(active));
@@ -1205,7 +1384,14 @@ function applyLanguage(language, persist = true) {
     }
     if (currentAuditState) {
         const audit = currentAuditState;
-        updateAuditDisplay(audit.score, audit.cloudReviewUsed, audit.localRiskScore, audit.summary, audit.suspiciousFields);
+        updateAuditDisplay(
+            audit.score,
+            audit.cloudReviewUsed,
+            audit.localRiskScore,
+            audit.summary,
+            audit.suspiciousFields,
+            audit.refinementUsed,
+        );
     }
     if (currentItems) populateItemsTable(currentItems);
     refreshSuspiciousFieldTitles();
@@ -1262,16 +1448,29 @@ function setUploadProgress(percent) {
 function updateResultActionAvailability() {
     const hasStructuredData = Boolean(currentStructuredData);
     saveDraftBtn.disabled = !hasStructuredData;
-    const formReady = MANDATORY_EDITABLE_PATHS.every((path) => {
-        const input = document.querySelector(`[data-field="${path}"]`);
-        return input && input.value.trim() !== '';
-    });
+    const formReady = currentMissingFields.length === 0 && currentValidationErrors.length === 0;
     approveDataBtn.disabled = !hasStructuredData || !formReady;
     currentApprovalReady = hasStructuredData && formReady;
     copyXmlBtn.disabled = !currentXmlContent;
+    // ERP butonu: sadece onaylanmış (FNL) belgeler için aktif
+    const isApproved = currentStructuredData
+        && currentStructuredData.document_status_code === 'FNL';
+    sendToErpBtn.disabled = !isApproved || erpTransferredSessionId === currentSessionId;
+}
+
+function cancelSessionScopedRequests() {
+    if (cloudReviewAbortController) cloudReviewAbortController.abort();
+    if (erpAbortController) erpAbortController.abort();
+    if (instructionPersistAbortController) instructionPersistAbortController.abort();
+    cloudReviewAbortController = null;
+    erpAbortController = null;
+    instructionPersistAbortController = null;
+    sendToErpBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+    showSpinner(false);
 }
 
 function resetDocumentResults() {
+    if (!correctionDialog.classList.contains('hidden')) closeCorrectionDialog(false);
     document.querySelectorAll('[data-field]').forEach((input) => {
         input.value = '';
         input.dataset.i18nPlaceholder = 'form.autoExtracted';
@@ -1286,6 +1485,8 @@ function resetDocumentResults() {
     populateItemsTable([]);
     currentXmlContent = '';
     currentApprovalReady = false;
+    currentMissingFields = [];
+    currentValidationErrors = [];
     validationSummary.classList.add('hidden');
     validationSummary.innerHTML = '';
     xmlOutput.dataset.i18n = 'xml.placeholder';
@@ -1294,8 +1495,10 @@ function resetDocumentResults() {
 }
 
 function renderValidationSummary(missingFields = [], validationErrors = []) {
+    currentMissingFields = missingFields.filter((field) => field?.field_path);
+    currentValidationErrors = validationErrors.filter(Boolean);
     const missingLabels = missingFields.map((field) => field.field_label || field.field_path).filter(Boolean);
-    const xmlErrors = validationErrors.filter(Boolean);
+    const xmlErrors = currentValidationErrors;
     if (!missingLabels.length && !xmlErrors.length) {
         validationSummary.classList.add('hidden');
         validationSummary.innerHTML = '';
@@ -1304,12 +1507,99 @@ function renderValidationSummary(missingFields = [], validationErrors = []) {
     const sections = [];
     if (missingLabels.length) {
         sections.push(`<div><p class="font-semibold">${escapeHtml(t('validation.heading'))}</p><ul class="mt-1 list-disc space-y-0.5 pl-5">${missingLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul></div>`);
+        sections.push(`<button id="correctionOpenBtn" type="button" class="mt-3 rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-800">${escapeHtml(t('correction.open'))}</button>`);
     }
     if (xmlErrors.length) {
         sections.push(`<div class="mt-2"><p class="font-semibold">${escapeHtml(t('validation.xsdHeading'))}</p><ul class="mt-1 list-disc space-y-0.5 pl-5">${xmlErrors.map((error) => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>`);
     }
     validationSummary.innerHTML = sections.join('');
     validationSummary.classList.remove('hidden');
+}
+
+function openCorrectionDialog() {
+    if (!currentStructuredData || !currentMissingFields.length) return;
+    correctionContext = {
+        sessionId: currentSessionId,
+        requestId: activeUploadRequestId,
+    };
+    correctionPreviousFocus = document.activeElement;
+    correctionFields.replaceChildren();
+    const uniqueFields = new Map();
+    currentMissingFields.forEach((field) => {
+        if (!uniqueFields.has(field.field_path)) uniqueFields.set(field.field_path, field);
+    });
+    uniqueFields.forEach((field, fieldPath) => {
+        const wrapper = document.createElement('div');
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        label.className = 'block text-xs font-semibold text-slate-600 dark:text-slate-300';
+        label.textContent = field.field_label || fieldPath;
+        label.htmlFor = `correction-${fieldPath.replace(/[^a-zA-Z0-9]/g, '-')}`;
+        input.id = label.htmlFor;
+        input.type = 'text';
+        input.dataset.correctionField = fieldPath;
+        input.className = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100';
+        const existingValue = getNestedValue(currentStructuredData, fieldPath);
+        input.value = existingValue && typeof existingValue === 'object' && 'value' in existingValue
+            ? String(existingValue.value ?? '')
+            : String(existingValue ?? '');
+        wrapper.append(label, input);
+        correctionFields.appendChild(wrapper);
+    });
+    correctionDialog.classList.remove('hidden');
+    correctionDialog.classList.add('flex');
+    appNavigation.inert = true;
+    appMain.inert = true;
+    appNavigation.setAttribute('aria-hidden', 'true');
+    appMain.setAttribute('aria-hidden', 'true');
+    correctionFields.querySelector('input')?.focus();
+}
+
+function closeCorrectionDialog(restoreFocus = true) {
+    correctionDialog.classList.add('hidden');
+    correctionDialog.classList.remove('flex');
+    appNavigation.inert = false;
+    appMain.inert = false;
+    appNavigation.removeAttribute('aria-hidden');
+    appMain.removeAttribute('aria-hidden');
+    correctionFields.replaceChildren();
+    correctionContext = null;
+    if (restoreFocus && correctionPreviousFocus instanceof HTMLElement) correctionPreviousFocus.focus();
+    correctionPreviousFocus = null;
+}
+
+async function saveCorrections() {
+    if (correctionSaving) return;
+    const context = correctionContext;
+    if (!context || context.sessionId !== currentSessionId
+        || context.requestId !== activeUploadRequestId || !currentStructuredData) {
+        closeCorrectionDialog(false);
+        showStatusMessage('', true, 'correction.stale', true);
+        return;
+    }
+    correctionSaving = true;
+    correctionSaveBtn.disabled = true;
+    correctionDialog.setAttribute('aria-busy', 'true');
+    correctionFields.querySelectorAll('[data-correction-field]').forEach((input) => {
+        const path = input.dataset.correctionField;
+        const existingValue = getNestedValue(currentStructuredData, path);
+        const rawValue = input.value.trim();
+        let value = rawValue || null;
+        if (rawValue && typeof existingValue === 'number') {
+            const numericValue = Number(rawValue);
+            value = Number.isNaN(numericValue) ? rawValue : numericValue;
+        }
+        setNestedValue(currentStructuredData, path, value);
+    });
+    populateFormFields(currentStructuredData);
+    closeCorrectionDialog(false);
+    try {
+        await persistInstruction(false);
+    } finally {
+        correctionSaving = false;
+        correctionSaveBtn.disabled = false;
+        correctionDialog.removeAttribute('aria-busy');
+    }
 }
 
 function documentExtension(file) {
@@ -1328,7 +1618,9 @@ function renderDocumentQueue() {
     fileQueue.classList.remove('hidden');
     selectionActions.classList.remove('hidden');
     selectionActions.classList.add('flex');
-    startProcessingBtn.disabled = selectionProcessing || !documentQueue.some((job) => job.status === 'PENDING');
+    startProcessingBtn.disabled = selectionProcessing || activeBatchRunning
+        || batchUploadPending || batchCancellationPending
+        || !documentQueue.some((job) => job.status === 'PENDING');
     clearSelectionBtn.disabled = selectionProcessing;
     exportAllBtn.disabled = !documentQueue.some((job) => ['COMPLETED', 'DRAFT'].includes(job.status) && job.sessionId);
     fileQueue.innerHTML = `
@@ -1338,10 +1630,12 @@ function renderDocumentQueue() {
             let ekBilgi = '';
             if (job.riskScore !== undefined && job.riskScore !== null) ekBilgi += ` · risk:${job.riskScore}`;
             if (job.elapsedSeconds) ekBilgi += ` · ${job.elapsedSeconds}s`;
+            const hataMesaji = job._errorMessage || job._rejectReason || '';
             return `<div class="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs dark:bg-slate-900">
                 <div class="min-w-0 flex-1">
                     <span class="truncate block text-slate-700 dark:text-slate-200" title="${escapeHtml(job.file.name)}">${escapeHtml(job.file.name)}</span>
                     ${job.sessionId ? `<span class="block text-[10px] text-slate-400 dark:text-slate-500 truncate">${escapeHtml(job.sessionId)}${escapeHtml(ekBilgi)}</span>` : ''}
+                    ${hataMesaji ? `<span class="block truncate text-[10px] text-red-600 dark:text-red-400" title="${escapeHtml(hataMesaji)}">${escapeHtml(hataMesaji)}</span>` : ''}
                 </div>
                 <span class="shrink-0 rounded-full px-2 py-0.5 font-semibold ${STATUS_BADGE_MAP[status]}">${escapeHtml(t(`status.${status}`))}</span>
             </div>`;
@@ -1351,18 +1645,42 @@ function renderDocumentQueue() {
 async function handleFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
+    if (batchUploadPending) {
+        showStatusMessage('', true, 'batch.uploadPending', true);
+        fileInput.value = '';
+        return;
+    }
+    if (activeBatchId || activeBatchController) {
+        const cancelled = await cancelBatch();
+        if (!cancelled) {
+            fileInput.value = '';
+            return;
+        }
+    }
     if (files.length > MAX_BATCH_FILES) {
         alert(t('upload.tooMany'));
+        fileInput.value = '';
         return;
     }
     if (files.some((file) => !SUPPORTED_DOCUMENT_EXTENSIONS.has(documentExtension(file)))) {
         alert(t('upload.invalidDocument'));
+        fileInput.value = '';
+        return;
+    }
+    if (files.some((file) => file.size > MAX_FILE_SIZE_BYTES)) {
+        alert(t('upload.tooLarge'));
+        fileInput.value = '';
         return;
     }
 
     if (activeUploadController) activeUploadController.abort();
     const requestId = ++activeUploadRequestId;
-    documentQueue = files.map((file, index) => ({ id: `${requestId}-${index}`, file, status: 'PENDING' }));
+    documentQueue = files.map((file, index) => ({
+        id: `${requestId}-${index}`,
+        batchItemId: `item-${index + 1}`,
+        file,
+        status: 'PENDING',
+    }));
     selectionProcessing = false;
     renderDocumentQueue();
     await previewSelectedFile(files[0]);
@@ -1375,6 +1693,7 @@ function handleFile(file) {
 }
 
 async function previewSelectedFile(file) {
+    cancelSessionScopedRequests();
     currentPreviewKind = documentExtension(file);
     pdfViewerFileName.removeAttribute('data-i18n');
     fileName.textContent = file.name;
@@ -1399,15 +1718,33 @@ async function previewSelectedFile(file) {
     }
 
     uploadedPdfUrl = URL.createObjectURL(file);
-    const canPreview = currentPreviewKind !== 'docx';
     const isPdf = currentPreviewKind === 'pdf';
+    const isImage = ['png', 'jpg', 'jpeg'].includes(currentPreviewKind);
+    const isXml = currentPreviewKind === 'xml';
+    const canPreview = isPdf || isImage || isXml;
     pdfPlaceholder.classList.toggle('hidden', canPreview);
-    pdfIframe.classList.toggle('hidden', !canPreview);
+    pdfIframe.classList.toggle('hidden', !isPdf);
+    imagePreview.classList.toggle('hidden', !isImage);
+    documentTextPreview.classList.toggle('hidden', !isXml);
     thumbnailSidebar.classList.toggle('hidden', !isPdf);
     pdfFooter.classList.toggle('hidden', !isPdf);
     pdfFooter.classList.toggle('flex', isPdf);
-    if (canPreview) {
+    pdfIframe.src = '';
+    imagePreview.src = '';
+    documentTextPreview.textContent = '';
+    if (isPdf) {
         refreshPdfViewer();
+    } else if (isImage) {
+        imagePreview.src = uploadedPdfUrl;
+        updatePdfControls();
+    } else if (isXml) {
+        try {
+            const xmlText = await file.text();
+            if (currentPdfFile === file) documentTextPreview.textContent = xmlText;
+        } catch (error) {
+            if (currentPdfFile === file) documentTextPreview.textContent = error.message;
+        }
+        updatePdfControls();
     } else {
         const previewMessage = pdfPlaceholder.querySelector('p');
         previewMessage.removeAttribute('data-i18n');
@@ -1423,6 +1760,7 @@ async function previewSelectedFile(file) {
         totalPages = count;
         updatePdfControls();
     }).catch(() => {
+        if (currentPdfFile !== file) return;
         totalPages = 1;
         updatePdfControls();
     });
@@ -1435,6 +1773,12 @@ async function processQueuedFile(job, controller, requestId) {
 }
 
 async function startSelectedFiles() {
+    const [inferenceSettingsReady, runtimeSettingsReady] = await Promise.all([
+        runtimeInferenceSavePromise,
+        runtimeSettingsSavePromise,
+    ]);
+    if (!inferenceSettingsReady || !runtimeSettingsReady) return;
+    if (activeBatchRunning || batchUploadPending || batchCancellationPending) return;
     const pendingJobs = documentQueue.filter((job) => job.status === 'PENDING');
     if (!pendingJobs.length || selectionProcessing) return;
     const requestId = activeUploadRequestId;
@@ -1466,27 +1810,30 @@ async function startBatchUpload(pendingJobs, requestId) {
 
     batchProgressPanel.classList.remove('hidden');
     batchDownloadBtn.disabled = true;
-    batchCancelBtn.disabled = false;
+    batchCancelBtn.disabled = true;
+    batchUploadPending = true;
     updateBatchProgress(0, 0, pendingJobs.length);
 
     const formData = new FormData();
-    for (const job of pendingJobs) {
+    pendingJobs.forEach((job, index) => {
+        job.batchItemId = `item-${index + 1}`;
         formData.append('files', job.file);
-    }
+    });
     formData.append('document_language', documentLanguage.value);
     formData.append('output_language', outputLanguage.value);
     formData.append('translation_enabled', String(translationEnabled.checked));
 
+    const controller = new AbortController();
+    activeBatchController = controller;
+
     try {
-        showStatusMessage('', true, '', false);
-        const statusMsg = document.getElementById('statusMessage');
-        statusMsg.classList.remove('status-hidden');
-        statusMsg.querySelector('span').textContent = 'Batch yukleniyor ve dogrulaniyor...';
+        showStatusMessage('', true, 'batch.uploading', false);
         showSpinner(true);
 
         const response = await apiFetch('/api/batch/upload', {
             method: 'POST',
             body: formData,
+            signal: controller.signal,
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
@@ -1494,10 +1841,13 @@ async function startBatchUpload(pendingJobs, requestId) {
         }
         const result = await response.json();
         activeBatchId = result.batch_id;
+        activeBatchRunning = true;
+        batchUploadPending = false;
+        batchCancelBtn.disabled = false;
 
         if (result.rejected_count > 0) {
             for (const rejected of result.rejected_items) {
-                const job = pendingJobs.find(j => j.file.name === rejected.original_filename);
+                const job = pendingJobs.find(j => j.batchItemId === rejected.item_id);
                 if (job) {
                     job.status = 'REJECTED';
                     job._rejectReason = rejected.error_message;
@@ -1505,31 +1855,34 @@ async function startBatchUpload(pendingJobs, requestId) {
             }
         }
 
-        await connectBatchStream(result.batch_id, pendingJobs, requestId);
+        await connectBatchStream(result.batch_id, pendingJobs, requestId, controller.signal);
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error('Batch upload error:', e);
-        showStatusMessage(e.message, false, '', true);
+        showStatusMessage(t('batch.uploadFailed', { message: e.message }), true, null, true);
         showSpinner(false);
     } finally {
-        batchCancelBtn.disabled = true;
+        batchUploadPending = false;
+        batchCancelBtn.disabled = !activeBatchRunning;
+        if (activeBatchController === controller) activeBatchController = null;
     }
 }
 
-async function connectBatchStream(batchId, pendingJobs, requestId) {
+async function connectBatchStream(batchId, pendingJobs, requestId, signal) {
     const batchProgressBar = document.getElementById('batchProgressBar');
     const batchProgressLabel = document.getElementById('batchProgressLabel');
     const batchCurrentFile = document.getElementById('batchCurrentFile');
     const batchDownloadBtn = document.getElementById('batchDownloadBtn');
 
     try {
-        const response = await apiFetch(`/api/batch/${batchId}/stream`);
+        const response = await apiFetch(`/api/batch/${batchId}/stream`, { signal });
         if (!response.ok) throw new Error('Batch stream failed');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
-        while (requestId === activeUploadRequestId) {
+        while (requestId === activeUploadRequestId && !signal.aborted) {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
@@ -1542,11 +1895,19 @@ async function connectBatchStream(batchId, pendingJobs, requestId) {
                 try {
                     const event = JSON.parse(jsonStr);
                     if (event.status === 'COMPLETE') {
+                        activeBatchRunning = false;
                         updateBatchProgress(100, event.completed_count || pendingJobs.length, pendingJobs.length);
-                        batchCurrentFile.textContent = 'Islem tamamlandi.';
-                        batchDownloadBtn.disabled = false;
                         showSpinner(false);
-                        showStatusMessage('Batch isleme tamamlandi!', true, '', false);
+                        if (event.zip_ready) {
+                            batchCurrentFile.textContent = t('batch.ready');
+                            batchDownloadBtn.disabled = false;
+                            showStatusMessage('', true, 'batch.completed', false);
+                        } else {
+                            const zipError = event.zip_error || t('error.requestFailed');
+                            batchCurrentFile.textContent = t('batch.zipFailed', { message: zipError });
+                            batchDownloadBtn.disabled = true;
+                            showStatusMessage(t('batch.zipFailed', { message: zipError }), true, null, true);
+                        }
                         try {
                             const statusResp = await apiFetch(`/api/batch/${batchId}/status`);
                             const status = await statusResp.json();
@@ -1555,18 +1916,21 @@ async function connectBatchStream(batchId, pendingJobs, requestId) {
                         return;
                     }
                     if (event.timeout) {
-                        showStatusMessage('Batch islemi zaman asimina ugradi.', false, '', true);
-                        showSpinner(false);
+                        await waitForBatchTerminal(
+                            batchId,
+                            pendingJobs,
+                            requestId,
+                            signal,
+                        );
                         return;
                     }
-                    // Ilerleme guncellemesi
                     updateBatchProgress(event.percent, event.completed_count, event.total_count);
                     if (event.current_file) {
-                        batchCurrentFile.textContent = `Isleniyor: ${event.current_file}`;
+                        batchCurrentFile.textContent = t('batch.processing', { file: event.current_file });
                     }
                     if (event.item) {
                         const job = pendingJobs.find(
-                            j => j.file.name === event.item.original_filename
+                            j => j.batchItemId === event.item.item_id
                         );
                         if (job) {
                             job.status = event.item.status;
@@ -1580,14 +1944,20 @@ async function connectBatchStream(batchId, pendingJobs, requestId) {
                     }
                     if (event.zip_ready) {
                         batchDownloadBtn.disabled = false;
-                        batchCurrentFile.textContent = 'ZIP hazir! Indirebilirsiniz.';
+                        batchCurrentFile.textContent = t('batch.ready');
                     }
-                } catch (_) {}
+                } catch (error) {
+                    throw new Error(`${t('batch.invalidEvent')} ${error.message}`);
+                }
             }
         }
+        if (!signal.aborted && requestId === activeUploadRequestId) {
+            throw new Error(t('batch.streamEnded'));
+        }
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error('Batch stream error:', e);
-        showStatusMessage('Batch SSE baglantisi koptu.', false, '', true);
+        showStatusMessage(t('batch.streamFailed', { message: e.message }), true, null, true);
         showSpinner(false);
     }
 }
@@ -1601,7 +1971,7 @@ function updateBatchProgress(percent, completed, total) {
 
 function syncBatchItemsToQueue(batchItems, pendingJobs) {
     for (const item of batchItems) {
-        const job = pendingJobs.find(j => j.file.name === item.original_filename);
+        const job = pendingJobs.find(j => j.batchItemId === item.item_id);
         if (job) {
             job.status = item.status;
             job.sessionId = item.session_id;
@@ -1612,11 +1982,50 @@ function syncBatchItemsToQueue(batchItems, pendingJobs) {
     renderDocumentQueue();
 }
 
+async function waitForBatchTerminal(batchId, pendingJobs, requestId, signal) {
+    const batchCurrentFile = document.getElementById('batchCurrentFile');
+    const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+    while (requestId === activeUploadRequestId && !signal.aborted) {
+        const response = await apiFetch(`/api/batch/${batchId}/status`, { signal });
+        if (!response.ok) {
+            throw new Error(`${response.status} ${response.statusText}`.trim());
+        }
+        const status = await response.json();
+        syncBatchItemsToQueue(status.items || [], pendingJobs);
+        updateBatchProgress(
+            status.percent,
+            status.completed_count,
+            status.total_count,
+        );
+        if (status.terminal) {
+            activeBatchRunning = false;
+            showSpinner(false);
+            if (status.zip_ready) {
+                batchCurrentFile.textContent = t('batch.ready');
+                batchDownloadBtn.disabled = false;
+                showStatusMessage('', true, 'batch.completed', false);
+            } else {
+                const zipError = status.zip_error || t('error.requestFailed');
+                batchCurrentFile.textContent = t('batch.zipFailed', { message: zipError });
+                batchDownloadBtn.disabled = true;
+                showStatusMessage(t('batch.zipFailed', { message: zipError }), true, null, true);
+            }
+            return;
+        }
+        if (status.current_file) {
+            batchCurrentFile.textContent = t('batch.processing', {
+                file: status.current_file,
+            });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+}
+
 async function downloadBatchZip() {
     if (!activeBatchId) return;
+    const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+    batchDownloadBtn.disabled = true;
     try {
-        const batchDownloadBtn = document.getElementById('batchDownloadBtn');
-        batchDownloadBtn.disabled = true;
         const response = await apiFetch(`/api/batch/${activeBatchId}/download`);
         if (!response.ok) throw new Error('ZIP download failed');
         const blob = await response.blob();
@@ -1625,28 +2034,64 @@ async function downloadBatchZip() {
         a.href = url;
         a.download = `batch_results_${activeBatchId}.zip`;
         a.click();
-        URL.revokeObjectURL(url);
-        batchDownloadBtn.disabled = false;
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
         console.error('Batch ZIP download error:', e);
+        showStatusMessage(t('batch.downloadFailed', { message: e.message }), true, null, true);
+    } finally {
+        batchDownloadBtn.disabled = !activeBatchId;
     }
 }
 
 async function cancelBatch() {
-    if (!activeBatchId) return;
+    const batchId = activeBatchId;
+    if (!batchId && !activeBatchController) return true;
+    if (batchUploadPending || batchCancellationPending) {
+        showStatusMessage('', true, 'batch.uploadPending', true);
+        return false;
+    }
+    const cancelButton = document.getElementById('batchCancelBtn');
+    batchCancellationPending = true;
+    cancelButton.disabled = true;
     try {
-        await apiFetch(`/api/batch/${activeBatchId}`, { method: 'DELETE' });
-    } catch (_) {}
+        if (batchId) {
+            const response = await apiFetch(`/api/batch/${batchId}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
+        }
+    } catch (error) {
+        activeBatchRunning = Boolean(batchId);
+        showStatusMessage(t('batch.cancelFailed', { message: error.message }), true, null, true);
+        return false;
+    } finally {
+        batchCancellationPending = false;
+        cancelButton.disabled = !activeBatchRunning;
+    }
+    activeUploadRequestId += 1;
+    if (activeBatchController) activeBatchController.abort();
+    activeBatchController = null;
     activeBatchId = null;
+    activeBatchRunning = false;
+    cancelButton.disabled = true;
+    documentQueue.forEach((job) => {
+        if (['QUEUED', 'PROCESSING', 'PENDING'].includes(job.status)) job.status = 'PENDING';
+    });
     document.getElementById('batchProgressPanel').classList.add('hidden');
+    showSpinner(false);
+    showStatusMessage('', true, 'batch.cancelled', false);
     selectionProcessing = false;
     renderDocumentQueue();
+    return true;
 }
 
 
-function clearFileSelection() {
+async function clearFileSelection() {
     if (activeUploadController) activeUploadController.abort();
+    if (activeBatchId || activeBatchController) {
+        const cancelled = await cancelBatch();
+        if (!cancelled) return;
+    }
     activeUploadRequestId += 1;
+    cancelSessionScopedRequests();
     documentQueue = [];
     selectionProcessing = false;
     currentPdfFile = null;
@@ -1655,6 +2100,10 @@ function clearFileSelection() {
     uploadedPdfUrl = null;
     pdfIframe.src = '';
     pdfIframe.classList.add('hidden');
+    imagePreview.src = '';
+    imagePreview.classList.add('hidden');
+    documentTextPreview.textContent = '';
+    documentTextPreview.classList.add('hidden');
     pdfPlaceholder.classList.remove('hidden');
     thumbnailSidebar.classList.add('hidden');
     pdfFooter.classList.add('hidden');
@@ -1693,6 +2142,7 @@ async function uploadAndStream(file, controller, requestId, job = null) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let terminalEventReceived = false;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -1711,13 +2161,24 @@ async function uploadAndStream(file, controller, requestId, job = null) {
                     const jsonStr = line.slice(6).trim();
                     if (jsonStr) {
                         try {
-                            handleSseEvent(JSON.parse(jsonStr), requestId, job);
+                            terminalEventReceived = handleSseEvent(
+                                JSON.parse(jsonStr),
+                                requestId,
+                                job,
+                            ) || terminalEventReceived;
                         } catch (e) {
                             console.error('SSE parse error:', e, jsonStr);
+                            throw new Error(
+                                `${t('batch.invalidEvent')} ${e.message}`,
+                            );
                         }
                     }
                 }
             }
+        }
+        if (!controller.signal.aborted && requestId === activeUploadRequestId
+            && !terminalEventReceived) {
+            throw new Error(t('error.streamEnded'));
         }
     } catch (error) {
         if (error.name === 'AbortError' || requestId !== activeUploadRequestId) return;
@@ -1734,7 +2195,8 @@ async function uploadAndStream(file, controller, requestId, job = null) {
 }
 
 function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
-    if (requestId !== activeUploadRequestId) return;
+    if (requestId !== activeUploadRequestId) return false;
+    const terminalEvent = ['COMPLETE', 'COMPLETED', 'DRAFT', 'ERROR', 'TIMEOUT'].includes(event.status);
     if (job && event.session_id) job.sessionId = event.session_id;
     if (job && event.data) job.result = event.data;
     if (job && event.status && event.status !== 'COMPLETE') {
@@ -1751,7 +2213,7 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
     }
     if (event.status === 'COMPLETE') {
         showSpinner(false);
-        return;
+        return true;
     }
 
     if (event.status === 'TIMEOUT') {
@@ -1759,7 +2221,7 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
         showSpinner(false);
         updateStatusBadge('ERROR');
         showStatusMessage('', true, 'status.timeout');
-        return;
+        return true;
     }
 
     if (event.status) {
@@ -1798,8 +2260,6 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
                 currentStructuredData = normalizeEditableStructure(event.data.structured_data);
                 populateFormFields(currentStructuredData);
                 populateItemsTable(currentStructuredData.cargo_items);
-                setupOcrHighlightListeners();
-                if (event.session_id) { loadOcrBoxes(event.session_id); currentOcrText = event.data.raw_ocr_text || ''; }
                 updateResultActionAvailability();
             } else if (event.data.raw_llm_json) {
                 try {
@@ -1807,8 +2267,6 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
                     currentStructuredData = normalizeEditableStructure(parsed);
                     populateFormFields(currentStructuredData);
                     populateItemsTable(currentStructuredData.cargo_items);
-                    setupOcrHighlightListeners();
-                    if (event.session_id) { loadOcrBoxes(event.session_id); currentOcrText = event.data.raw_ocr_text || ''; }
                     updateResultActionAvailability();
                 } catch (e) {
                     console.error('JSON parse error:', e);
@@ -1830,10 +2288,39 @@ function handleSseEvent(event, requestId = activeUploadRequestId, job = null) {
     } else if (event.status === 'ERROR') {
         showSpinner(false);
     }
+    return terminalEvent;
+}
+
+const PARTY_ROLE_ALIASES = {
+    SHI: ['SHI', 'CZ'],
+    CZ: ['CZ', 'SHI'],
+    CON: ['CON', 'CN'],
+    CN: ['CN', 'CON'],
+    NTF: ['NTF', 'N1'],
+    N1: ['N1', 'NTF'],
+};
+
+function resolveStructuredPath(obj, path, createMissing = false) {
+    const roleMatch = path.match(/^parties\[role=([^\]]+)\](?:\.(.*))?$/);
+    if (!roleMatch) return path;
+    if (!Array.isArray(obj.parties)) {
+        if (!createMissing) return null;
+        obj.parties = [];
+    }
+    const requestedRole = roleMatch[1];
+    const acceptedRoles = PARTY_ROLE_ALIASES[requestedRole] || [requestedRole];
+    let partyIndex = obj.parties.findIndex((party) => acceptedRoles.includes(party?.party_role_code));
+    if (partyIndex < 0) {
+        if (!createMissing) return null;
+        partyIndex = obj.parties.push({ party_role_code: requestedRole }) - 1;
+    }
+    return roleMatch[2] ? `parties[${partyIndex}].${roleMatch[2]}` : `parties[${partyIndex}]`;
 }
 
 function getNestedValue(obj, path) {
-    const parts = path.replace(/\]/g, '').split(/[.[]/).filter(p => p !== '');
+    const resolvedPath = resolveStructuredPath(obj, path);
+    if (!resolvedPath) return null;
+    const parts = resolvedPath.replace(/\]/g, '').split(/[.[]/).filter(p => p !== '');
     let current = obj;
     for (const part of parts) {
         if (current === null || current === undefined) return null;
@@ -1843,7 +2330,8 @@ function getNestedValue(obj, path) {
 }
 
 function setNestedValue(obj, path, value) {
-    const parts = path.replace(/\]/g, '').split(/[.[]/).filter(p => p !== '');
+    const resolvedPath = resolveStructuredPath(obj, path, true);
+    const parts = resolvedPath.replace(/\]/g, '').split(/[.[]/).filter(p => p !== '');
     let current = obj;
     for (let index = 0; index < parts.length - 1; index += 1) {
         const part = parts[index];
@@ -1859,9 +2347,9 @@ function setNestedValue(obj, path, value) {
 function normalizeEditableStructure(data) {
     const normalized = JSON.parse(JSON.stringify(data || {}));
     const parties = Array.isArray(normalized.parties) ? normalized.parties : [];
-    const shipper = parties.find((party) => party.party_role_code === 'SHI') || { party_role_code: 'SHI' };
-    const consignee = parties.find((party) => party.party_role_code === 'CON') || { party_role_code: 'CON' };
-    const remainingParties = parties.filter((party) => !['SHI', 'CON'].includes(party.party_role_code));
+    const shipper = parties.find((party) => ['CZ', 'SHI'].includes(party.party_role_code)) || { party_role_code: 'CZ' };
+    const consignee = parties.find((party) => ['CN', 'CON'].includes(party.party_role_code)) || { party_role_code: 'CN' };
+    const remainingParties = parties.filter((party) => !['CZ', 'SHI', 'CN', 'CON'].includes(party.party_role_code));
     shipper.address = shipper.address || {};
     consignee.address = consignee.address || {};
     normalized.parties = [shipper, consignee, ...remainingParties];
@@ -1917,7 +2405,9 @@ function populateFormFields(data) {
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = String(text);
-    return div.innerHTML;
+    return div.innerHTML
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
 }
 
 function populateItemsTable(cargoItems) {
@@ -2003,97 +2493,6 @@ function highlightSuspiciousFields(suspiciousFields) {
     });
 }
 
-let currentOcrBoxes = null;
-let currentOcrText = '';
-const ocrOverlay = document.getElementById('ocrHighlightOverlay');
-
-async function loadOcrBoxes(sessionId) {
-    try {
-        const response = await apiFetch(`/api/sessions/${sessionId}/ocr-boxes`);
-        if (!response.ok) { currentOcrBoxes = null; return; }
-        const data = await response.json();
-        currentOcrBoxes = data.pages || [];
-    } catch { currentOcrBoxes = null; }
-}
-
-function clearOcrHighlight() {
-    if (ocrOverlay) ocrOverlay.innerHTML = '';
-    ocrOverlay.classList.add('hidden');
-}
-
-function showOcrHighlightForField(fieldPath) {
-    clearOcrHighlight();
-    if (!currentOcrBoxes || !currentOcrBoxes.length) return;
-    if (!currentOcrText && currentStructuredData) {
-        currentOcrText = (currentStructuredData.raw_ocr_text || '').toLowerCase();
-    }
-
-    const keywords = {
-        'shipping_instruction_reference': ['si no', 'si reference', 'talimat no', 'sevkiyat talimati'],
-        'carrier_booking_reference': ['booking', 'bkg ref', 'rezervasyon'],
-        'issue_date': ['issue date', 'date of issue', 'tarih', 'düzenleme'],
-        'parties': ['shipper', 'consignee', 'gönderici', 'alici'],
-        'shipper': ['shipper', 'exporter', 'gönderici', 'ihracatçi'],
-        'consignee': ['consignee', 'buyer', 'receiver', 'alici', 'ithalatçi'],
-        'port_of_loading': ['port of loading', 'pol', 'yükleme limani'],
-        'port_of_discharge': ['port of discharge', 'pod', 'boşaltma limani'],
-        'equipment_reference': ['container', 'equipment', 'konteyner'],
-        'cargo_gross_weight': ['gross weight', 'brüt'],
-        'description_of_goods': ['description of goods', 'cargo', 'goods', 'mal', 'esya'],
-    };
-
-    let matchedKeywords = [];
-    for (const [key, words] of Object.entries(keywords)) {
-        if (fieldPath.includes(key)) { matchedKeywords = words; break; }
-    }
-    if (!matchedKeywords.length) return;
-
-    const bestPage = 0;
-    const pageBoxes = currentOcrBoxes[bestPage] || [];
-    if (!pageBoxes.length) return;
-
-    const matchedBoxes = [];
-    for (const box of pageBoxes) {
-        const boxText = (box.text || '').toLowerCase();
-        if (matchedKeywords.some(kw => boxText.includes(kw))) {
-            matchedBoxes.push(box);
-        }
-    }
-    if (!matchedBoxes.length) return;
-
-    const overlay = ocrOverlay;
-    const displayArea = document.getElementById('pdfDisplayArea');
-    const areaRect = displayArea.getBoundingClientRect();
-
-    overlay.classList.remove('hidden');
-    overlay.style.width = areaRect.width + 'px';
-    overlay.style.height = areaRect.height + 'px';
-
-    const dpi = 200;
-    const scaleX = areaRect.width / (pageBoxes[0]?.x_max || 2480) * 0.5;
-    const scaleY = areaRect.height / (pageBoxes[0]?.y_max || 3508) * 0.5;
-
-    for (const box of matchedBoxes.slice(0, 3)) {
-        const div = document.createElement('div');
-        div.className = 'ocr-highlight-box';
-        div.style.left = (box.x_min * scaleX) + 'px';
-        div.style.top = (box.y_min * scaleY) + 'px';
-        div.style.width = ((box.x_max - box.x_min) * scaleX) + 'px';
-        div.style.height = ((box.y_max - box.y_min) * scaleY) + 'px';
-        overlay.appendChild(div);
-    }
-}
-
-function setupOcrHighlightListeners() {
-    document.querySelectorAll('[data-field]').forEach(input => {
-        input.addEventListener('focus', () => {
-            const fieldPath = input.getAttribute('data-field');
-            if (fieldPath) showOcrHighlightForField(fieldPath);
-        });
-        input.addEventListener('blur', clearOcrHighlight);
-    });
-}
-
 function refreshSuspiciousFieldTitles() {
     document.querySelectorAll('[data-audit-suspicious="true"]').forEach((input) => {
         input.title = t('audit.suspiciousField');
@@ -2124,19 +2523,26 @@ async function persistInstruction(approve) {
         return;
     }
     const editedData = collectEditedData();
+    const sessionId = currentSessionId;
+    const requestId = activeUploadRequestId;
+    if (instructionPersistAbortController) instructionPersistAbortController.abort();
+    const controller = new AbortController();
+    instructionPersistAbortController = controller;
     const button = approve ? approveDataBtn : saveDraftBtn;
     button.disabled = true;
     button.classList.add('opacity-60', 'cursor-not-allowed');
     try {
         const endpoint = approve
-            ? `/api/sessions/${encodeURIComponent(currentSessionId)}/approve`
-            : `/api/sessions/${encodeURIComponent(currentSessionId)}/draft`;
+            ? `/api/sessions/${encodeURIComponent(sessionId)}/approve`
+            : `/api/sessions/${encodeURIComponent(sessionId)}/draft`;
         const response = await apiFetch(endpoint, {
             method: approve ? 'POST' : 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ shipping_instruction: editedData }),
+            signal: controller.signal,
         });
         const result = await response.json();
+        if (currentSessionId !== sessionId || activeUploadRequestId !== requestId) return;
         if (!response.ok) {
             if (result.missing_fields) highlightMissingFields(result.missing_fields);
             renderValidationSummary(result.missing_fields || [], result.validation_errors || []);
@@ -2145,8 +2551,6 @@ async function persistInstruction(approve) {
         currentStructuredData = normalizeEditableStructure(result.structured_data);
         populateFormFields(currentStructuredData);
         populateItemsTable(currentStructuredData.cargo_items);
-        setupOcrHighlightListeners();
-        if (result.session_id) { loadOcrBoxes(result.session_id); }
         currentXmlContent = result.xml_content;
         xmlOutput.removeAttribute('data-i18n');
         xmlOutput.textContent = currentXmlContent;
@@ -2168,11 +2572,21 @@ async function persistInstruction(approve) {
         runCloudReviewBtn.disabled = !currentCloudReviewAvailable;
         updateResultActionAvailability();
     } catch (error) {
+        if (
+            error.name === 'AbortError'
+            || currentSessionId !== sessionId
+            || activeUploadRequestId !== requestId
+        ) return;
         updateStatusBadge(approve ? 'DRAFT' : 'ERROR');
         showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
     } finally {
+        if (instructionPersistAbortController === controller) {
+            instructionPersistAbortController = null;
+        }
         button.classList.remove('opacity-60', 'cursor-not-allowed');
-        updateResultActionAvailability();
+        if (currentSessionId === sessionId && activeUploadRequestId === requestId) {
+            updateResultActionAvailability();
+        }
     }
 }
 
@@ -2181,15 +2595,20 @@ async function runManualCloudReview() {
         showStatusMessage('', true, 'status.processFirst');
         return;
     }
+    const sessionId = currentSessionId;
+    if (cloudReviewAbortController) cloudReviewAbortController.abort();
+    const controller = new AbortController();
+    cloudReviewAbortController = controller;
     runCloudReviewBtn.disabled = true;
     showSpinner(true);
     showStatusMessage('', true, 'status.cloudRunning');
     try {
         const response = await apiFetch(
-            `/api/sessions/${encodeURIComponent(currentSessionId)}/cloud-review`,
-            { method: 'POST' },
+            `/api/sessions/${encodeURIComponent(sessionId)}/cloud-review`,
+            { method: 'POST', signal: controller.signal },
         );
         const result = await response.json();
+        if (currentSessionId !== sessionId) return;
         if (!response.ok) throw new Error(translateServerMessage(result.error) || `${t('error.requestFailed')} (${response.status})`);
         currentSuspiciousFields = result.suspicious_fields || [];
         updateAuditDisplay(
@@ -2204,14 +2623,83 @@ async function runManualCloudReview() {
         runCloudReviewBtn.disabled = !currentCloudReviewAvailable;
         showStatusMessage(result.message, true);
     } catch (error) {
+        if (error.name === 'AbortError' || currentSessionId !== sessionId) return;
         showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
     } finally {
-        showSpinner(false);
-        runCloudReviewBtn.disabled = !currentCloudReviewAvailable;
+        if (cloudReviewAbortController === controller) cloudReviewAbortController = null;
+        if (currentSessionId === sessionId) {
+            showSpinner(false);
+            runCloudReviewBtn.disabled = !currentCloudReviewAvailable;
+        }
+    }
+}
+
+async function sendToErp() {
+    if (!currentSessionId) {
+        showStatusMessage('', true, 'status.processFirst');
+        return;
+    }
+    const sessionId = currentSessionId;
+    if (erpAbortController) erpAbortController.abort();
+    const controller = new AbortController();
+    erpAbortController = controller;
+    sendToErpBtn.disabled = true;
+    sendToErpBtn.classList.add('opacity-60', 'cursor-not-allowed');
+    showSpinner(true);
+    try {
+        const response = await apiFetch(
+            `/api/erp/create_shipment/${encodeURIComponent(sessionId)}`,
+            { method: 'POST', signal: controller.signal },
+        );
+        const result = await response.json();
+        if (currentSessionId !== sessionId) return;
+        if (!response.ok) {
+            const errMsg = translateServerMessage(result.error)
+                || result.message
+                || `${t('error.requestFailed')} (${response.status})`;
+            throw new Error(errMsg);
+        }
+        if (result.success) {
+            erpTransferredSessionId = sessionId;
+            publishNotification(
+                `${t('status.erpSuccess')} · ${result.tracking_number}`,
+                'status.erpSuccess',
+            );
+            showStatusMessage(
+                `${t('status.erpSuccess')} → ${result.tracking_number}`,
+                true,
+            );
+        } else {
+            publishNotification(
+                result.message || t('status.erpFailed'),
+                'status.erpFailed',
+            );
+            showStatusMessage(result.message || '', true, 'status.erpFailed');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError' || currentSessionId !== sessionId) return;
+        publishNotification(
+            `${t('status.erpFailed')}: ${error.message}`,
+            'status.erpFailed',
+        );
+        showStatusMessage(`${t('error.prefix')}: ${error.message}`, true);
+    } finally {
+        if (erpAbortController === controller) erpAbortController = null;
+        if (currentSessionId === sessionId) {
+            showSpinner(false);
+            sendToErpBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+            updateResultActionAvailability();
+        }
     }
 }
 
 dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        fileInput.click();
+    }
+});
 browseLink.addEventListener('click', (e) => {
     e.stopPropagation();
     fileInput.click();
@@ -2252,6 +2740,8 @@ approveDataBtn.addEventListener('click', () => persistInstruction(true));
 
 runCloudReviewBtn.addEventListener('click', runManualCloudReview);
 
+sendToErpBtn.addEventListener('click', sendToErp);
+
 document.querySelectorAll('[data-language]').forEach((button) => {
     button.addEventListener('click', () => applyLanguage(button.dataset.language));
 });
@@ -2275,10 +2765,11 @@ globalSearchResults.addEventListener('click', (event) => {
 });
 
 logsBtn.addEventListener('click', () => {
-    if (toggleTopPanel(logsPanel, logsBtn)) {
+    const opened = toggleTopPanel(logsPanel, logsBtn);
+    if (opened) {
         liveLogStreamingEnabled = true;
         connectLiveLogs();
-    }
+    } else stopLiveLogs();
 });
 
 logsClearBtn.addEventListener('click', clearLiveLogs);
@@ -2288,7 +2779,30 @@ settingsBtn.addEventListener('click', () => {
 });
 
 settingsRefreshBtn.addEventListener('click', () => loadRuntimeSettings(true));
-settingsSaveBtn.addEventListener('click', saveRuntimeSettings);
+settingsSaveBtn.addEventListener('click', () => {
+    runtimeSettingsSavePromise = runtimeSettingsSavePromise.then(
+        () => saveRuntimeSettings(),
+    );
+});
+settingsPanel.addEventListener('input', () => {
+    runtimeSettingsEditRevision += 1;
+});
+inferenceMode.addEventListener('change', () => {
+    queueInferenceSelection(
+        'inference_mode',
+        'mode',
+        inferenceMode.value,
+        inferenceMode,
+    );
+});
+layoutEngine.addEventListener('change', () => {
+    queueInferenceSelection(
+        'layout_engine',
+        'layout_engine',
+        layoutEngine.value,
+        layoutEngine,
+    );
+});
 
 detectedModelsList.addEventListener('change', (event) => {
     const modelInput = event.target.closest('input[name="local-model"]');
@@ -2349,6 +2863,14 @@ translationEnabled.addEventListener('change', () => {
 });
 
 document.getElementById('formContainer').addEventListener('input', updateResultActionAvailability);
+validationSummary.addEventListener('click', (event) => {
+    if (event.target.closest('#correctionOpenBtn')) openCorrectionDialog();
+});
+correctionCancelBtn.addEventListener('click', () => closeCorrectionDialog());
+correctionSaveBtn.addEventListener('click', saveCorrections);
+correctionDialog.addEventListener('click', (event) => {
+    if (event.target === correctionDialog) closeCorrectionDialog();
+});
 
 startProcessingBtn.addEventListener('click', startSelectedFiles);
 clearSelectionBtn.addEventListener('click', clearFileSelection);
@@ -2360,13 +2882,14 @@ const batchDownloadBtn = document.getElementById('batchDownloadBtn');
 if (batchDownloadBtn) batchDownloadBtn.addEventListener('click', downloadBatchZip);
 
 const batchCancelBtn = document.getElementById('batchCancelBtn');
-if (batchCancelBtn) batchCancelBtn.addEventListener('click', cancelBatch);
+if (batchCancelBtn) batchCancelBtn.addEventListener('click', () => cancelBatch());
 
 async function exportApprovedSessions() {
     const approvedJobs = documentQueue.filter(
         (job) => ['COMPLETED', 'DRAFT'].includes(job.status) && job.sessionId
     );
     if (!approvedJobs.length) return;
+    exportAllBtn.disabled = true;
     const sessionIds = approvedJobs.map((job) => job.sessionId);
     try {
         const response = await apiFetch('/api/sessions/export', {
@@ -2374,16 +2897,24 @@ async function exportApprovedSessions() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_ids: sessionIds }),
         });
-        if (!response.ok) throw new Error('Export failed');
+        if (!response.ok) {
+            const errorPayload = await response.json().catch(() => ({}));
+            throw new Error(errorPayload.error || `${response.status} ${response.statusText}`.trim());
+        }
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `cerberus_export_${new Date().toISOString().slice(0, 10)}.zip`;
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
         console.error('Export error:', e);
+        showStatusMessage(t('export.failed', { message: e.message }), true, null, true);
+    } finally {
+        exportAllBtn.disabled = !documentQueue.some(
+            (job) => ['COMPLETED', 'DRAFT'].includes(job.status) && job.sessionId
+        );
     }
 }
 
@@ -2398,7 +2929,6 @@ profileBtn.addEventListener('click', () => {
     if (toggleTopPanel(profilePanel, profileBtn)) updateProfileSummary();
 });
 
-pdfCopyBtn.addEventListener('click', copyPdfLink);
 pdfZoomBtn.addEventListener('click', cyclePdfZoom);
 pdfFullscreenBtn.addEventListener('click', togglePdfFullscreen);
 prevPageBtn.addEventListener('click', () => goToPdfPage(currentPage - 1));
@@ -2422,12 +2952,34 @@ document.addEventListener('click', (event) => {
 });
 
 window.addEventListener('beforeunload', () => {
-    liveLogStreamingEnabled = false;
-    if (liveLogAbortController) liveLogAbortController.abort();
-    if (liveLogReconnectTimer) clearTimeout(liveLogReconnectTimer);
+    stopLiveLogs();
+    cancelSessionScopedRequests();
 });
 
 document.addEventListener('keydown', (event) => {
+    if (!correctionDialog.classList.contains('hidden')) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeCorrectionDialog();
+            return;
+        }
+        if (event.key === 'Tab') {
+            const focusableElements = Array.from(correctionDialog.querySelectorAll(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )).filter((element) => !element.classList.contains('hidden'));
+            if (!focusableElements.length) return;
+            const firstElement = focusableElements[0];
+            const lastElement = focusableElements[focusableElements.length - 1];
+            if (event.shiftKey && document.activeElement === firstElement) {
+                event.preventDefault();
+                lastElement.focus();
+            } else if (!event.shiftKey && document.activeElement === lastElement) {
+                event.preventDefault();
+                firstElement.focus();
+            }
+        }
+        return;
+    }
     if (event.key === 'Escape') {
         closeTopPanels();
         if (document.fullscreenElement === pdfViewerPanel) document.exitFullscreen();

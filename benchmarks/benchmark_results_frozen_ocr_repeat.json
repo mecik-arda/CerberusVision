@@ -1,0 +1,182 @@
+{
+  "xsd_summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "pass_rate_pct": 100.0
+  },
+  "benchmark_date": "2026-07-23T17:44:00",
+  "total_time_seconds": 128.23,
+  "provenance": {
+    "llm_model": {
+      "path": "/home/ardam/projects/CerberusVision/models/Qwen-2.5-7B-Instruct-INT4",
+      "exists": true,
+      "file_count": 51,
+      "manifest_sha256": "7a99e809b54288f3e2c65c2f144546fa9e733fce049d04f0b42fdc227069afaa"
+    },
+    "llm_adapter": {
+      "path": null,
+      "exists": false,
+      "runtime_mode": "merged_openvino_model"
+    },
+    "layout_adapter": {
+      "path": "/home/ardam/projects/CerberusVision/models/florence-lora-adapter",
+      "exists": true,
+      "file_count": 10,
+      "manifest_sha256": "f2eec7a163b9d215a10b08cd00db9370be203f209f08ffec26156b36b1ac1cc9"
+    },
+    "layout_lora_enabled": true,
+    "prompt_sha256": "2cbbe25a0608fe08e9ffcd6c2de9e55a260725a65dc46d748391980d1b4c3f4d",
+    "generation_config": {
+      "do_sample": false,
+      "max_new_tokens": 2048,
+      "num_streams": 1,
+      "pipeline_reset_between_repeats": true,
+      "structured_schema_sha256": "a9e7518d1dc65f4a71cef128334872f939f65de0610db7201ae3576d8e357155",
+      "inference_mode": "multi_stage"
+    },
+    "generation_config_sha256": "a221937fda8c34087c2d8bd217c5f64e53a3cc5b130e7be53e9324cbecb612ed"
+  },
+  "determinism": {
+    "repeat_count": 2,
+    "passed": true,
+    "mismatches": []
+  },
+  "category_breakdown": {
+    "parties": {
+      "accuracy": 87.5,
+      "precision": 50.0,
+      "recall": 100.0,
+      "f1_score": 66.67,
+      "tp": 7,
+      "fp": 7,
+      "fn": 0,
+      "total_fields": 8,
+      "correct_fields": 7
+    },
+    "transport_plans": {
+      "accuracy": 100.0,
+      "precision": 50.0,
+      "recall": 100.0,
+      "f1_score": 66.67,
+      "tp": 2,
+      "fp": 2,
+      "fn": 0,
+      "total_fields": 2,
+      "correct_fields": 2
+    },
+    "equipment_list": {
+      "accuracy": 100.0,
+      "precision": 0.0,
+      "recall": 100.0,
+      "f1_score": 0.0,
+      "tp": 0,
+      "fp": 5,
+      "fn": 0,
+      "total_fields": 0,
+      "correct_fields": 0
+    },
+    "cargo_items": {
+      "accuracy": 100.0,
+      "precision": 0.0,
+      "recall": 100.0,
+      "f1_score": 0.0,
+      "tp": 0,
+      "fp": 6,
+      "fn": 0,
+      "total_fields": 0,
+      "correct_fields": 0
+    },
+    "document_info": {
+      "accuracy": 100.0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1_score": 100.0,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "total_fields": 3,
+      "correct_fields": 3
+    }
+  },
+  "documents": 1,
+  "accuracy": 92.31,
+  "total_fields": 13,
+  "correct_fields": 12,
+  "missing_fields": 0,
+  "mismatched_fields": 1,
+  "results": [
+    {
+      "case_name": "TR_Konsimento_Talimati",
+      "source_path": "tests/fixtures/qwen_benchmark/tr_konsimento.json",
+      "elapsed_seconds": 64.21,
+      "ocr_sha256": "1485d2a39e80f3df80e92d35f3f9866db4bab52b3ed28cafbd51b9fb2f2af2cb",
+      "actual_sha256": "083b2a86f60874dbec6a89719dbecd43d7151c93a216db22dc901e5bb135448c",
+      "raw_output_sha256": "1a6ea9bdb5f1028b49673ff5e0ab43744847314762e5d3b956fe99ab4aa12e6f",
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 7,
+          "fp": 7,
+          "fn": 0,
+          "total": 8,
+          "correct": 7
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "cargo_items": {
+          "tp": 0,
+          "fp": 6,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "document_info": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        }
+      },
+      "accuracy": 92.31,
+      "total_fields": 13,
+      "correct_fields": [
+        "document_status_code",
+        "transport_document_type",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[0].party_id",
+        "parties[0].address.country_code",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[1].address.country_code",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name"
+      ],
+      "missing_fields": [],
+      "mismatched_fields": [
+        {
+          "field_path": "parties[0].address.street",
+          "expected": "YESILYURT MAH.4306 SOK. AYDIN APT. NO:3/5 KEPEZ/ANTALYA/TURKEY",
+          "actual": "YESILYURT MAH.4306 SOK. AYDIN APT. NO:3/5 KEPEZTURKEY"
+        }
+      ]
+    }
+  ]
+}

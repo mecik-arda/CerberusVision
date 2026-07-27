@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
 import sys
+from collections import Counter
+from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +20,6 @@ from scripts.prepare_training_data import (
     document_fingerprint,
 )
 from scripts.validate_phase4_colab_package import validate_package
-
 
 DEFAULT_SOURCE_DIR = PROJECT_ROOT / "CerberusVision_Colab_Egitim_Seti"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "CerberusVision_Phase4_1_Colab"

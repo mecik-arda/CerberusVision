@@ -78,7 +78,7 @@
     "cargo_items": [
       {
         "package_quantity": 80,
-        "package_kind_code": "DRUM",
+        "package_kind_code": "DR",
         "description_of_goods": "FLAMMABLE LIQUID N.O.S. (ETHANOL SOLUTION)",
         "weight": {
           "weight_value": 22900.0,
@@ -107,7 +107,7 @@
       },
       {
         "package_quantity": 60,
-        "package_kind_code": "DRUM",
+        "package_kind_code": "DR",
         "description_of_goods": "CORROSIVE LIQUID N.O.S. (PHOSPHORIC ACID)",
         "weight": {
           "weight_value": 17200.0,
@@ -136,7 +136,7 @@
       },
       {
         "package_quantity": 10,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "NON-HAZARDOUS CERAMIC TILES",
         "weight": {
           "weight_value": 7600.0,

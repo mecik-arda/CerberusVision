@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from typing import Literal
 
-
 AdapterTarget = Literal["qwen", "florence", "unknown"]
 
 

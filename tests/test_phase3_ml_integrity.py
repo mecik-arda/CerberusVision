@@ -636,7 +636,7 @@ def test_repetition_guard_detects_runaway_json_without_short_false_positive():
     )
 
     assert inference_module._has_excessive_output_repetition(
-        repeated_block * 20
+        repeated_block * 500
     ) is True
     assert inference_module._has_excessive_output_repetition(
         '{"carrier_booking_reference":"BKG-123"}'

@@ -1,0 +1,60 @@
+Benchmark veri seti: 13 vaka (1 PDF, 12 salt metin, 1 donmus OCR)
+
+  [control_field_labels] Isleniyor... 62.7s (dogruluk: %100.0)
+  [Dangerous_Goods_IMDG_Multi_Class] Isleniyor... 112.0s (dogruluk: %78.8)
+  [DE_Frachtbrief_SI] Isleniyor... 44.6s (dogruluk: %81.8)
+  [Edge_Cases_Rule_Engine_Traps] Isleniyor... 96.9s (dogruluk: %69.8)
+  [Multi_Container_5_Equipment] Isleniyor... Qwen adapter inference failed, retrying with base model: LLM ciktisi asiri tekrar iceriyor
+110.9s (hata: RuntimeError)
+  [Multilingual_CN_TR_AR_Unicode] Isleniyor... 77.2s (dogruluk: %67.9)
+  [Narrative_Unstructured_Email_Style] Isleniyor... 79.9s (dogruluk: %89.4)
+  [Nested_Packaging_Mixed_Types] Isleniyor... 81.3s (dogruluk: %56.1)
+  [Overstamped_Handwritten_Noisy_OCR] Isleniyor... 74.9s (dogruluk: %74.4)
+  [Reefer_Mixed_Temperature_Goods] Isleniyor... 80.4s (dogruluk: %66.7)
+  [sample_shipping_instruction] Isleniyor... 42.7s (dogruluk: %88.9)
+  [Scanned_Low_Quality_PDF] Isleniyor... 48.0s (dogruluk: %81.8)
+  [TR_Konsimento_Talimati] Isleniyor... 51.9s (dogruluk: %30.8)
+
+========================================================================
+  CERBERUSVISION BENCHMARK RAPORU
+========================================================================
+  Belge sayisi:      13
+  Toplam alan:       484
+  Dogru alan:        304
+  Eksik alan:        107
+  Hatali alan:       73
+  Toplam sure:       963.4s
+
+------------------------------------------------------------------------
+  Kategori                             Dogruluk  Kesinlik  GeriCagr   F1-Skor
+------------------------------------------------------------------------
+  Belge Bilgileri & Referanslar         [31m%69.2[0m  [31m%47.9[0m  [33m%73.8[0m  [31m%58.1[0m
+  Taraflar (Shipper/Consignee/Notify)   [33m%74.6[0m  [31m%41.0[0m  [33m%75.8[0m  [31m%53.2[0m
+  Lojistik & Tasima (POL/POD/Gemi)      [33m%81.2[0m  [31m%47.3[0m  [33m%89.7[0m  [31m%61.9[0m
+  Konteyner & Ekipman                   [31m%36.2[0m  [31m%44.2[0m  [31m%56.0[0m  [31m%49.4[0m
+  Yuk Kalemleri & Mallar                [31m%69.1[0m  [31m%67.5[0m  [33m%77.5[0m  [33m%72.1[0m
+------------------------------------------------------------------------
+  GENEL TOPLAM                          [31m%62.8[0m  [31m%52.9[0m  [33m%73.6[0m  [31m%61.5[0m
+========================================================================
+
+  Belge Bazli Sonuclar:
+----------------------------------------------------------------------------------------
+  Belge                         Alan Dogru Eksik  Hata    %Dog    XSD
+----------------------------------------------------------------------------------------
+  control_field_labels             5     5     0     0 [32m%100.0[0m  GECTI
+  Dangerous_Goods_IMDG_Mu...      66    52     5     9 [33m%78.8[0m  GECTI
+  DE_Frachtbrief_SI               22    18     2     2 [33m%81.8[0m  GECTI
+  Edge_Cases_Rule_Engine_...      53    37     3    13 [31m%69.8[0m  GECTI
+  Multi_Container_5_Equip...      66     0    66     0 [31m%0.0[0m HATA(1)
+  Multilingual_CN_TR_AR_U...      28    19     5     4 [31m%67.9[0m  GECTI
+  Narrative_Unstructured_...      47    42     1     4 [33m%89.4[0m  GECTI
+  Nested_Packaging_Mixed_...      57    32     7    18 [31m%56.1[0m  GECTI
+  Overstamped_Handwritten...      39    29     4     6 [33m%74.4[0m  GECTI
+  Reefer_Mixed_Temperatur...      48    32     3    13 [31m%66.7[0m  GECTI
+  sample_shipping_instruc...      18    16     1     1 [33m%88.9[0m  GECTI
+  Scanned_Low_Quality_PDF         22    18     2     2 [33m%81.8[0m  GECTI
+  TR_Konsimento_Talimati          13     4     8     1 [31m%30.8[0m  GECTI
+----------------------------------------------------------------------------------------
+
+JSON raporu kaydedildi: /home/ardam/projects/CerberusVision/benchmarks/benchmark_results_20260725T202859Z.json
+HTML raporu kaydedildi: /home/ardam/projects/CerberusVision/benchmarks/benchmark_report_20260725T202859Z.html

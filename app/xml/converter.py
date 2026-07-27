@@ -1,30 +1,29 @@
 from __future__ import annotations
-from typing import Optional
-from enum import Enum
-from lxml import etree
-from app.models import (
-    ShippingInstruction,
-    Party,
-    TransportPlan,
-    Equipment,
-    CargoItem,
-    DocumentReference,
-    CustomsInformation,
-    Location,
-    Address,
-    ContactDetails,
-    Weight,
-    VerifiedGrossMass,
-    Seal,
-    TareWeight,
-    CargoWeight,
-    CargoVolume,
-    EquipmentReferences,
-    DangerousGoods,
-    FlashPoint,
-    EmergencyContact,
-)
 
+from enum import Enum
+
+from lxml import etree
+
+from app.models import (
+    Address,
+    CargoItem,
+    ContactDetails,
+    CustomsInformation,
+    DangerousGoods,
+    DocumentReference,
+    EmergencyContact,
+    Equipment,
+    EquipmentReferences,
+    FlashPoint,
+    Location,
+    Party,
+    Seal,
+    ShippingInstruction,
+    TareWeight,
+    TransportPlan,
+    VerifiedGrossMass,
+    Weight,
+)
 
 DCSA_NS = "http://dcsa.org/schemas/si/v2"
 NSMAP = {None: DCSA_NS, "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
@@ -34,7 +33,7 @@ def _ns(tag: str) -> str:
     return f"{{{DCSA_NS}}}{tag}"
 
 
-def _add_text_element(parent: etree._Element, tag: str, value) -> Optional[etree._Element]:
+def _add_text_element(parent: etree._Element, tag: str, value) -> etree._Element | None:
     if value is None:
         return None
     elem = etree.SubElement(parent, _ns(tag))
@@ -47,7 +46,7 @@ def _add_text_element(parent: etree._Element, tag: str, value) -> Optional[etree
     return elem
 
 
-def _add_location(parent: etree._Element, tag: str, location: Optional[Location]) -> Optional[etree._Element]:
+def _add_location(parent: etree._Element, tag: str, location: Location | None) -> etree._Element | None:
     if location is None:
         return None
     elem = etree.SubElement(parent, _ns(tag))
@@ -56,7 +55,7 @@ def _add_location(parent: etree._Element, tag: str, location: Optional[Location]
     return elem
 
 
-def _add_address(parent: etree._Element, address: Optional[Address]) -> Optional[etree._Element]:
+def _add_address(parent: etree._Element, address: Address | None) -> etree._Element | None:
     if address is None:
         return None
     elem = etree.SubElement(parent, _ns("Address"))
@@ -67,7 +66,7 @@ def _add_address(parent: etree._Element, address: Optional[Address]) -> Optional
     return elem
 
 
-def _add_contact_details(parent: etree._Element, contact: Optional[ContactDetails]) -> Optional[etree._Element]:
+def _add_contact_details(parent: etree._Element, contact: ContactDetails | None) -> etree._Element | None:
     if contact is None:
         return None
     elem = etree.SubElement(parent, _ns("ContactDetails"))
@@ -88,7 +87,7 @@ def _add_party(parent: etree._Element, party: Party) -> etree._Element:
     return elem
 
 
-def _add_weight(parent: etree._Element, tag: str, weight: Optional[Weight]) -> Optional[etree._Element]:
+def _add_weight(parent: etree._Element, tag: str, weight: Weight | None) -> etree._Element | None:
     if weight is None:
         return None
     elem = etree.SubElement(parent, _ns(tag))
@@ -97,7 +96,7 @@ def _add_weight(parent: etree._Element, tag: str, weight: Optional[Weight]) -> O
     return elem
 
 
-def _add_verified_gross_mass(parent: etree._Element, vgm: Optional[VerifiedGrossMass]) -> Optional[etree._Element]:
+def _add_verified_gross_mass(parent: etree._Element, vgm: VerifiedGrossMass | None) -> etree._Element | None:
     if vgm is None:
         return None
     elem = etree.SubElement(parent, _ns("VerifiedGrossMass"))
@@ -115,7 +114,7 @@ def _add_seal(parent: etree._Element, seal: Seal) -> etree._Element:
     return elem
 
 
-def _add_tare_weight(parent: etree._Element, tare: Optional[TareWeight]) -> Optional[etree._Element]:
+def _add_tare_weight(parent: etree._Element, tare: TareWeight | None) -> etree._Element | None:
     if tare is None:
         return None
     elem = etree.SubElement(parent, _ns("TareWeight"))
@@ -152,7 +151,7 @@ def _add_transport_plan(parent: etree._Element, plan: TransportPlan) -> etree._E
     return elem
 
 
-def _add_equipment_references(parent: etree._Element, refs: Optional[EquipmentReferences]) -> Optional[etree._Element]:
+def _add_equipment_references(parent: etree._Element, refs: EquipmentReferences | None) -> etree._Element | None:
     if refs is None or not refs.equipment_reference_detail:
         return None
     elem = etree.SubElement(parent, _ns("EquipmentReferences"))
@@ -163,7 +162,7 @@ def _add_equipment_references(parent: etree._Element, refs: Optional[EquipmentRe
     return elem
 
 
-def _add_flash_point(parent: etree._Element, fp: Optional[FlashPoint]) -> Optional[etree._Element]:
+def _add_flash_point(parent: etree._Element, fp: FlashPoint | None) -> etree._Element | None:
     if fp is None:
         return None
     elem = etree.SubElement(parent, _ns("FlashPoint"))
@@ -172,7 +171,7 @@ def _add_flash_point(parent: etree._Element, fp: Optional[FlashPoint]) -> Option
     return elem
 
 
-def _add_emergency_contact(parent: etree._Element, ec: Optional[EmergencyContact]) -> Optional[etree._Element]:
+def _add_emergency_contact(parent: etree._Element, ec: EmergencyContact | None) -> etree._Element | None:
     if ec is None:
         return None
     elem = etree.SubElement(parent, _ns("EmergencyContact"))
@@ -222,7 +221,7 @@ def _add_document_reference(parent: etree._Element, ref: DocumentReference) -> e
     return elem
 
 
-def _add_customs_info(parent: etree._Element, customs: Optional[CustomsInformation]) -> Optional[etree._Element]:
+def _add_customs_info(parent: etree._Element, customs: CustomsInformation | None) -> etree._Element | None:
     if customs is None:
         return None
     elem = etree.SubElement(parent, _ns("CustomsInformation"))

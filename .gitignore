@@ -57,3 +57,11 @@ veriler/
 .claude/
 image*.png
 ui_concept*.png
+
+# Büyük model dosyaları, checkpointler ve tokenizer verileri git üzerinden takip edilmeyecek (zaman aşımı ve boyut limitleri sebebiyle).
+*.safetensors
+*.pt
+*.pth
+tokenizer.json
+checkpoint-*/
+adapter_best/

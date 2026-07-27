@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Any, Dict, Optional, List, Literal
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+
 from enum import Enum
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class DocumentStatusCode(str, Enum):
@@ -77,153 +79,153 @@ class TemperatureUnit(str, Enum):
 
 
 class Address(BaseModel):
-    street: Optional[str] = None
-    city: Optional[str] = None
-    postal_code: Optional[str] = None
-    country_code: Optional[str] = None
+    street: str | None = None
+    city: str | None = None
+    postal_code: str | None = None
+    country_code: str | None = None
 
 
 class ContactDetails(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    phone_number: Optional[str] = None
+    name: str | None = None
+    email: str | None = None
+    phone_number: str | None = None
 
 
 class Party(BaseModel):
     party_role_code: PartyRoleCode
-    party_id: Optional[str] = None
-    party_name: Optional[str] = None
-    address: Optional[Address] = None
-    contact_details: Optional[ContactDetails] = None
-    same_as_consignee: Optional[bool] = None
+    party_id: str | None = None
+    party_name: str | None = None
+    address: Address | None = None
+    contact_details: ContactDetails | None = None
+    same_as_consignee: bool | None = None
 
 
 class Location(BaseModel):
-    un_location_code: Optional[str] = None
-    location_name: Optional[str] = None
+    un_location_code: str | None = None
+    location_name: str | None = None
 
 
 class TransportPlan(BaseModel):
     leg_sequence_number: int
-    transport_mode: Optional[TransportMode] = None
-    port_of_loading: Optional[Location] = None
-    port_of_discharge: Optional[Location] = None
-    place_of_receipt: Optional[Location] = None
-    place_of_delivery: Optional[Location] = None
-    carrier_voyage_number: Optional[str] = None
-    vessel_imo_number: Optional[str] = None
+    transport_mode: TransportMode | None = None
+    port_of_loading: Location | None = None
+    port_of_discharge: Location | None = None
+    place_of_receipt: Location | None = None
+    place_of_delivery: Location | None = None
+    carrier_voyage_number: str | None = None
+    vessel_imo_number: str | None = None
 
 
 class Weight(BaseModel):
-    weight: Optional[float] = None
+    weight: float | None = None
     unit: WeightUnit = WeightUnit.KILOGRAM
 
 
 class VerifiedGrossMass(BaseModel):
-    weight: Optional[float] = None
+    weight: float | None = None
     unit: WeightUnit = WeightUnit.KILOGRAM
-    verification_method: Optional[str] = None
+    verification_method: str | None = None
 
 
 class Seal(BaseModel):
-    seal_number: Optional[str] = None
-    seal_source_code: Optional[str] = None
-    seal_type_code: Optional[str] = None
+    seal_number: str | None = None
+    seal_source_code: str | None = None
+    seal_type_code: str | None = None
 
 
 class TareWeight(BaseModel):
-    weight: Optional[float] = None
+    weight: float | None = None
     unit: WeightUnit = WeightUnit.KILOGRAM
 
 
 class Equipment(BaseModel):
-    equipment_reference: Optional[str] = None
-    iso_equipment_code: Optional[str] = None
-    is_shipper_owned: Optional[bool] = None
-    cargo_gross_weight: Optional[Weight] = None
-    verified_gross_mass: Optional[VerifiedGrossMass] = None
-    seals: Optional[List[Seal]] = None
-    tare_weight: Optional[TareWeight] = None
+    equipment_reference: str | None = None
+    iso_equipment_code: str | None = None
+    is_shipper_owned: bool | None = None
+    cargo_gross_weight: Weight | None = None
+    verified_gross_mass: VerifiedGrossMass | None = None
+    seals: list[Seal] | None = None
+    tare_weight: TareWeight | None = None
 
 
 class EquipmentReferenceDetail(BaseModel):
-    equipment_reference: Optional[str] = None
-    number_of_packages: Optional[int] = None
+    equipment_reference: str | None = None
+    number_of_packages: int | None = None
 
 
 class EquipmentReferences(BaseModel):
-    equipment_reference_detail: List[EquipmentReferenceDetail] = Field(default_factory=list)
+    equipment_reference_detail: list[EquipmentReferenceDetail] = Field(default_factory=list)
 
 
 class FlashPoint(BaseModel):
-    temperature: Optional[float] = None
+    temperature: float | None = None
     unit: TemperatureUnit = TemperatureUnit.CELSIUS
 
 
 class EmergencyContact(BaseModel):
-    name: Optional[str] = None
-    phone_number: Optional[str] = None
+    name: str | None = None
+    phone_number: str | None = None
 
 
 class DangerousGoods(BaseModel):
-    un_number: Optional[str] = None
-    imdg_class: Optional[str] = None
-    packing_group: Optional[str] = None
-    technical_name: Optional[str] = None
-    flash_point: Optional[FlashPoint] = None
-    emergency_contact: Optional[EmergencyContact] = None
+    un_number: str | None = None
+    imdg_class: str | None = None
+    packing_group: str | None = None
+    technical_name: str | None = None
+    flash_point: FlashPoint | None = None
+    emergency_contact: EmergencyContact | None = None
 
 
 class CargoWeight(BaseModel):
-    weight_value: Optional[float] = None
+    weight_value: float | None = None
     unit: WeightUnit = WeightUnit.KILOGRAM
 
 
 class CargoVolume(BaseModel):
-    volume_value: Optional[float] = None
+    volume_value: float | None = None
     unit: VolumeUnit = VolumeUnit.CUBIC_METERS
 
 
 class CargoItem(BaseModel):
-    package_quantity: Optional[int] = None
-    package_kind_code: Optional[PackageKindCode] = None
-    description_of_goods: Optional[str] = None
-    shipping_marks: Optional[str] = None
-    commodity_code: Optional[str] = None
-    weight: Optional[CargoWeight] = None
-    volume: Optional[CargoVolume] = None
-    equipment_references: Optional[EquipmentReferences] = None
-    dangerous_goods_list: Optional[List[DangerousGoods]] = None
+    package_quantity: int | None = None
+    package_kind_code: PackageKindCode | None = None
+    description_of_goods: str | None = None
+    shipping_marks: str | None = None
+    commodity_code: str | None = None
+    weight: CargoWeight | None = None
+    volume: CargoVolume | None = None
+    equipment_references: EquipmentReferences | None = None
+    dangerous_goods_list: list[DangerousGoods] | None = None
 
 
 class DocumentReference(BaseModel):
-    type_code: Optional[str] = None
-    reference_number: Optional[str] = None
+    type_code: str | None = None
+    reference_number: str | None = None
 
 
 class CustomsInformation(BaseModel):
-    fta_declaration: Optional[str] = None
-    export_customs_clearance_location: Optional[Location] = None
+    fta_declaration: str | None = None
+    export_customs_clearance_location: Location | None = None
 
 
 class ShippingInstruction(BaseModel):
-    shipping_instruction_reference: Optional[str] = None
-    document_status_code: Optional[DocumentStatusCode] = None
-    shipping_instruction_date_time: Optional[str] = None
-    carrier_booking_reference: Optional[str] = None
-    transport_document_type: Optional[TransportDocumentType] = None
-    freight_payment_term_code: Optional[FreightPaymentTermCode] = None
-    issue_date: Optional[str] = None
-    place_of_issue: Optional[Location] = None
-    export_declaration_number: Optional[str] = None
-    service_contract_reference: Optional[str] = None
-    parties: List[Party] = Field(default_factory=list)
-    transport_plans: List[TransportPlan] = Field(default_factory=list)
-    equipment_list: List[Equipment] = Field(default_factory=list)
-    cargo_items: List[CargoItem] = Field(default_factory=list)
-    document_references: List[DocumentReference] = Field(default_factory=list)
-    customs_information: Optional[CustomsInformation] = None
-    remarks: Optional[str] = None
+    shipping_instruction_reference: str | None = None
+    document_status_code: DocumentStatusCode | None = None
+    shipping_instruction_date_time: str | None = None
+    carrier_booking_reference: str | None = None
+    transport_document_type: TransportDocumentType | None = None
+    freight_payment_term_code: FreightPaymentTermCode | None = None
+    issue_date: str | None = None
+    place_of_issue: Location | None = None
+    export_declaration_number: str | None = None
+    service_contract_reference: str | None = None
+    parties: list[Party] = Field(default_factory=list)
+    transport_plans: list[TransportPlan] = Field(default_factory=list)
+    equipment_list: list[Equipment] = Field(default_factory=list)
+    cargo_items: list[CargoItem] = Field(default_factory=list)
+    document_references: list[DocumentReference] = Field(default_factory=list)
+    customs_information: CustomsInformation | None = None
+    remarks: str | None = None
 
 
 class ProcessingStatus(str, Enum):
@@ -240,7 +242,7 @@ class ProcessingStatus(str, Enum):
 class FieldValidation(BaseModel):
     field_path: str
     field_label: str
-    value: Optional[str] = None
+    value: str | None = None
     is_required: bool = False
     is_missing: bool = False
 
@@ -257,7 +259,7 @@ class LocalAuditAssessment(BaseModel):
     risk_score: float = Field(ge=0.0, le=100.0)
     confidence_score: float = Field(ge=0.0, le=100.0)
     requires_cloud_review: bool = False
-    findings: List[AuditFinding] = Field(default_factory=list)
+    findings: list[AuditFinding] = Field(default_factory=list)
 
 
 class CloudAuditResponse(BaseModel):
@@ -265,29 +267,29 @@ class CloudAuditResponse(BaseModel):
 
     score: float = Field(ge=0.0, le=100.0)
     summary: str = Field(min_length=1, max_length=400)
-    suspicious_fields: List[str] = Field(default_factory=list, max_length=10)
+    suspicious_fields: list[str] = Field(default_factory=list, max_length=10)
 
 
 class ProcessingResult(BaseModel):
     status: ProcessingStatus
-    xml_content: Optional[str] = None
-    raw_ocr_text: Optional[str] = None
-    raw_llm_json: Optional[str] = None
-    structured_data: Optional[Dict[str, Any]] = None
-    audit_confidence_score: Optional[float] = None
-    audit_summary: Optional[str] = None
+    xml_content: str | None = None
+    raw_ocr_text: str | None = None
+    raw_llm_json: str | None = None
+    structured_data: dict[str, Any] | None = None
+    audit_confidence_score: float | None = None
+    audit_summary: str | None = None
     cloud_review_used: bool = False
     cloud_review_available: bool = False
-    local_risk_score: Optional[float] = None
+    local_risk_score: float | None = None
     local_refinement_used: bool = False
-    local_warnings: List[AuditFinding] = Field(default_factory=list)
-    suspicious_fields: List[str] = Field(default_factory=list)
-    validation_errors: List[str] = Field(default_factory=list)
-    missing_fields: List[FieldValidation] = Field(default_factory=list)
-    document_language: Optional[Literal["auto", "tr", "en"]] = None
-    output_language: Optional[Literal["tr", "en"]] = None
+    local_warnings: list[AuditFinding] = Field(default_factory=list)
+    suspicious_fields: list[str] = Field(default_factory=list)
+    validation_errors: list[str] = Field(default_factory=list)
+    missing_fields: list[FieldValidation] = Field(default_factory=list)
+    document_language: Literal["auto", "tr", "en"] | None = None
+    output_language: Literal["tr", "en"] | None = None
     translation_enabled: bool = True
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class SaveInstructionRequest(BaseModel):
@@ -297,24 +299,24 @@ class SaveInstructionRequest(BaseModel):
 class RuntimeSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    deepseek_api_key: Optional[SecretStr] = Field(default=None, max_length=512)
+    deepseek_api_key: SecretStr | None = Field(default=None, max_length=512)
     clear_deepseek_api_key: bool = False
-    deepseek_review_mode: Optional[Literal["off", "manual", "risk", "always"]] = None
-    deepseek_risk_threshold: Optional[int] = Field(default=None, ge=0, le=100)
-    local_model_path: Optional[str] = Field(default=None, max_length=2048)
-    theme: Optional[Literal["system", "light", "dark"]] = None
-    interface_language: Optional[Literal["tr", "en"]] = None
-    document_language: Optional[Literal["auto", "tr", "en"]] = None
-    output_language: Optional[Literal["tr", "en"]] = None
-    translation_enabled: Optional[bool] = None
-    nmt_enabled: Optional[bool] = None
-    inference_mode: Optional[Literal["multi_stage", "single_pass"]] = None
-    layout_engine: Optional[Literal["hybrid", "y_ratio", "off"]] = None
-    lora_enabled: Optional[bool] = None
-    lora_adapter_path: Optional[str] = Field(default=None, max_length=2048)
-    region_upper_ratio: Optional[float] = Field(default=None, ge=0.10, le=0.45)
-    region_middle_ratio: Optional[float] = Field(default=None, ge=0.50, le=0.80)
-    stage_timeout_seconds: Optional[int] = Field(default=None, ge=60, le=1800)
+    deepseek_review_mode: Literal["off", "manual", "risk", "always"] | None = None
+    deepseek_risk_threshold: int | None = Field(default=None, ge=0, le=100)
+    local_model_path: str | None = Field(default=None, max_length=2048)
+    theme: Literal["system", "light", "dark"] | None = None
+    interface_language: Literal["tr", "en"] | None = None
+    document_language: Literal["auto", "tr", "en"] | None = None
+    output_language: Literal["tr", "en"] | None = None
+    translation_enabled: bool | None = None
+    nmt_enabled: bool | None = None
+    inference_mode: Literal["multi_stage", "single_pass"] | None = None
+    layout_engine: Literal["hybrid", "y_ratio", "off"] | None = None
+    lora_enabled: bool | None = None
+    lora_adapter_path: str | None = Field(default=None, max_length=2048)
+    region_upper_ratio: float | None = Field(default=None, ge=0.10, le=0.45)
+    region_middle_ratio: float | None = Field(default=None, ge=0.50, le=0.80)
+    stage_timeout_seconds: int | None = Field(default=None, ge=60, le=1800)
 
 
 
@@ -329,13 +331,14 @@ class BatchItemStatus(str, Enum):
 
 
 class BatchItemResult(BaseModel):
+    item_id: str = ""
     filename: str
     original_filename: str
     status: BatchItemStatus
-    session_id: Optional[str] = None
-    error_message: Optional[str] = None
-    risk_score: Optional[float] = None
-    confidence_score: Optional[float] = None
+    session_id: str | None = None
+    error_message: str | None = None
+    risk_score: float | None = None
+    confidence_score: float | None = None
 
 
 class BatchStatusResponse(BaseModel):
@@ -345,18 +348,20 @@ class BatchStatusResponse(BaseModel):
     completed_count: int = 0
     error_count: int = 0
     percent: float = 0.0
-    current_file: Optional[str] = None
-    current_status: Optional[str] = None
-    items: List[BatchItemResult] = Field(default_factory=list)
+    current_file: str | None = None
+    current_status: str | None = None
+    items: list[BatchItemResult] = Field(default_factory=list)
     zip_ready: bool = False
-    zip_size_bytes: Optional[int] = None
+    zip_error: str | None = None
+    zip_size_bytes: int | None = None
+    terminal: bool = False
 
 
 class BatchUploadResponse(BaseModel):
     batch_id: str
     total_count: int
     rejected_count: int
-    rejected_items: List[BatchItemResult] = Field(default_factory=list)
+    rejected_items: list[BatchItemResult] = Field(default_factory=list)
     queued_count: int
     stream_url: str
     status_url: str
@@ -367,8 +372,50 @@ class BatchEvent(BaseModel):
     completed_count: int
     total_count: int
     percent: float
-    current_file: Optional[str] = None
-    current_status: Optional[str] = None
+    current_file: str | None = None
+    current_status: str | None = None
     error_count: int = 0
-    item: Optional[BatchItemResult] = None
+    item: BatchItemResult | None = None
     zip_ready: bool = False
+    zip_error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.1 — ERP Function Calling (Tool Use) modelleri
+# ---------------------------------------------------------------------------
+
+
+class ErpShipmentPayload(BaseModel):
+    """ShippingInstruction'dan ERP'ye dönüştürülen gönderi kaydı."""
+
+    shipping_instruction_reference: str | None = None
+    carrier_booking_reference: str | None = None
+    transport_document_type: str | None = None
+    freight_payment_term_code: str | None = None
+    issue_date: str | None = None
+    place_of_issue_name: str | None = None
+    shipper_name: str | None = None
+    shipper_address: str | None = None
+    shipper_city: str | None = None
+    shipper_country: str | None = None
+    consignee_name: str | None = None
+    consignee_address: str | None = None
+    consignee_city: str | None = None
+    consignee_country: str | None = None
+    notify_party_name: str | None = None
+    port_of_loading: str | None = None
+    port_of_discharge: str | None = None
+    vessel_imo_number: str | None = None
+    carrier_voyage_number: str | None = None
+    equipment_list: list[dict] = Field(default_factory=list)
+    cargo_items: list[dict] = Field(default_factory=list)
+    remarks: str | None = None
+
+
+class ErpCreateShipmentResponse(BaseModel):
+    """Mock ERP API yanıtı."""
+
+    success: bool
+    tracking_number: str
+    message: str
+    shipment_payload: ErpShipmentPayload | None = None

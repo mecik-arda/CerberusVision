@@ -1,3 +1,11 @@
+html.dark {
+    color-scheme: dark;
+}
+
+html:not(.dark) {
+    color-scheme: light;
+}
+
 .min-w-0 {
     min-width: 0;
 }
@@ -25,8 +33,33 @@
     min-height: 0;
 }
 
+.upload-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.upload-panel-full {
+    grid-column: 1 / -1;
+}
+
 #pdfViewerPanel {
-    min-height: 24rem;
+    min-height: 0;
+}
+
+.review-scroll-panel {
+    flex-shrink: 0;
+    max-height: min(11rem, 24vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.review-action-bar {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
 }
 
 #pdfViewerPanel:fullscreen {
@@ -36,6 +69,11 @@
 
 .live-log-panel {
     width: min(56rem, calc(100vw - 2rem));
+    background-color: #020617; /* bg-slate-950 */
+}
+
+.live-log-panel > div:first-child {
+    background-color: #0f172a; /* bg-slate-900 */
 }
 
 .live-log-output {
@@ -72,8 +110,22 @@
         flex-direction: column;
     }
 
-    .document-pane,
-    .review-pane {
+    .document-pane {
         min-height: 44rem;
+    }
+
+    .review-pane {
+        height: calc(100dvh - 5rem);
+        min-height: 36rem;
+    }
+
+    #pdfViewerPanel {
+        min-height: 32rem;
+    }
+}
+
+@media (max-width: 760px) {
+    .upload-panel {
+        grid-template-columns: minmax(0, 1fr);
     }
 }

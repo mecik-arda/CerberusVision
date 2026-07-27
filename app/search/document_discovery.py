@@ -6,10 +6,11 @@ import ipaddress
 import json
 import re
 import socket
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Protocol
+from typing import Any, Protocol
 from urllib.parse import quote_plus, unquote, urljoin, urlparse
 
 import httpx
@@ -20,7 +21,6 @@ from app.llm.document_relevance import (
     build_document_relevance_payload,
     run_document_relevance_review,
 )
-
 
 DEFAULT_SEARCH_QUERIES = (
     'filetype:pdf "shipping instruction" "port of loading" "port of discharge"',
@@ -80,16 +80,16 @@ class LocalQualityAssessment:
     relevant: bool
     english: bool
     english_likelihood: float
-    keyword_hits: List[str]
-    matched_groups: List[str]
+    keyword_hits: list[str]
+    matched_groups: list[str]
     text_chars: int
-    concerns: List[str]
+    concerns: list[str]
 
 
 class SearchProvider(Protocol):
     name: str
 
-    def search(self, query: str, count: int) -> List[SearchCandidate]: ...
+    def search(self, query: str, count: int) -> list[SearchCandidate]: ...
 
 
 def _clean_snippet(value: str) -> str:
@@ -100,13 +100,13 @@ def _clean_snippet(value: str) -> str:
 class BraveSearchProvider:
     name = "brave"
 
-    def __init__(self, api_key: str, client: Optional[httpx.Client] = None):
+    def __init__(self, api_key: str, client: httpx.Client | None = None):
         if not api_key:
             raise ValueError("BRAVE_SEARCH_API_KEY is required for Brave search.")
         self.api_key = api_key
         self.client = client or httpx.Client(timeout=30)
 
-    def search(self, query: str, count: int) -> List[SearchCandidate]:
+    def search(self, query: str, count: int) -> list[SearchCandidate]:
         response = self.client.get(
             "https://api.search.brave.com/res/v1/web/search",
             headers={
@@ -145,7 +145,7 @@ class GoogleSearchProvider:
         self,
         api_key: str,
         engine_id: str,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
     ):
         if not api_key or not engine_id:
             raise ValueError(
@@ -155,7 +155,7 @@ class GoogleSearchProvider:
         self.engine_id = engine_id
         self.client = client or httpx.Client(timeout=30)
 
-    def search(self, query: str, count: int) -> List[SearchCandidate]:
+    def search(self, query: str, count: int) -> list[SearchCandidate]:
         response = self.client.get(
             "https://customsearch.googleapis.com/customsearch/v1",
             params={
@@ -184,8 +184,8 @@ class GoogleSearchProvider:
 
 
 def resolve_search_provider(
-    provider_name: Optional[str] = None,
-    client: Optional[httpx.Client] = None,
+    provider_name: str | None = None,
+    client: httpx.Client | None = None,
 ) -> SearchProvider:
     selected = (provider_name or settings.document_search.provider).lower()
     if selected == "google":
@@ -212,7 +212,7 @@ def resolve_search_provider(
     )
 
 
-def build_manual_google_urls(queries: Iterable[str]) -> List[str]:
+def build_manual_google_urls(queries: Iterable[str]) -> list[str]:
     return [f"https://www.google.com/search?q={quote_plus(query)}" for query in queries]
 
 
@@ -269,7 +269,6 @@ def download_candidate(
                     except Exception as e:
                         if isinstance(e, ValueError) and "SSRF" in str(e):
                             raise
-                        pass
 
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("location")
@@ -427,7 +426,7 @@ def _read_known_hashes(manifest_path: Path) -> set[str]:
     return hashes
 
 
-def _append_manifest(manifest_path: Path, record: Dict[str, Any]) -> None:
+def _append_manifest(manifest_path: Path, record: dict[str, Any]) -> None:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with manifest_path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
@@ -438,9 +437,9 @@ class DiscoveryEngine:
         self,
         provider: SearchProvider,
         output_dir: Path,
-        download_client: Optional[httpx.Client] = None,
-        min_local_score: Optional[float] = None,
-        max_file_bytes: Optional[int] = None,
+        download_client: httpx.Client | None = None,
+        min_local_score: float | None = None,
+        max_file_bytes: int | None = None,
     ):
         self.provider = provider
         self.output_dir = output_dir
@@ -458,7 +457,7 @@ class DiscoveryEngine:
         self,
         queries: Iterable[str],
         max_results: int,
-    ) -> List[SearchCandidate]:
+    ) -> list[SearchCandidate]:
         query_list = [query for query in queries if query.strip()]
         if not query_list:
             return []
@@ -485,7 +484,7 @@ class DiscoveryEngine:
         max_results: int,
         local_only: bool = False,
         use_ocr: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if not local_only and not settings.deepseek.api_key:
             raise ValueError(
                 "DEEPSEEK_API_KEY is required for accepted documents. Use "
@@ -510,7 +509,7 @@ class DiscoveryEngine:
         }
         for candidate in self.collect_candidates(queries, max_results):
             summary["searched"] += 1
-            record: Dict[str, Any] = {
+            record: dict[str, Any] = {
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
                 "provider": candidate.provider,
                 "query": candidate.query,
@@ -549,7 +548,7 @@ class DiscoveryEngine:
                     "ocr_used": features.ocr_used,
                 }
                 record["local_quality"] = asdict(local_quality)
-                deepseek_review: Optional[DocumentRelevanceReview] = None
+                deepseek_review: DocumentRelevanceReview | None = None
                 if local_quality.score >= self.min_local_score and local_quality.relevant and local_quality.english and not local_only:
                     payload = build_document_relevance_payload(
                         candidate.title,

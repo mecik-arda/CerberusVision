@@ -16,11 +16,10 @@ Duzeltmeler:
 import json
 import random
 import re
-import math
+import sys
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
-import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -326,7 +325,7 @@ def main():
         for fid in sorted(overlap):
             print(f"      {fid}")
     else:
-        print(f"  OK Zero family overlap: all families are exclusively in train or validation")
+        print("  OK Zero family overlap: all families are exclusively in train or validation")
 
     # Check exact input overlap
     train_inputs = {item["input"].strip() for item in train_data}
@@ -355,13 +354,13 @@ def main():
     print(f"  Validation families: {len(best_val_fids)}")
     print(f"  Family leakage:     {'*** YES' if overlap else 'OK NONE'}")
 
-    print(f"\n  Train families:")
+    print("\n  Train families:")
     for fid in sorted(train_fids):
         base_count = len(families[fid])
         total_count = sum(1 for item in train_data if get_fid(item) == fid)
         print(f"    {fid:35s} -> {total_count:4d} samples ({base_count} base + variants)")
 
-    print(f"\n  Validation families:")
+    print("\n  Validation families:")
     for fid in sorted(best_val_fids):
         base_count = len(families[fid])
         total_count = sum(1 for item in val_data if get_fid(item) == fid)
@@ -376,8 +375,8 @@ def main():
         print(f"      Shipper: {shipper[:50]}")
         print(f"      Goods: {goods[:50]}")
 
-    print(f"\nPhase 5 Veri Paketi Hazir!")
-    print(f"Validation, EGITIMDE GORULMEMIS YENI sablonlari olcer — gercek genelleme testi.")
+    print("\nPhase 5 Veri Paketi Hazir!")
+    print("Validation, EGITIMDE GORULMEMIS YENI sablonlari olcer — gercek genelleme testi.")
 
 
 if __name__ == "__main__":

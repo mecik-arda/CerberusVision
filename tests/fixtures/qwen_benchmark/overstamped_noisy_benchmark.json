@@ -65,7 +65,7 @@
     "cargo_items": [
       {
         "package_quantity": 32,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "TEXTILE PRODUCTS",
         "shipping_marks": "ATL-BCN-2026",
         "weight": {
@@ -79,7 +79,7 @@
       },
       {
         "package_quantity": 22,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "CERAMIC CONTAINERS",
         "weight": {
           "weight_value": 17200.0,

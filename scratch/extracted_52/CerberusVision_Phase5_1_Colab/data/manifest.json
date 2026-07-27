@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "phase": "5.1",
+  "description": "Phase 5.1 training data (from-scratch)",
+  "seed": 3407,
+  "validation_ratio": 0.15,
+  "replay_ratio": 1.0,
+  "train_count": 1156,
+  "validation_count": 215,
+  "total_count": 1371,
+  "actual_ratios": {
+    "phase5": 0.7163,
+    "turkish_bl": 0.0865,
+    "reefer": 0.0415,
+    "new_families": 0.1557
+  },
+  "split_method": "global_family_based",
+  "sources": {
+    "phase5": {
+      "total": 1043,
+      "families": 10,
+      "train": 828,
+      "validation": 215
+    },
+    "turkish_bl": {
+      "total": 100,
+      "families": 40,
+      "train": 100,
+      "validation": 0
+    },
+    "reefer": {
+      "total": 48,
+      "families": 12,
+      "train": 48,
+      "validation": 0
+    },
+    "new_families": {
+      "total": 180,
+      "families": 60,
+      "train": 180,
+      "validation": 0
+    }
+  },
+  "files": {
+    "train.jsonl": "73f326e73f7a87e32c0687ba4569af1ee81726fb2d672a3be6eddb76802a76eb",
+    "validation.jsonl": "db452cdd075ab4d9396414f2f584a25467876493b545b139bcedc914d1cfd71f"
+  }
+}

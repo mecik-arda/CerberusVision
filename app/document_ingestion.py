@@ -6,7 +6,6 @@ from zipfile import BadZipFile, ZipFile
 
 from lxml import etree
 
-
 SUPPORTED_DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".xml", ".png", ".jpg", ".jpeg"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 TEXT_DOCUMENT_EXTENSIONS = {".docx", ".xml"}

@@ -1,9 +1,13 @@
 import io
 import json
+import os
+import time as time_module
+import zipfile
 
 import pytest
 from fastapi import UploadFile
 
+from app import config as config_module
 from app.config import settings
 from app.models import (
     CloudAuditResponse,
@@ -13,7 +17,13 @@ from app.models import (
 )
 from app.ocr.line_grouper import TextBox
 from app.routes import processing
+from app.utils import audit_logger
 from tests.test_validator import create_complete_si
+
+
+class ConnectedRequest:
+    async def is_disconnected(self):
+        return False
 
 
 @pytest.fixture(autouse=True)
@@ -165,6 +175,69 @@ def test_processing_language_validation_accepts_only_supported_values():
         processing._validate_processing_languages("tr", "de")
 
 
+def test_persistent_hybrid_layout_restores_effective_engine_flags(
+    tmp_path,
+    monkeypatch,
+):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "inference": {
+                    "mode": "multi_stage",
+                    "layout_engine": "hybrid",
+                    "nmt_enabled": False,
+                    "nmt_fallback_to_llm": False,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "SETTINGS_FILE", settings_path)
+    monkeypatch.setattr(settings, "layout_engine", "y_ratio")
+    monkeypatch.setattr(settings, "region_segmentation_enabled", True)
+    monkeypatch.setattr(settings, "florence_enabled", False)
+    monkeypatch.setattr(settings, "nmt_enabled", True)
+    monkeypatch.setattr(settings, "nmt_fallback_to_llm", True)
+
+    config_module.load_persistent_settings()
+
+    assert settings.layout_engine == "hybrid"
+    assert settings.region_segmentation_enabled is True
+    assert settings.florence_enabled is True
+    assert settings.nmt_enabled is False
+    assert settings.nmt_fallback_to_llm is False
+
+
+def test_processing_runtime_snapshot_does_not_drift_with_global_settings(
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "inference_mode", "multi_stage")
+    monkeypatch.setattr(settings, "layout_engine", "hybrid")
+    monkeypatch.setattr(settings, "region_upper_ratio", 0.31)
+    monkeypatch.setattr(settings, "region_middle_ratio", 0.71)
+
+    snapshot = processing._capture_processing_runtime_snapshot()
+    settings.apply_layout_engine("off")
+    settings.region_upper_ratio = 0.4
+    settings.region_middle_ratio = 0.8
+
+    assert snapshot.inference_mode == "multi_stage"
+    assert snapshot.layout_engine == "hybrid"
+    assert snapshot.region_upper_ratio == 0.31
+    assert snapshot.region_middle_ratio == 0.71
+
+
+def test_effective_layout_labels_distinguish_florence_fallback():
+    assert processing._effective_layout_label("hybrid") == "Florence-2 VLM"
+    assert "bazı sayfalarda Y-Oranı Fallback" in processing._effective_layout_label(
+        "hybrid_partial_fallback"
+    )
+    assert processing._effective_layout_label(
+        "y_ratio_fallback"
+    ) == "Florence-2 başarısız → Y-Oranı Fallback"
+
+
 @pytest.mark.asyncio
 async def test_runtime_settings_update_never_returns_api_key(monkeypatch):
     monkeypatch.setattr(settings.deepseek, "api_key", None)
@@ -187,6 +260,84 @@ async def test_runtime_settings_update_never_returns_api_key(monkeypatch):
     assert data["deepseek"]["review_mode"] == "manual"
     assert data["deepseek"]["risk_threshold"] == 45
     assert "api_key" not in data["deepseek"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_settings_hybrid_selection_updates_all_engine_state(
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "layout_engine", "y_ratio")
+    monkeypatch.setattr(settings, "region_segmentation_enabled", True)
+    monkeypatch.setattr(settings, "florence_enabled", False)
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
+    monkeypatch.setattr(
+        processing,
+        "_runtime_settings_payload",
+        lambda: {
+            "inference": {
+                "layout_engine": settings.layout_engine,
+                "region_segmentation_enabled": (
+                    settings.region_segmentation_enabled
+                ),
+                "florence_enabled": settings.florence_enabled,
+            }
+        },
+    )
+
+    response = await processing.update_runtime_settings(
+        processing.RuntimeSettingsUpdate(layout_engine="hybrid")
+    )
+    data = json.loads(response.body)
+
+    assert response.status_code == 200
+    assert settings.layout_engine == "hybrid"
+    assert settings.region_segmentation_enabled is True
+    assert settings.florence_enabled is True
+    assert data["inference"]["florence_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_invalid_adapter_does_not_partially_change_layout_engine(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "layout_engine", "y_ratio")
+    monkeypatch.setattr(settings, "region_segmentation_enabled", True)
+    monkeypatch.setattr(settings, "florence_enabled", False)
+    monkeypatch.setattr(processing, "_discover_lora_adapters", lambda: [])
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
+
+    response = await processing.update_runtime_settings(
+        processing.RuntimeSettingsUpdate(
+            layout_engine="hybrid",
+            lora_enabled=True,
+            lora_adapter_path=str(tmp_path / "missing_adapter"),
+        )
+    )
+
+    assert response.status_code == 422
+    assert settings.layout_engine == "y_ratio"
+    assert settings.region_segmentation_enabled is True
+    assert settings.florence_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_inference_settings_cannot_change_during_active_processing(
+    monkeypatch,
+):
+    session_id = "runtime-settings-active"
+    monkeypatch.setattr(settings, "layout_engine", "y_ratio")
+    monkeypatch.setattr(processing, "save_persistent_settings", lambda: None)
+    processing._active_pipeline_sessions.add(session_id)
+    try:
+        response = await processing.update_runtime_settings(
+            processing.RuntimeSettingsUpdate(layout_engine="hybrid")
+        )
+    finally:
+        processing._active_pipeline_sessions.discard(session_id)
+
+    assert response.status_code == 409
+    assert settings.layout_engine == "y_ratio"
 
 
 @pytest.mark.asyncio
@@ -328,7 +479,10 @@ async def test_manual_cloud_review_returns_short_comment_without_changing_data(t
 
     monkeypatch.setattr(processing, "run_deepseek_review", fake_review)
 
-    response = await processing.run_manual_cloud_review(session_id)
+    response = await processing.run_manual_cloud_review(
+        session_id,
+        ConnectedRequest(),
+    )
     data = json.loads(response.body)
 
     assert response.status_code == 200
@@ -336,7 +490,10 @@ async def test_manual_cloud_review_returns_short_comment_without_changing_data(t
     assert data["audit_confidence_score"] == 94
     assert data["structured_data"]["carrier_booking_reference"] == "CBR-12345"
     assert (tmp_path / "logs" / session_id / "manual_cloud_review_report.json").exists()
-    cached_response = await processing.run_manual_cloud_review(session_id)
+    cached_response = await processing.run_manual_cloud_review(
+        session_id,
+        ConnectedRequest(),
+    )
     assert cached_response.status_code == 200
     assert calls["count"] == 1
 
@@ -375,7 +532,10 @@ async def test_save_waits_for_same_session_cloud_review(tmp_path, monkeypatch):
 
     monkeypatch.setattr(processing, "_execute_cloud_review", fake_execute)
     review_task = processing.asyncio.create_task(
-        processing.run_manual_cloud_review(session_id)
+        processing.run_manual_cloud_review(
+            session_id,
+            ConnectedRequest(),
+        )
     )
     await review_started.wait()
     edited = instruction.model_copy(deep=True)
@@ -577,7 +737,7 @@ class TestAddressParserEngine:
     """Adres ve ulke kodu parcAlayici testleri."""
 
     def test_extracts_country_from_street_end_with_slash(self):
-        from app.llm.inference import _normalize_party_addresses, normalize_extracted_instruction
+        from app.llm.inference import _normalize_party_addresses
         from app.models import (
             ShippingInstruction, Party, Address, PartyRoleCode,
         )
@@ -701,6 +861,11 @@ class TestAddressParserEngine:
 class TestBatchUpload:
     """Batch upload endpoint testleri."""
 
+    def setup_method(self):
+        import app.routes.processing as proc
+
+        proc._batch_rate_limiter.clear()
+
     def test_batch_rejects_more_than_max_files(self):
         from fastapi.testclient import TestClient
         from app.main import app
@@ -729,6 +894,34 @@ class TestBatchUpload:
         assert data["rejected_count"] == 0
         assert data["queued_count"] == 3
         assert data["stream_url"].startswith("/api/batch/")
+
+    def test_batch_assigns_unique_ids_and_paths_to_duplicate_filenames(self, monkeypatch):
+        import app.routes.processing as proc
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        async def keep_batch_pending(batch_id):
+            return None
+
+        monkeypatch.setattr(proc, "_process_batch", keep_batch_pending)
+        client = TestClient(app)
+        files = [
+            ("files", ("duplicate.pdf", b"%PDF-first", "application/pdf")),
+            ("files", ("duplicate.pdf", b"%PDF-second", "application/pdf")),
+        ]
+        response = client.post("/api/batch/upload", files=files, data={
+            "document_language": "en", "output_language": "en",
+        })
+        assert response.status_code == 200
+        batch_id = response.json()["batch_id"]
+        try:
+            items = proc._batch_store[batch_id]["items"]
+            assert [item["item_id"] for item in items] == ["item-1", "item-2"]
+            assert items[0]["filename"] != items[1]["filename"]
+            assert items[0]["session_id"] != items[1]["session_id"]
+        finally:
+            proc._batch_store.pop(batch_id, None)
+            proc._batch_tasks.pop(batch_id, None)
 
     def test_batch_rejects_invalid_extension(self):
         from fastapi.testclient import TestClient
@@ -815,11 +1008,11 @@ class TestBatchUpload:
             response = client.get(f"/api/batch/{batch_id}/status")
             assert response.status_code == 200
             data = response.json()
-            assert data["completed_count"] == 2  # COMPLETED + ERROR
-            assert data["error_count"] == 0  # ERROR count from batch dict
+            assert data["completed_count"] == 2
+            assert data["error_count"] == 1
             assert data["current_file"] == "f2.pdf"
             assert data["current_status"] == "PROCESSING"
-            assert data["percent"] == 40.0  # 2/5
+            assert data["percent"] == 40.0
         finally:
             proc._batch_store.pop(batch_id, None)
 
@@ -854,5 +1047,398 @@ class TestBatchUpload:
             assert items[1]["status"] == "ERROR"
             # COMPLETED should remain
             assert items[2]["status"] == "COMPLETED"
+            assert proc._batch_store[batch_id]["zip_ready"] is False
+            assert proc._batch_store[batch_id]["zip_error"]
         finally:
             proc._batch_store.pop(batch_id, None)
+
+    def test_batch_cancel_awaits_the_cancelled_task(self):
+        import asyncio
+        import app.routes.processing as proc
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        class CancellableTask:
+            def __init__(self):
+                self.cancelled = False
+                self.awaited = False
+
+            def done(self):
+                return False
+
+            def cancel(self):
+                self.cancelled = True
+
+            def __await__(self):
+                self.awaited = True
+                if False:
+                    yield None
+                raise asyncio.CancelledError
+
+        client = TestClient(app)
+        batch_id = "batch_test_await_cancel"
+        task = CancellableTask()
+        proc._batch_store[batch_id] = {
+            "batch_id": batch_id,
+            "created_at": "2026-01-01T00:00:00",
+            "total_count": 1,
+            "error_count": 0,
+            "items": [
+                {"item_id": "item-1", "filename": "f1.pdf", "original_filename": "f1.pdf", "status": "QUEUED", "session_id": "s1", "error_message": None, "risk_score": None, "confidence_score": None},
+            ],
+            "zip_ready": False,
+            "_temp_dir": "/tmp/test",
+        }
+        proc._batch_tasks[batch_id] = task
+        try:
+            response = client.delete(f"/api/batch/{batch_id}")
+            assert response.status_code == 200
+            assert task.cancelled is True
+            assert task.awaited is True
+        finally:
+            proc._batch_store.pop(batch_id, None)
+            proc._batch_tasks.pop(batch_id, None)
+
+
+def test_browser_security_headers_are_present():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+    policy = response.headers["content-security-policy"]
+    assert "script-src 'self'" in policy
+    assert "object-src 'none'" in policy
+    assert "frame-ancestors 'none'" in policy
+
+
+@pytest.mark.asyncio
+async def test_batch_zip_failure_is_not_reported_as_ready(monkeypatch, tmp_path):
+    import app.routes.processing as proc
+
+    batch_id = "batch_test_zip_failure"
+    batch_temp_dir = tmp_path / batch_id
+    batch_temp_dir.mkdir()
+    proc._batch_store[batch_id] = {
+        "batch_id": batch_id,
+        "created_at": "2026-07-26T13:00:00+00:00",
+        "total_count": 0,
+        "error_count": 0,
+        "items": [],
+        "zip_ready": False,
+        "document_language": "en",
+        "output_language": "en",
+        "translation_enabled": False,
+        "runtime_snapshot": object(),
+        "_temp_dir": str(batch_temp_dir),
+    }
+
+    async def fail_zip(_batch_id):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(proc, "_build_batch_zip", fail_zip)
+
+    try:
+        await proc._process_batch(batch_id)
+        batch = proc._batch_store[batch_id]
+        assert batch["zip_ready"] is False
+        assert batch["zip_error"] == "ZIP paketi olusturulamadi."
+        assert "zip_path" not in batch
+    finally:
+        proc._batch_store.pop(batch_id, None)
+        proc._batch_queues.pop(batch_id, None)
+
+
+def test_batch_archive_name_removes_path_segments_and_unsafe_characters():
+    assert processing._safe_archive_stem("../../outside.pdf") == "outside"
+    assert processing._safe_archive_stem("..\\..\\nested\\invoice 01?.pdf") == "invoice_01"
+    assert processing._safe_archive_stem("...") == "document"
+
+
+@pytest.mark.asyncio
+async def test_terminal_batch_stream_replays_completion_without_waiting():
+    batch_id = "batch_terminal_replay"
+    processing._batch_store[batch_id] = {
+        "batch_id": batch_id,
+        "total_count": 1,
+        "items": [
+            {
+                "status": processing.BatchItemStatus.REJECTED.value,
+            }
+        ],
+        "terminal": True,
+        "zip_ready": True,
+        "zip_error": None,
+    }
+    try:
+        events = [
+            event
+            async for event in processing._batch_event_generator(batch_id)
+        ]
+        assert len(events) == 1
+        payload = json.loads(events[0].removeprefix("data: ").strip())
+        assert payload["status"] == "COMPLETE"
+        assert payload["completed_count"] == 1
+        assert payload["total_count"] == 1
+        assert payload["zip_ready"] is True
+    finally:
+        processing._batch_store.pop(batch_id, None)
+        processing._batch_queues.pop(batch_id, None)
+
+
+def test_expired_batch_archives_are_removed_and_active_archives_are_kept(
+    tmp_path,
+    monkeypatch,
+):
+    uploads_dir = tmp_path / "uploads"
+    uploads_dir.mkdir()
+    expired_archive = uploads_dir / "batch_expired.zip"
+    active_archive = uploads_dir / "batch_active.zip"
+    expired_archive.write_bytes(b"expired")
+    active_archive.write_bytes(b"active")
+    expired_timestamp = time_module.time() - processing._BATCH_ARTIFACT_TTL_SECONDS - 1
+    os.utime(expired_archive, (expired_timestamp, expired_timestamp))
+    monkeypatch.setattr(settings, "uploads_dir", uploads_dir)
+
+    removed_count = processing._cleanup_expired_batch_archives()
+
+    assert removed_count == 1
+    assert not expired_archive.exists()
+    assert active_archive.exists()
+
+
+@pytest.mark.asyncio
+async def test_rejected_items_are_included_in_batch_failure_reports(
+    tmp_path,
+    monkeypatch,
+):
+    uploads_dir = tmp_path / "uploads"
+    logs_dir = tmp_path / "logs"
+    uploads_dir.mkdir()
+    logs_dir.mkdir()
+    monkeypatch.setattr(settings, "uploads_dir", uploads_dir)
+    monkeypatch.setattr(settings, "logs_dir", logs_dir)
+    batch_id = "batch_rejected_report"
+    processing._batch_store[batch_id] = {
+        "batch_id": batch_id,
+        "created_at": "2026-07-26T00:00:00+00:00",
+        "total_count": 1,
+        "items": [
+            {
+                "item_id": "item-1",
+                "original_filename": "../../bad.pdf",
+                "status": processing.BatchItemStatus.REJECTED.value,
+                "session_id": "rejected-session",
+                "error_message": "Unsupported file",
+                "risk_score": None,
+                "confidence_score": None,
+            }
+        ],
+        "document_language": "en",
+        "output_language": "en",
+    }
+    try:
+        archive_path = await processing._build_batch_zip(batch_id)
+        with zipfile.ZipFile(archive_path) as archive:
+            summary = json.loads(archive.read("BATCH_SUMMARY.json"))
+            error_report = json.loads(
+                archive.read("HATALI_DOSYALAR_RAPORU.json")
+            )
+        assert summary["errors"] == 1
+        assert summary["processing_errors"] == 0
+        assert summary["rejected"] == 1
+        assert error_report["error_count"] == 1
+        assert error_report["errors"][0]["status"] == "REJECTED"
+    finally:
+        processing._batch_store.pop(batch_id, None)
+
+
+@pytest.mark.asyncio
+async def test_disconnected_instruction_request_does_not_commit_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    class DisconnectedRequest:
+        async def is_disconnected(self):
+            return True
+
+    session_id = "disconnected-save"
+    instruction = create_complete_si()
+    processing._session_models[session_id] = instruction
+    monkeypatch.setattr(settings, "logs_dir", tmp_path / "logs")
+    edited = instruction.model_copy(deep=True)
+    edited.carrier_booking_reference = "MUST-NOT-COMMIT"
+    request = SaveInstructionRequest(shipping_instruction=edited)
+
+    try:
+        response = await processing._save_instruction(
+            session_id,
+            request,
+            approve=False,
+            http_request=DisconnectedRequest(),
+        )
+        assert response.status_code == 499
+        assert (
+            processing._session_models[session_id].carrier_booking_reference
+            != "MUST-NOT-COMMIT"
+        )
+        assert session_id not in processing._processing_store
+    finally:
+        processing._processing_store.pop(session_id, None)
+        processing._session_models.pop(session_id, None)
+        processing._session_locks.pop(session_id, None)
+
+
+@pytest.mark.asyncio
+async def test_cloud_review_is_cancelled_when_client_disconnects(
+    tmp_path,
+    monkeypatch,
+):
+    class MutableRequest:
+        disconnected = False
+
+        async def is_disconnected(self):
+            return self.disconnected
+
+    session_id = "cloud-disconnect-test"
+    instruction = create_complete_si()
+    processing._session_models[session_id] = instruction
+    processing._processing_store[session_id] = ProcessingResult(
+        status=ProcessingStatus.COMPLETED,
+        raw_ocr_text="OCR " * 40,
+        structured_data=instruction.model_dump(mode="json"),
+    )
+    monkeypatch.setattr(settings, "logs_dir", tmp_path / "logs")
+    monkeypatch.setattr(settings.deepseek, "api_key", "test-key")
+    monkeypatch.setattr(settings.deepseek, "review_mode", "manual")
+    review_started = processing.asyncio.Event()
+    review_cancelled = processing.asyncio.Event()
+
+    async def wait_for_cancellation(*args):
+        review_started.set()
+        try:
+            await processing.asyncio.Event().wait()
+        finally:
+            review_cancelled.set()
+
+    monkeypatch.setattr(processing, "_execute_cloud_review", wait_for_cancellation)
+    request = MutableRequest()
+    review_task = processing.asyncio.create_task(
+        processing.run_manual_cloud_review(session_id, request)
+    )
+
+    try:
+        await review_started.wait()
+        request.disconnected = True
+        response = await processing.asyncio.wait_for(review_task, timeout=1)
+        assert response.status_code == 499
+        assert review_cancelled.is_set()
+        assert processing._processing_store[session_id].cloud_review_used is False
+    finally:
+        if not review_task.done():
+            review_task.cancel()
+        processing._processing_store.pop(session_id, None)
+        processing._session_models.pop(session_id, None)
+        processing._session_locks.pop(session_id, None)
+
+
+@pytest.mark.asyncio
+async def test_batch_capacity_removes_only_terminal_batches(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(processing, "_MAX_BATCH_STORE", 2)
+    active_id = "batch_active_capacity"
+    terminal_id = "batch_terminal_capacity"
+    active_temp_dir = tmp_path / active_id
+    terminal_temp_dir = tmp_path / terminal_id
+    active_temp_dir.mkdir()
+    terminal_temp_dir.mkdir()
+    processing._batch_store[active_id] = {
+        "batch_id": active_id,
+        "terminal": False,
+        "_temp_dir": str(active_temp_dir),
+        "zip_path": None,
+    }
+    processing._batch_store[terminal_id] = {
+        "batch_id": terminal_id,
+        "terminal": True,
+        "_temp_dir": str(terminal_temp_dir),
+        "zip_path": None,
+    }
+
+    try:
+        assert await processing._ensure_batch_capacity() is True
+        assert active_id in processing._batch_store
+        assert terminal_id not in processing._batch_store
+        assert active_temp_dir.exists()
+        assert not terminal_temp_dir.exists()
+    finally:
+        processing._batch_store.pop(active_id, None)
+        processing._batch_store.pop(terminal_id, None)
+
+
+@pytest.mark.asyncio
+async def test_batch_capacity_rejects_eviction_when_all_batches_are_active(
+    monkeypatch,
+):
+    monkeypatch.setattr(processing, "_MAX_BATCH_STORE", 1)
+    active_id = "batch_only_active"
+    processing._batch_store[active_id] = {
+        "batch_id": active_id,
+        "terminal": False,
+        "zip_path": None,
+    }
+    try:
+        assert await processing._ensure_batch_capacity() is False
+        assert active_id in processing._batch_store
+    finally:
+        processing._batch_store.pop(active_id, None)
+
+
+@pytest.mark.asyncio
+async def test_batch_archive_cleanup_is_interval_limited_and_offloaded(
+    monkeypatch,
+):
+    cleanup_calls = []
+    monkeypatch.setattr(
+        processing,
+        "_batch_cleanup_last_run",
+        processing.monotonic() - processing._BATCH_CLEANUP_INTERVAL_SECONDS,
+    )
+    monkeypatch.setattr(
+        processing,
+        "_cleanup_expired_batch_archives",
+        lambda: cleanup_calls.append(True) or 3,
+    )
+
+    assert await processing._maybe_cleanup_expired_batch_archives() == 3
+    assert await processing._maybe_cleanup_expired_batch_archives() == 0
+    assert cleanup_calls == [True]
+
+
+def test_session_identifier_matches_api_and_retention_patterns():
+    session_id = audit_logger.create_session_id()
+    assert processing._is_valid_session_id(session_id)
+    assert audit_logger.SESSION_ID_PATTERN.fullmatch(session_id)
+
+
+def test_tokenized_session_directories_are_removed_by_retention(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "logs_dir", tmp_path)
+    monkeypatch.setattr(settings.server, "log_retention_days", 1)
+    session_dir = tmp_path / audit_logger.create_session_id()
+    session_dir.mkdir()
+    expired_timestamp = time_module.time() - 172800
+    os.utime(session_dir, (expired_timestamp, expired_timestamp))
+
+    removed = audit_logger.cleanup_expired_sessions(now=time_module.time())
+
+    assert removed == 1
+    assert not session_dir.exists()

@@ -1,14 +1,14 @@
 from __future__ import annotations
-from typing import List, Tuple, Optional
+
 from lxml import etree
+
 from app.config import settings
 from app.models import (
-    ShippingInstruction,
     FieldValidation,
     PartyRoleCode,
     ProcessingStatus,
+    ShippingInstruction,
 )
-
 
 MANDATORY_FIELDS = [
     ("document_status_code", "Document Status Code"),
@@ -51,8 +51,8 @@ def load_xsd_schema() -> etree.XMLSchema:
     return etree.XMLSchema(schema_doc)
 
 
-def validate_xml_against_xsd(xml_content: str) -> Tuple[bool, List[str]]:
-    errors: List[str] = []
+def validate_xml_against_xsd(xml_content: str) -> tuple[bool, list[str]]:
+    errors: list[str] = []
     try:
         xml_bytes = xml_content.encode("UTF-8")
         parser = etree.XMLParser(resolve_entities=False, no_network=True)
@@ -64,10 +64,10 @@ def validate_xml_against_xsd(xml_content: str) -> Tuple[bool, List[str]]:
                 errors.append(f"Line {error.line}: {error.message}")
         return is_valid, errors
     except etree.XMLSyntaxError as e:
-        errors.append(f"XML Syntax Error: {str(e)}")
+        errors.append(f"XML Syntax Error: {e!s}")
         return False, errors
     except Exception as e:
-        errors.append(f"Validation Error: {str(e)}")
+        errors.append(f"Validation Error: {e!s}")
         return False, errors
 
 
@@ -94,8 +94,8 @@ def _get_nested_value(obj, path: str):
     return current
 
 
-def check_mandatory_fields(si: ShippingInstruction) -> List[FieldValidation]:
-    missing: List[FieldValidation] = []
+def check_mandatory_fields(si: ShippingInstruction) -> list[FieldValidation]:
+    missing: list[FieldValidation] = []
     for path, label in MANDATORY_FIELDS:
         value = _get_nested_value(si, path)
         if value is None or (isinstance(value, str) and value.strip() == ""):
@@ -152,7 +152,7 @@ def check_mandatory_fields(si: ShippingInstruction) -> List[FieldValidation]:
 def validate_and_grade(
     si: ShippingInstruction,
     xml_content: str,
-) -> Tuple[ProcessingStatus, List[str], List[FieldValidation]]:
+) -> tuple[ProcessingStatus, list[str], list[FieldValidation]]:
     is_valid, xml_errors = validate_xml_against_xsd(xml_content)
     missing_fields = check_mandatory_fields(si)
 

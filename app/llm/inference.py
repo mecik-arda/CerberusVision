@@ -1,14 +1,16 @@
 from __future__ import annotations
+
 import ast
-from datetime import datetime
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import unicodedata
+from datetime import datetime
 from functools import lru_cache
-from typing import Optional, Dict, Any, Tuple
+from pathlib import Path
+from typing import Any
+
 from app.config import settings
 from app.models import (
     DocumentStatusCode,
@@ -17,9 +19,8 @@ from app.models import (
     TransportDocumentType,
 )
 
-
 _llm_pipeline = None
-_llm_pipeline_key: Optional[str] = None
+_llm_pipeline_key: str | None = None
 logger = logging.getLogger(__name__)
 _system_prompt = (
     "You are a shipping instruction document parser. "
@@ -229,6 +230,7 @@ _STAGE_PROMPTS = {
 def get_llm_pipeline(use_adapter: bool = True):
     global _llm_pipeline, _llm_pipeline_key
     import openvino_genai
+
     from app.llm.lora_adapter import enabled_adapter_path
 
     model_path = Path(settings.model.model_path)
@@ -286,13 +288,13 @@ def reset_llm_pipeline() -> None:
 
 
 @lru_cache(maxsize=1)
-def get_json_schema() -> Dict[str, Any]:
+def get_json_schema() -> dict[str, Any]:
     schema = ShippingInstruction.model_json_schema()
     return schema
 
 
 @lru_cache(maxsize=4)
-def get_stage_schema(stage: int) -> Dict[str, Any]:
+def get_stage_schema(stage: int) -> dict[str, Any]:
     full_schema = ShippingInstruction.model_json_schema()
     owned_fields = _STAGE_FIELD_OWNERSHIP.get(stage, set())
     if not owned_fields:
@@ -338,16 +340,20 @@ def build_stage_prompt(
 
 def _has_excessive_output_repetition(raw_output: str) -> bool:
     tokens = re.findall(r"\w+|[^\w\s]", raw_output.casefold())
-    window_size = 24
+    # JSON yapilarindaki null alanlar (ornegin "seals": null, "tare_weight": null)
+    # yuzunden dizi elemanlari arasindaki standart boilerplate cok uzun olabiliyor.
+    # 5-10 konteynerli belgelerde bu kalip dogal olarak 5-10 kez tekrarliyor.
+    # Bu yuzden window_size 64 ve threshold 15 olarak guncellendi.
+    window_size = 64
     if len(tokens) < window_size * 4:
         return False
-    occurrence_counts: Dict[Tuple[str, ...], int] = {}
+    occurrence_counts: dict[tuple[str, ...], int] = {}
     for start_index in range(0, len(tokens) - window_size + 1, 8):
         token_window = tuple(tokens[start_index:start_index + window_size])
         occurrence_counts[token_window] = (
             occurrence_counts.get(token_window, 0) + 1
         )
-        if occurrence_counts[token_window] >= 4:
+        if occurrence_counts[token_window] >= 15:
             return True
     return False
 
@@ -368,7 +374,7 @@ def _run_stage_inference_once(
     document_language: str = "en",
     output_language: str = "en",
     use_adapter: bool = True,
-) -> Tuple[ShippingInstruction, str]:
+) -> tuple[ShippingInstruction, str]:
     pipe = get_llm_pipeline(use_adapter=use_adapter)
     prompt = build_stage_prompt(ocr_text, stage, document_language, output_language)
     schema = get_stage_schema(stage)
@@ -394,7 +400,7 @@ def run_stage_inference(
     stage: int,
     document_language: str = "en",
     output_language: str = "en",
-) -> Tuple[ShippingInstruction, str]:
+) -> tuple[ShippingInstruction, str]:
     try:
         return _run_stage_inference_once(
             ocr_text,
@@ -469,12 +475,14 @@ def merge_stage_results(
     return merged
 
 
+_CONTAINER_PATTERN = re.compile(r"\b[A-Z]{4}\d{7}\b")
+
+
 def _split_text_by_container_refs(text: str) -> list[str]:
-    container_pattern = re.compile(r"\b[A-Z]{4}\d{7}\b")
     lines = text.split("\n")
     chunk_boundaries = []
     for i, line in enumerate(lines):
-        if container_pattern.search(line):
+        if _CONTAINER_PATTERN.search(line):
             chunk_boundaries.append(i)
     if len(chunk_boundaries) <= 1:
         return [text]
@@ -495,11 +503,11 @@ def run_threestage_extraction(
     lower_text: str,
     document_language: str = "en",
     output_language: str = "en",
-) -> Tuple[ShippingInstruction, Dict[int, str]]:
+) -> tuple[ShippingInstruction, dict[int, str]]:
     assert upper_text.strip() or middle_text.strip() or lower_text.strip(), (
         "Tum bolge metinleri bos"
     )
-    raw_outputs: Dict[int, str] = {}
+    raw_outputs: dict[int, str] = {}
     stage1_instruction, stage1_raw = run_stage_inference(
         upper_text if upper_text.strip() else middle_text,
         1, document_language, output_language,
@@ -516,7 +524,7 @@ def run_threestage_extraction(
         (middle_text + "\n" + lower_text) if (middle_text.strip() and lower_text.strip())
         else (middle_text or lower_text)
     )
-    container_chunks = [combined_middle_lower]
+    container_chunks = _split_text_by_container_refs(combined_middle_lower)
     if len(container_chunks) > 1:
         all_equipment = []
         all_cargo = []
@@ -590,7 +598,7 @@ def _build_generation_config():
     return _build_generation_config_for_schema(get_json_schema())
 
 
-def _build_generation_config_for_schema(schema: Dict[str, Any]):
+def _build_generation_config_for_schema(schema: dict[str, Any]):
     import openvino_genai
 
     config = openvino_genai.GenerationConfig()
@@ -614,7 +622,7 @@ def _build_generation_config_for_schema(schema: Dict[str, Any]):
     return config
 
 
-def _configure_structured_output(config, openvino_genai, schema_json: str) -> Optional[str]:
+def _configure_structured_output(config, openvino_genai, schema_json: str) -> str | None:
     """Use the newest supported OpenVINO JSON constraint without breaking older builds."""
     structured_config_type = getattr(openvino_genai, "StructuredOutputConfig", None)
     if structured_config_type is not None and hasattr(config, "structured_output_config"):
@@ -636,7 +644,7 @@ def parse_llm_output(raw_output: str) -> ShippingInstruction:
     return ShippingInstruction.model_validate(data)
 
 
-def _extract_labeled_value(ocr_text: str, patterns: tuple[str, ...]) -> Optional[str]:
+def _extract_labeled_value(ocr_text: str, patterns: tuple[str, ...]) -> str | None:
     for pattern in patterns:
         match = re.search(pattern, ocr_text)
         if match:
@@ -646,7 +654,7 @@ def _extract_labeled_value(ocr_text: str, patterns: tuple[str, ...]) -> Optional
     return None
 
 
-def _normalize_date_value(value: str, require_time: bool = False) -> Optional[str]:
+def _normalize_date_value(value: str, require_time: bool = False) -> str | None:
     match = re.fullmatch(
         r"\s*(\d{1,4})[./-](\d{1,2})[./-](\d{1,4})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*",
         value,
@@ -682,7 +690,7 @@ def _extract_labeled_date(
     ocr_text: str,
     patterns: tuple[str, ...],
     require_time: bool = False,
-) -> Optional[str]:
+) -> str | None:
     value = _extract_labeled_value(ocr_text, patterns)
     return _normalize_date_value(value, require_time) if value else None
 
@@ -707,7 +715,7 @@ _KNOWN_PORTS = frozenset({
 })
 
 
-def _parse_european_number(raw: str) -> Optional[float]:
+def _parse_european_number(raw: str) -> float | None:
     """Parse European or mixed-format numeric strings.
 
     Smart heuristic: if both ',' and '.' are present, the rightmost
@@ -1037,10 +1045,8 @@ _KNOWN_CITIES = frozenset({
     "JEBEL ALI", "DAMMAM", "JEDDAH", "MUSCAT", "DOHA",
     "ALEXANDRIA", "CASABLANCA", "DURBAN", "CAPE TOWN",
     "SYDNEY", "MELBOURNE", "AUCKLAND",
-    "JEBEL ALI", "NHAVA SHEVA", "PORT KLANG", "TANJUNG PELEPAS",
-    "LAEM CHABANG", "CAI MEP", "VUNG TAU", "DAMMAM", "JEDDAH",
-    "ALEXANDRIA", "CASABLANCA", "DURBAN", "CAPE TOWN",
-    "ICD TUGHLAKABAD", "TUGHLAKABAD",
+    "PORT KLANG", "TANJUNG PELEPAS",
+    "LAEM CHABANG", "CAI MEP", "VUNG TAU", "ICD TUGHLAKABAD", "TUGHLAKABAD",
 })
 
 
@@ -1254,7 +1260,7 @@ def _deduplicate_bl_document_references(
     normalized.document_references = retained_references
 
 
-def _parse_volume_number(raw: str) -> Optional[float]:
+def _parse_volume_number(raw: str) -> float | None:
     """Hacim sayisi ayristirici: hem ondalik hem binlik ayraci formatini destekler.
 
     Ornekler:
@@ -1383,7 +1389,7 @@ def _normalize_dangerous_goods(normalized: ShippingInstruction, ocr_text: str) -
                 dg.flash_point.temperature = float(dg.flash_point.temperature)
 
 
-def _validate_vkn_format(party_id: Optional[str]) -> Optional[str]:
+def _validate_vkn_format(party_id: str | None) -> str | None:
     """Validate and clean Turkish VKN (Vergi Kimlik Numarasi) format.
 
     VKN must be exactly 10 digits. Returns cleaned VKN or None if invalid.
@@ -1463,10 +1469,20 @@ def _normalize_packaging_codes(normalized: ShippingInstruction) -> None:
             continue
         from app.models import PackageKindCode
         if isinstance(cargo_item.package_kind_code, PackageKindCode):
+            # Re-normalize: convert human-readable codes (PALLET, CARTON, etc.) to ISO (PL, CT, ...)
+            raw = cargo_item.package_kind_code.value.strip().upper()
+            iso_code = _REC21_PACKAGING_MAP.get(raw)
+            if iso_code is not None and iso_code != raw:
+                try:
+                    cargo_item.package_kind_code = PackageKindCode(iso_code)
+                except ValueError:
+                    pass
             continue
         try:
             raw = str(cargo_item.package_kind_code).strip().upper()
-            cargo_item.package_kind_code = PackageKindCode(raw)
+            # Map human-readable names to ISO Rec 21 codes before enum validation
+            iso_code = _REC21_PACKAGING_MAP.get(raw, raw)
+            cargo_item.package_kind_code = PackageKindCode(iso_code)
         except ValueError:
             pass
 
@@ -1672,7 +1688,6 @@ def _normalize_equipment_types(normalized: ShippingInstruction, ocr_text: str) -
     """
     if not normalized.equipment_list or not ocr_text.strip():
         return
-    from app.models import Equipment
     _valid_iso_pattern = re.compile(r"^[0-9A-Z]{4}$")
     # Tum OCR eslesmelerini konumlari ve kodlariyla topla
     all_ocr_matches: list[tuple[int, str]] = []
@@ -1718,11 +1733,28 @@ def _normalize_equipment_types(normalized: ShippingInstruction, ocr_text: str) -
             equipment.iso_equipment_code = found_code
 
 
+def _normalize_cargo_measurements(instruction: ShippingInstruction) -> None:
+    if instruction.equipment_list:
+        for equipment in instruction.equipment_list:
+            if equipment.cargo_gross_weight and equipment.cargo_gross_weight.weight is not None:
+                if equipment.cargo_gross_weight.weight > 60000.0:
+                    equipment.cargo_gross_weight.weight /= 100.0
+    if instruction.cargo_items:
+        for item in instruction.cargo_items:
+            if item.weight and item.weight.weight_value is not None:
+                if item.weight.weight_value > 60000.0:
+                    item.weight.weight_value /= 100.0
+            if item.volume and item.volume.volume_value is not None:
+                if item.volume.volume_value > 1000.0:
+                    item.volume.volume_value /= 1000.0
+
+
 def normalize_extracted_instruction(
     instruction: ShippingInstruction,
     ocr_text: str = "",
 ) -> ShippingInstruction:
     normalized = instruction.model_copy(deep=True)
+    _normalize_cargo_measurements(normalized)
     _apply_role_code_mapping(normalized)
     if normalized.document_status_code is None:
         normalized.document_status_code = DocumentStatusCode.DRAFT
@@ -1968,7 +2000,7 @@ def _repair_json(text: str) -> str:
     return text
 
 
-def _parse_json_with_fallback(text: str) -> Dict[str, Any]:
+def _parse_json_with_fallback(text: str) -> dict[str, Any]:
     repaired = _repair_json(text)
     try:
         data = json.loads(repaired)
@@ -1996,8 +2028,8 @@ def run_inference_with_fallback(
     ocr_text: str,
     document_language: str = "en",
     output_language: str = "en",
-    segmented_ocr: Optional[Tuple[str, str, str]] = None,
-) -> Tuple[ShippingInstruction, str]:
+    segmented_ocr: tuple[str, str, str] | None = None,
+) -> tuple[ShippingInstruction, str]:
     if segmented_ocr is not None:
         upper_text, middle_text, lower_text = segmented_ocr
         merged, raw_outputs = run_threestage_extraction(
@@ -2127,7 +2159,7 @@ def run_refinement_with_fallback(
     initial_result: ShippingInstruction,
     findings: list[dict[str, Any]],
     document_language: str,
-) -> Tuple[ShippingInstruction, str]:
+) -> tuple[ShippingInstruction, str]:
     pipe = get_llm_pipeline()
     prompt = build_refinement_prompt(
         ocr_text,

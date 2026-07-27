@@ -24,7 +24,7 @@ def main() -> None:
                 try:
                     value = core.get_property(device, name)
                     details[name] = str(value)
-                except Exception as error:
+                except RuntimeError as error:
                     details[name] = f"error: {error}"
         report[device] = details
     print(json.dumps(report, indent=2, ensure_ascii=False))

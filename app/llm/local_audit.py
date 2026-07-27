@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import date, datetime
-from typing import Iterable, List
 
 from app.config import settings
 from app.models import (
@@ -65,7 +65,7 @@ def _weight_in_kg(value: float, unit: WeightUnit) -> float:
     return value * 1000.0 if unit == WeightUnit.TON else value
 
 
-def _add_format_findings(si: ShippingInstruction, findings: List[AuditFinding]) -> None:
+def _add_format_findings(si: ShippingInstruction, findings: list[AuditFinding]) -> None:
     if si.issue_date and not _is_valid_iso_date(si.issue_date):
         findings.append(_finding("issue_date", "invalid_date", "Issue date is not ISO formatted.", "medium", 10))
     if si.shipping_instruction_date_time and not _is_valid_iso_date(
@@ -110,7 +110,7 @@ def _add_format_findings(si: ShippingInstruction, findings: List[AuditFinding]) 
             ))
 
 
-def _add_numeric_findings(si: ShippingInstruction, findings: List[AuditFinding]) -> None:
+def _add_numeric_findings(si: ShippingInstruction, findings: list[AuditFinding]) -> None:
     cargo_weights = []
     for index, item in enumerate(si.cargo_items):
         if item.package_quantity is not None and item.package_quantity <= 0:
@@ -186,7 +186,7 @@ def assess_local_result(
     missing_fields: Iterable[FieldValidation],
     threshold: int | None = None,
 ) -> LocalAuditAssessment:
-    findings: List[AuditFinding] = []
+    findings: list[AuditFinding] = []
     missing_list = list(missing_fields)
     xsd_error_list = list(xsd_errors)
     for field in missing_list:

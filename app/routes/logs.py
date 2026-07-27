@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.security import require_api_key
 from app.utils.live_logs import live_log_buffer
 
-
 router = APIRouter(
     prefix="/api",
     tags=["logs"],

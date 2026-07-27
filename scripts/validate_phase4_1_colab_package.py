@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import re
 import sys
 import unicodedata
+from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +20,6 @@ from scripts.prepare_phase4_1_continuation import (
     file_sha256,
     load_jsonl,
 )
-
 
 REQUIRED_RECORD_FIELDS = {"instructions", "input", "output"}
 
@@ -47,7 +46,7 @@ def validate_records(
             )
         output = json.loads(str(record["output"]))
         if not isinstance(output, dict):
-            raise ValueError(
+            raise TypeError(
                 f"{split_name} record {record_index} output is not an object"
             )
 

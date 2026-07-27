@@ -8,25 +8,27 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+BENCHMARKS_DIR = PROJECT_ROOT / "benchmarks"
+
+from app.config import settings
+from app.llm import inference as inference_module
 from app.llm.evaluation import (
     aggregate_evaluations,
     evaluate_expected_fields,
     flatten_values,
 )
-from app.config import settings
-from app.llm import inference as inference_module
 from app.llm.inference import run_inference_with_fallback
 from app.ocr.spatial_ocr import (
     process_pdf_with_region_ocr,
-    process_pdf_with_spatial_ocr,
 )
 from app.xml.converter import shipping_instruction_to_xml
 from app.xml.validator import validate_xml_against_xsd
@@ -65,7 +67,7 @@ def _canonical_json_sha256(value: Any) -> str:
     )
 
 
-def _artifact_manifest(path_value: str) -> Dict[str, Any]:
+def _artifact_manifest(path_value: str) -> dict[str, Any]:
     if not path_value.strip():
         return {
             "path": None,
@@ -103,7 +105,7 @@ def _artifact_manifest(path_value: str) -> Dict[str, Any]:
     }
 
 
-def _benchmark_provenance() -> Dict[str, Any]:
+def _benchmark_provenance() -> dict[str, Any]:
     from app.llm.lora_adapter import enabled_adapter_path
 
     prompt_payload = {
@@ -173,8 +175,8 @@ def _benchmark_provenance() -> Dict[str, Any]:
 
 def _load_frozen_ocr(
     fixture_path_value: str,
-    expected_sha256: Optional[str],
-) -> Tuple[str, Optional[Tuple[str, str, str]], str]:
+    expected_sha256: str | None,
+) -> tuple[str, tuple[str, str, str] | None, str]:
     fixture_path = (PROJECT_ROOT / fixture_path_value).resolve()
     fixture_bytes = fixture_path.read_bytes()
     actual_sha256 = _sha256_bytes(fixture_bytes)
@@ -239,8 +241,8 @@ class CategoryStats:
         return round((2 * p * r / (p + r)) if (p + r) else 0.0, 2)
 
 
-def _load_benchmark_cases(dataset_dir: Path) -> List[Dict[str, Any]]:
-    cases: List[Dict[str, Any]] = []
+def _load_benchmark_cases(dataset_dir: Path) -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
     for json_path in sorted(dataset_dir.glob("*.json")):
         case = json.loads(json_path.read_text(encoding="utf-8"))
         case["_source_path"] = str(json_path)
@@ -252,7 +254,7 @@ def _load_benchmark_cases(dataset_dir: Path) -> List[Dict[str, Any]]:
     return cases
 
 
-def _extract_ocr_text(pdf_path: Path, lang: str) -> Tuple[str, Optional[Tuple[str, str, str]]]:
+def _extract_ocr_text(pdf_path: Path, lang: str) -> tuple[str, tuple[str, str, str] | None]:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF bulunamadi: {pdf_path}")
     upper, middle, lower, _boxes = process_pdf_with_region_ocr(pdf_path, lang=lang)
@@ -263,22 +265,22 @@ def _extract_ocr_text(pdf_path: Path, lang: str) -> Tuple[str, Optional[Tuple[st
     return full_text, (upper, middle, lower)
 
 
-def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
+def _extract_expected_from_xml(xml_path: Path) -> dict[str, Any]:
     from lxml import etree
 
     doc = etree.parse(str(xml_path))
     root = doc.getroot()
     nsmap = {"dcsa": "http://dcsa.org/schemas/si/v2"}
 
-    def _text(parent, tag: str) -> Optional[str]:
+    def _text(parent, tag: str) -> str | None:
         el = parent.find(f"dcsa:{tag}", nsmap)
         return el.text.strip() if el is not None and el.text else None
 
-    def _location(parent, tag: str) -> Optional[Dict[str, Any]]:
+    def _location(parent, tag: str) -> dict[str, Any] | None:
         el = parent.find(f"dcsa:{tag}", nsmap)
         if el is None:
             return None
-        loc: Dict[str, Any] = {}
+        loc: dict[str, Any] = {}
         code = _text(el, "UNLocationCode")
         name = _text(el, "LocationName")
         if code:
@@ -287,7 +289,7 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
             loc["location_name"] = name
         return loc if loc else None
 
-    expected: Dict[str, Any] = {}
+    expected: dict[str, Any] = {}
     expected["shipping_instruction_reference"] = _text(root, "ShippingInstructionReference")
     expected["document_status_code"] = _text(root, "DocumentStatusCode")
     expected["carrier_booking_reference"] = _text(root, "CarrierBookingReference")
@@ -304,9 +306,9 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
 
     parties_el = root.find("dcsa:Parties", nsmap)
     if parties_el is not None:
-        parties: List[Dict[str, Any]] = []
+        parties: list[dict[str, Any]] = []
         for party_el in parties_el.findall("dcsa:Party", nsmap):
-            party: Dict[str, Any] = {}
+            party: dict[str, Any] = {}
             party["party_role_code"] = _text(party_el, "PartyRoleCode")
             party["party_name"] = _text(party_el, "PartyName")
             party["party_id"] = _text(party_el, "PartyID")
@@ -331,9 +333,9 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
 
     plans_el = root.find("dcsa:TransportPlans", nsmap)
     if plans_el is not None:
-        plans: List[Dict[str, Any]] = []
+        plans: list[dict[str, Any]] = []
         for plan_el in plans_el.findall("dcsa:TransportPlan", nsmap):
-            plan: Dict[str, Any] = {}
+            plan: dict[str, Any] = {}
             plan["transport_mode"] = _text(plan_el, "TransportMode")
             plan["carrier_voyage_number"] = _text(plan_el, "CarrierVoyageNumber")
             plan["vessel_imo_number"] = _text(plan_el, "VesselIMONumber")
@@ -347,9 +349,9 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
 
     equipment_el = root.find("dcsa:EquipmentList", nsmap)
     if equipment_el is not None:
-        equipment_list: List[Dict[str, Any]] = []
+        equipment_list: list[dict[str, Any]] = []
         for eq_el in equipment_el.findall("dcsa:Equipment", nsmap):
-            eq: Dict[str, Any] = {}
+            eq: dict[str, Any] = {}
             eq["equipment_reference"] = _text(eq_el, "EquipmentReference")
             eq["iso_equipment_code"] = _text(eq_el, "ISOEquipmentCode")
             eq["is_shipper_owned"] = _text(eq_el, "IsShipperOwned")
@@ -360,7 +362,7 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
                     "weight": float(weight_text) if weight_text else None,
                     "unit": _text(gw_el, "Unit"),
                 }
-            seals: List[Dict[str, Any]] = []
+            seals: list[dict[str, Any]] = []
             seals_el = eq_el.find("dcsa:Seals", nsmap)
             if seals_el is not None:
                 for seal_el in seals_el.findall("dcsa:Seal", nsmap):
@@ -373,9 +375,9 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
 
     cargo_el = root.find("dcsa:CargoItems", nsmap)
     if cargo_el is not None:
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for item_el in cargo_el.findall("dcsa:CargoItem", nsmap):
-            item: Dict[str, Any] = {}
+            item: dict[str, Any] = {}
             item["package_quantity"] = (
                 int(qty) if (qty := _text(item_el, "PackageQuantity")) else None
             )
@@ -415,8 +417,8 @@ def _extract_expected_from_xml(xml_path: Path) -> Dict[str, Any]:
     return expected
 
 
-def _flatten_ground_truth(expected: Dict[str, Any]) -> Dict[str, Any]:
-    clean: Dict[str, Any] = {}
+def _flatten_ground_truth(expected: dict[str, Any]) -> dict[str, Any]:
+    clean: dict[str, Any] = {}
     for key, value in expected.items():
         if value is None:
             continue
@@ -429,9 +431,9 @@ def _flatten_ground_truth(expected: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _compute_category_stats(
-    all_results: List[Dict[str, Any]],
-) -> Dict[str, CategoryStats]:
-    categories: Dict[str, CategoryStats] = {
+    all_results: list[dict[str, Any]],
+) -> dict[str, CategoryStats]:
+    categories: dict[str, CategoryStats] = {
         name: CategoryStats() for name in FIELD_CATEGORIES
     }
     for result in all_results:
@@ -447,7 +449,7 @@ def _compute_category_stats(
 
 
 def _overall_category_stats(
-    category_stats: Dict[str, CategoryStats],
+    category_stats: dict[str, CategoryStats],
 ) -> CategoryStats:
     return CategoryStats(
         tp=sum(stats.tp for stats in category_stats.values()),
@@ -459,11 +461,11 @@ def _overall_category_stats(
 
 
 def _compute_precision_recall(
-    expected_fields: Dict[str, Any],
-    actual_fields: Dict[str, Any],
-    evaluation: Dict[str, Any],
-) -> Dict[str, Dict[str, int]]:
-    category_metrics: Dict[str, Dict[str, int]] = {}
+    expected_fields: dict[str, Any],
+    actual_fields: dict[str, Any],
+    evaluation: dict[str, Any],
+) -> dict[str, dict[str, int]]:
+    category_metrics: dict[str, dict[str, int]] = {}
     for cat_name in FIELD_CATEGORIES:
         expected_cat = {p: v for p, v in expected_fields.items() if _classify_field(p) == cat_name}
         actual_cat = {p: v for p, v in actual_fields.items() if _classify_field(p) == cat_name}
@@ -493,8 +495,8 @@ def _format_percent(value: float) -> str:
 
 
 def _print_report(
-    all_results: List[Dict[str, Any]],
-    category_stats: Dict[str, CategoryStats],
+    all_results: list[dict[str, Any]],
+    category_stats: dict[str, CategoryStats],
     total_time: float,
 ) -> None:
     overall = aggregate_evaluations(all_results)
@@ -566,8 +568,8 @@ def _print_report(
     print()
 
 
-def _sort_arrays_by_key(data: Dict[str, Any]) -> Dict[str, Any]:
-    result: Dict[str, Any] = {}
+def _sort_arrays_by_key(data: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
     for key, value in data.items():
         if key == "parties" and isinstance(value, list) and len(value) > 1:
             role_order = {"CZ": 0, "CN": 1, "N1": 2, "FW": 3, "SHI": 0, "CON": 1, "NTF": 2}
@@ -599,8 +601,8 @@ def _sort_arrays_by_key(data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _prune_empty_objects(data: Dict[str, Any]) -> Dict[str, Any]:
-    result: Dict[str, Any] = {}
+def _prune_empty_objects(data: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
     for key, value in data.items():
         if isinstance(value, dict):
             pruned = _prune_empty_objects(value)
@@ -628,7 +630,7 @@ def _prune_empty_objects(data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
+def _evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
     case_name = case["case_name"]
     pdf_rel = case.get("pdf")
     ocr_text_raw = case.get("ocr_text")
@@ -680,7 +682,7 @@ def _evaluate_case(case: Dict[str, Any]) -> Dict[str, Any]:
     actual_sha256 = None
     raw_output_sha256 = None
     xsd_valid = False
-    xsd_errors: List[str] = []
+    xsd_errors: list[str] = []
     try:
         instruction, raw_output = run_inference_with_fallback(
             full_ocr,
@@ -753,12 +755,17 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        help="JSON raporunun kaydedilecegi dosya yolu",
+        help="JSON raporunun kaydedilecegi dosya yolu (varsayilan: benchmarks/benchmark_results_<timestamp>.json)",
     )
     parser.add_argument(
         "--html",
         type=Path,
-        help="HTML raporunun kaydedilecegi dosya yolu",
+        help="HTML raporunun kaydedilecegi dosya yolu (varsayilan: benchmarks/benchmark_report_<timestamp>.html)",
+    )
+    parser.add_argument(
+        "--no-save",
+        action="store_true",
+        help="Raporlari dosyaya kaydetme (sadece stdout)",
     )
     parser.add_argument(
         "--pdf-only",
@@ -795,7 +802,7 @@ def main() -> int:
         print()
 
     t_total = time.time()
-    repeated_results: List[List[Dict[str, Any]]] = []
+    repeated_results: list[list[dict[str, Any]]] = []
     for repeat_index in range(args.repeat):
         if args.repeat > 1:
             print(f"Deterministik tekrar {repeat_index + 1}/{args.repeat}")
@@ -803,7 +810,7 @@ def main() -> int:
         repeated_results.append([_evaluate_case(case) for case in cases])
     total_time = time.time() - t_total
     all_results = repeated_results[0]
-    mismatches: List[Dict[str, Any]] = []
+    mismatches: list[dict[str, Any]] = []
     for repeat_index, repeat_results in enumerate(
         repeated_results[1:],
         start=2,
@@ -881,6 +888,13 @@ def main() -> int:
         **aggregated,
     }
 
+    # --- Save reports ---
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    if args.output is None and not args.no_save:
+        BENCHMARKS_DIR.mkdir(parents=True, exist_ok=True)
+        args.output = BENCHMARKS_DIR / f"benchmark_results_{timestamp}.json"
+
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
@@ -888,6 +902,10 @@ def main() -> int:
             encoding="utf-8",
         )
         print(f"JSON raporu kaydedildi: {args.output}")
+
+    if args.html is None and not args.no_save:
+        BENCHMARKS_DIR.mkdir(parents=True, exist_ok=True)
+        args.html = BENCHMARKS_DIR / f"benchmark_report_{timestamp}.html"
 
     if args.html:
         _write_html_report(output_payload, args.html)
@@ -900,7 +918,7 @@ def main() -> int:
     return 0
 
 
-def _write_html_report(report: Dict[str, Any], output_path: Path) -> None:
+def _write_html_report(report: dict[str, Any], output_path: Path) -> None:
     cat_breakdown = report.get("category_breakdown", {})
     rows_html = ""
     cat_labels = {

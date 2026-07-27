@@ -8,7 +8,6 @@ import platform
 import sys
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -47,7 +46,7 @@ def main() -> int:
         try:
             importlib.import_module(name)
             report["modules"][name] = "ok"  # type: ignore[index]
-        except Exception as error:
+        except (RuntimeError, ImportError, ProcessLookupError) as error:
             report["modules"][name] = f"error: {error}"  # type: ignore[index]
             failed = True
 
@@ -55,7 +54,7 @@ def main() -> int:
         from openvino import Core
 
         report["openvino_devices"] = Core().available_devices
-    except Exception as error:
+    except (RuntimeError, ImportError, ProcessLookupError) as error:
         report["openvino_devices"] = [f"error: {error}"]
         failed = True
 
@@ -80,7 +79,7 @@ def main() -> int:
                 pipeline = get_llm_pipeline()
                 response = pipeline.generate("Reply with only OK.", max_new_tokens=8)
                 report["model_probe"] = {"status": "ok", "response": str(response)}
-            except Exception as error:
+            except (RuntimeError, ImportError, ProcessLookupError) as error:
                 report["model_probe"] = f"error: {error}"
                 failed = True
 

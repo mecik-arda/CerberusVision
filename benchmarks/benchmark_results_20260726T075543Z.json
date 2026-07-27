@@ -1,0 +1,1726 @@
+{
+  "xsd_summary": {
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "pass_rate_pct": 100.0
+  },
+  "benchmark_date": "2026-07-26T10:55:43",
+  "total_time_seconds": 1007.89,
+  "provenance": {
+    "llm_model": {
+      "path": "/home/ardam/projects/CerberusVision/models/Qwen-2.5-7B-Instruct-INT4",
+      "exists": true,
+      "file_count": 51,
+      "manifest_sha256": "7a99e809b54288f3e2c65c2f144546fa9e733fce049d04f0b42fdc227069afaa"
+    },
+    "llm_adapter": {
+      "path": "/home/ardam/projects/CerberusVision/models/Qwen-2.5-7B-Instruct-Phase5_1-LoRA",
+      "exists": true,
+      "file_count": 8,
+      "manifest_sha256": "47fbb05acf02c36a4a4c7d5fc9f36394f3cf9d59a0b571fec59d6954451686a9",
+      "runtime_mode": "openvino_genai_dynamic_lora"
+    },
+    "layout_adapter": {
+      "path": null,
+      "exists": false
+    },
+    "layout_lora_enabled": false,
+    "prompt_sha256": "2cbbe25a0608fe08e9ffcd6c2de9e55a260725a65dc46d748391980d1b4c3f4d",
+    "generation_config": {
+      "do_sample": false,
+      "max_new_tokens": 3072,
+      "num_streams": 1,
+      "pipeline_reset_between_repeats": true,
+      "structured_schema_sha256": "a9e7518d1dc65f4a71cef128334872f939f65de0610db7201ae3576d8e357155",
+      "inference_mode": "multi_stage"
+    },
+    "generation_config_sha256": "23e0f5b158076e204d034f4ba6d332b322fc0acd025f514e7cd2bdc1d05b6ede"
+  },
+  "determinism": {
+    "repeat_count": 1,
+    "passed": true,
+    "mismatches": []
+  },
+  "category_breakdown": {
+    "parties": {
+      "accuracy": 91.04,
+      "precision": 42.36,
+      "recall": 95.31,
+      "f1_score": 58.65,
+      "tp": 61,
+      "fp": 83,
+      "fn": 3,
+      "total_fields": 67,
+      "correct_fields": 61
+    },
+    "transport_plans": {
+      "accuracy": 87.5,
+      "precision": 44.44,
+      "recall": 96.55,
+      "f1_score": 60.87,
+      "tp": 28,
+      "fp": 35,
+      "fn": 1,
+      "total_fields": 32,
+      "correct_fields": 28
+    },
+    "equipment_list": {
+      "accuracy": 41.38,
+      "precision": 45.28,
+      "recall": 77.42,
+      "f1_score": 57.14,
+      "tp": 48,
+      "fp": 58,
+      "fn": 14,
+      "total_fields": 116,
+      "correct_fields": 48
+    },
+    "cargo_items": {
+      "accuracy": 82.35,
+      "precision": 69.42,
+      "recall": 96.55,
+      "f1_score": 80.77,
+      "tp": 168,
+      "fp": 74,
+      "fn": 6,
+      "total_fields": 204,
+      "correct_fields": 168
+    },
+    "document_info": {
+      "accuracy": 80.0,
+      "precision": 50.49,
+      "recall": 85.25,
+      "f1_score": 63.42,
+      "tp": 52,
+      "fp": 51,
+      "fn": 9,
+      "total_fields": 65,
+      "correct_fields": 52
+    }
+  },
+  "overall_metrics": {
+    "accuracy": 73.76,
+    "precision": 54.26,
+    "recall": 91.54,
+    "f1_score": 68.13,
+    "tp": 357,
+    "fp": 301,
+    "fn": 33,
+    "total_fields": 484,
+    "correct_fields": 357
+  },
+  "documents": 13,
+  "accuracy": 73.76,
+  "total_fields": 484,
+  "correct_fields": 357,
+  "missing_fields": 31,
+  "mismatched_fields": 96,
+  "results": [
+    {
+      "case_name": "control_field_labels",
+      "source_path": "tests/fixtures/qwen_benchmark/control_field_labels.json",
+      "elapsed_seconds": 66.79,
+      "ocr_sha256": "084119f283afb40ecf44e25b5b566bed6eb1bbbcacb62186499c8fe826ff31a6",
+      "actual_sha256": "a38208ed4fd5eca4c56e6f6a8c7980defd2fe6702fb85b1606cec1a7f2ee95c5",
+      "raw_output_sha256": "80686caa5640960b64559a785f888860d0311a0d6fdc3ffe48ee86406e50dd97",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 0,
+          "fp": 9,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "transport_plans": {
+          "tp": 0,
+          "fp": 4,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "equipment_list": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "cargo_items": {
+          "tp": 0,
+          "fp": 3,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "document_info": {
+          "tp": 5,
+          "fp": 4,
+          "fn": 0,
+          "total": 5,
+          "correct": 5
+        }
+      },
+      "accuracy": 100.0,
+      "total_fields": 5,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "document_status_code",
+        "shipping_instruction_date_time",
+        "carrier_booking_reference",
+        "issue_date"
+      ],
+      "missing_fields": [],
+      "mismatched_fields": []
+    },
+    {
+      "case_name": "Dangerous_Goods_IMDG_Multi_Class",
+      "source_path": "tests/fixtures/qwen_benchmark/dangerous_goods_benchmark.json",
+      "elapsed_seconds": 112.45,
+      "ocr_sha256": "1dea0584581d907f2eaac5de5b9c9c0ba5929126debe6ba4fcecdc2b77151b22",
+      "actual_sha256": "62bfee0e2d46934d8a4a3418135b92c3ea0db09bba9b20618936a98694cb0d23",
+      "raw_output_sha256": "ceb8ddd3a1a28fdd9dcf94a6fe07f0e76b3853f454935690e5c5124197d96cc6",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 6,
+          "fp": 6,
+          "fn": 0,
+          "total": 6,
+          "correct": 6
+        },
+        "transport_plans": {
+          "tp": 3,
+          "fp": 3,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        },
+        "equipment_list": {
+          "tp": 4,
+          "fp": 5,
+          "fn": 2,
+          "total": 15,
+          "correct": 4
+        },
+        "cargo_items": {
+          "tp": 35,
+          "fp": 8,
+          "fn": 2,
+          "total": 37,
+          "correct": 35
+        },
+        "document_info": {
+          "tp": 4,
+          "fp": 5,
+          "fn": 1,
+          "total": 5,
+          "correct": 4
+        }
+      },
+      "accuracy": 78.79,
+      "total_fields": 66,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[2].party_role_code",
+        "parties[2].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "transport_plans[0].carrier_voyage_number",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "equipment_list[2].iso_equipment_code",
+        "equipment_list[2].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].weight.weight_value",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[0].dangerous_goods_list[0].un_number",
+        "cargo_items[0].dangerous_goods_list[0].imdg_class",
+        "cargo_items[0].dangerous_goods_list[0].packing_group",
+        "cargo_items[0].dangerous_goods_list[0].technical_name",
+        "cargo_items[0].dangerous_goods_list[0].flash_point.temperature",
+        "cargo_items[0].dangerous_goods_list[0].flash_point.unit",
+        "cargo_items[0].dangerous_goods_list[0].emergency_contact.phone_number",
+        "cargo_items[1].package_quantity",
+        "cargo_items[1].package_kind_code",
+        "cargo_items[1].description_of_goods",
+        "cargo_items[1].weight.weight_value",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit",
+        "cargo_items[1].dangerous_goods_list[0].un_number",
+        "cargo_items[1].dangerous_goods_list[0].imdg_class",
+        "cargo_items[1].dangerous_goods_list[0].packing_group",
+        "cargo_items[1].dangerous_goods_list[0].technical_name",
+        "cargo_items[1].dangerous_goods_list[0].flash_point.temperature",
+        "cargo_items[1].dangerous_goods_list[0].flash_point.unit",
+        "cargo_items[1].dangerous_goods_list[0].emergency_contact.phone_number",
+        "cargo_items[2].package_quantity",
+        "cargo_items[2].package_kind_code",
+        "cargo_items[2].description_of_goods",
+        "cargo_items[2].weight.weight_value",
+        "cargo_items[2].weight.unit",
+        "cargo_items[2].volume.volume_value",
+        "cargo_items[2].volume.unit"
+      ],
+      "missing_fields": [
+        "transport_document_type",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].seals[0].seal_number",
+        "cargo_items[0].dangerous_goods_list[0].emergency_contact.name",
+        "cargo_items[1].dangerous_goods_list[0].emergency_contact.name"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "equipment_list[0].iso_equipment_code",
+          "expected": "22G1",
+          "actual": "42G1"
+        },
+        {
+          "field_path": "equipment_list[0].cargo_gross_weight.weight",
+          "expected": 8200.0,
+          "actual": 24300.0
+        },
+        {
+          "field_path": "equipment_list[1].equipment_reference",
+          "expected": "MSKU9988776",
+          "actual": "CMAU5566778"
+        },
+        {
+          "field_path": "equipment_list[1].iso_equipment_code",
+          "expected": "42G1",
+          "actual": "22G1"
+        },
+        {
+          "field_path": "equipment_list[1].cargo_gross_weight.weight",
+          "expected": 24300.0,
+          "actual": 8200.0
+        },
+        {
+          "field_path": "equipment_list[1].seals[0].seal_number",
+          "expected": "SEAL-998877",
+          "actual": "SEAL-556677"
+        },
+        {
+          "field_path": "equipment_list[2].equipment_reference",
+          "expected": "TGHU1122334",
+          "actual": "MSKU9988776"
+        },
+        {
+          "field_path": "equipment_list[2].cargo_gross_weight.weight",
+          "expected": 18750.0,
+          "actual": 24300.0
+        },
+        {
+          "field_path": "equipment_list[2].seals[0].seal_number",
+          "expected": "SEAL-112233",
+          "actual": "SEAL-998877"
+        }
+      ]
+    },
+    {
+      "case_name": "DE_Frachtbrief_SI",
+      "source_path": "tests/fixtures/qwen_benchmark/de_frachtbrief.json",
+      "elapsed_seconds": 43.79,
+      "ocr_sha256": "409228eaa9f8502e347f20ab10a63ebfb09bc2316566762c2860f70ec4d8b6f2",
+      "actual_sha256": "f53a3688edb53f68193280a91b22a0f8f1432aa99c1c9a6925605880f5c8ca43",
+      "raw_output_sha256": "ba3f36dc7960007f4352a55a82d4f08b55842626a2190c412209fa31565bd64a",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 4,
+          "fp": 4,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "cargo_items": {
+          "tp": 5,
+          "fp": 2,
+          "fn": 0,
+          "total": 7,
+          "correct": 5
+        },
+        "document_info": {
+          "tp": 3,
+          "fp": 3,
+          "fn": 2,
+          "total": 5,
+          "correct": 3
+        }
+      },
+      "accuracy": 81.82,
+      "total_fields": 22,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.unit"
+      ],
+      "missing_fields": [
+        "issue_date",
+        "transport_document_type"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "cargo_items[0].weight.weight_value",
+          "expected": 21100.0,
+          "actual": 22400.0
+        },
+        {
+          "field_path": "cargo_items[0].volume.volume_value",
+          "expected": 24.5,
+          "actual": 2.45
+        }
+      ]
+    },
+    {
+      "case_name": "Edge_Cases_Rule_Engine_Traps",
+      "source_path": "tests/fixtures/qwen_benchmark/edge_cases_rule_traps.json",
+      "elapsed_seconds": 101.51,
+      "ocr_sha256": "6eefa91d4cfec51a6fc8d40e8b655a5ba046ba26279bbf23974d171fe8dd7efb",
+      "actual_sha256": "fd9ea34f30ea83249fb8a0c6d7b18b961685a505d312060bf73a48e8ef90ef33",
+      "raw_output_sha256": "4d7b4d8a31e629ad40dbaad4ef026b0910fec32a0dfb42d969d81dab2204e57f",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 7,
+          "fp": 5,
+          "fn": 0,
+          "total": 7,
+          "correct": 7
+        },
+        "transport_plans": {
+          "tp": 3,
+          "fp": 3,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        },
+        "equipment_list": {
+          "tp": 3,
+          "fp": 9,
+          "fn": 2,
+          "total": 15,
+          "correct": 3
+        },
+        "cargo_items": {
+          "tp": 19,
+          "fp": 10,
+          "fn": 0,
+          "total": 22,
+          "correct": 19
+        },
+        "document_info": {
+          "tp": 5,
+          "fp": 5,
+          "fn": 1,
+          "total": 6,
+          "correct": 5
+        }
+      },
+      "accuracy": 69.81,
+      "total_fields": 53,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "freight_payment_term_code",
+        "place_of_issue.location_name",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[0].party_id",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[2].party_role_code",
+        "parties[2].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "transport_plans[0].carrier_voyage_number",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "equipment_list[2].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].shipping_marks",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[1].package_quantity",
+        "cargo_items[1].package_kind_code",
+        "cargo_items[1].description_of_goods",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit",
+        "cargo_items[2].package_quantity",
+        "cargo_items[2].package_kind_code",
+        "cargo_items[2].description_of_goods",
+        "cargo_items[2].weight.unit",
+        "cargo_items[2].volume.volume_value",
+        "cargo_items[2].volume.unit"
+      ],
+      "missing_fields": [
+        "transport_document_type",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].seals[0].seal_number"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "equipment_list[0].iso_equipment_code",
+          "expected": "42G1",
+          "actual": "45R1"
+        },
+        {
+          "field_path": "equipment_list[0].cargo_gross_weight.weight",
+          "expected": 18750.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "equipment_list[1].equipment_reference",
+          "expected": "MSCU1234567",
+          "actual": "ABCD1234567"
+        },
+        {
+          "field_path": "equipment_list[1].iso_equipment_code",
+          "expected": "45R1",
+          "actual": "42G1"
+        },
+        {
+          "field_path": "equipment_list[1].cargo_gross_weight.weight",
+          "expected": 26080.0,
+          "actual": 18750.0
+        },
+        {
+          "field_path": "equipment_list[1].seals[0].seal_number",
+          "expected": "TR-MS-112233",
+          "actual": "TR-MS-445566"
+        },
+        {
+          "field_path": "equipment_list[2].equipment_reference",
+          "expected": "TCLU3344556",
+          "actual": "MSCU1234567"
+        },
+        {
+          "field_path": "equipment_list[2].iso_equipment_code",
+          "expected": "22G1",
+          "actual": "45R1"
+        },
+        {
+          "field_path": "equipment_list[2].cargo_gross_weight.weight",
+          "expected": 14320.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "equipment_list[2].seals[0].seal_number",
+          "expected": "TR-MS-778899",
+          "actual": "TR-MS-112233"
+        },
+        {
+          "field_path": "cargo_items[0].weight.weight_value",
+          "expected": 24776.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "cargo_items[1].weight.weight_value",
+          "expected": 17200.0,
+          "actual": 18750.0
+        },
+        {
+          "field_path": "cargo_items[2].weight.weight_value",
+          "expected": 13580.0,
+          "actual": 14320.0
+        }
+      ]
+    },
+    {
+      "case_name": "Multi_Container_5_Equipment",
+      "source_path": "tests/fixtures/qwen_benchmark/multi_container_benchmark.json",
+      "elapsed_seconds": 105.2,
+      "ocr_sha256": "372c2e3637605c46056b2d39ff3ae27ea4db5bfaacc9c8ee853a378094982b83",
+      "actual_sha256": "48a03c97007e1780740c822fc1bd5415b9b79a413cc1b5e758c7c7f4ea80bfa3",
+      "raw_output_sha256": "5faea4685d3e276e3efaefeb1dd6f36ada77e06c7883581214b09577c93d141c",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 4,
+          "fp": 4,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 6,
+          "fp": 4,
+          "fn": 1,
+          "total": 20,
+          "correct": 6
+        },
+        "cargo_items": {
+          "tp": 30,
+          "fp": 12,
+          "fn": 0,
+          "total": 35,
+          "correct": 30
+        },
+        "document_info": {
+          "tp": 4,
+          "fp": 3,
+          "fn": 1,
+          "total": 5,
+          "correct": 4
+        }
+      },
+      "accuracy": 69.7,
+      "total_fields": 66,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "equipment_list[2].iso_equipment_code",
+        "equipment_list[2].cargo_gross_weight.unit",
+        "equipment_list[3].cargo_gross_weight.unit",
+        "equipment_list[4].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[1].package_quantity",
+        "cargo_items[1].package_kind_code",
+        "cargo_items[1].description_of_goods",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit",
+        "cargo_items[2].package_quantity",
+        "cargo_items[2].package_kind_code",
+        "cargo_items[2].description_of_goods",
+        "cargo_items[2].weight.unit",
+        "cargo_items[2].volume.volume_value",
+        "cargo_items[2].volume.unit",
+        "cargo_items[3].package_quantity",
+        "cargo_items[3].package_kind_code",
+        "cargo_items[3].description_of_goods",
+        "cargo_items[3].weight.unit",
+        "cargo_items[3].volume.volume_value",
+        "cargo_items[3].volume.unit",
+        "cargo_items[4].package_quantity",
+        "cargo_items[4].package_kind_code",
+        "cargo_items[4].description_of_goods",
+        "cargo_items[4].weight.unit",
+        "cargo_items[4].volume.volume_value",
+        "cargo_items[4].volume.unit"
+      ],
+      "missing_fields": [
+        "transport_document_type",
+        "equipment_list[0].equipment_reference"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "equipment_list[0].iso_equipment_code",
+          "expected": "22R1",
+          "actual": "45G1"
+        },
+        {
+          "field_path": "equipment_list[0].cargo_gross_weight.weight",
+          "expected": 8200.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "equipment_list[1].equipment_reference",
+          "expected": "MSCU9988776",
+          "actual": "CMAU5566778"
+        },
+        {
+          "field_path": "equipment_list[1].iso_equipment_code",
+          "expected": "45G1",
+          "actual": "22R1"
+        },
+        {
+          "field_path": "equipment_list[1].cargo_gross_weight.weight",
+          "expected": 24300.0,
+          "actual": 8200.0
+        },
+        {
+          "field_path": "equipment_list[2].equipment_reference",
+          "expected": "MSKU1234567",
+          "actual": "MSCU9988776"
+        },
+        {
+          "field_path": "equipment_list[2].cargo_gross_weight.weight",
+          "expected": 26080.0,
+          "actual": 24300.0
+        },
+        {
+          "field_path": "equipment_list[3].equipment_reference",
+          "expected": "OOLU1122334",
+          "actual": "MSKU1234567"
+        },
+        {
+          "field_path": "equipment_list[3].iso_equipment_code",
+          "expected": "42G1",
+          "actual": "45G1"
+        },
+        {
+          "field_path": "equipment_list[3].cargo_gross_weight.weight",
+          "expected": 18750.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "equipment_list[4].equipment_reference",
+          "expected": "TGHU7654321",
+          "actual": "OOLU1122334"
+        },
+        {
+          "field_path": "equipment_list[4].iso_equipment_code",
+          "expected": "22G1",
+          "actual": "42G1"
+        },
+        {
+          "field_path": "equipment_list[4].cargo_gross_weight.weight",
+          "expected": 12500.0,
+          "actual": 18750.0
+        },
+        {
+          "field_path": "cargo_items[0].weight.weight_value",
+          "expected": 24776.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "cargo_items[1].weight.weight_value",
+          "expected": 11800.0,
+          "actual": 12500.0
+        },
+        {
+          "field_path": "cargo_items[2].weight.weight_value",
+          "expected": 22900.0,
+          "actual": 24300.0
+        },
+        {
+          "field_path": "cargo_items[3].weight.weight_value",
+          "expected": 7600.0,
+          "actual": 8200.0
+        },
+        {
+          "field_path": "cargo_items[4].weight.weight_value",
+          "expected": 17200.0,
+          "actual": 18750.0
+        }
+      ]
+    },
+    {
+      "case_name": "Multilingual_CN_TR_AR_Unicode",
+      "source_path": "tests/fixtures/qwen_benchmark/multilingual_benchmark.json",
+      "elapsed_seconds": 70.41,
+      "ocr_sha256": "dfb5ce08e6d7309a8da5a4767a961fea82a592034571d05436d969dad7110207",
+      "actual_sha256": "95266a60779eb60f8302b41120280de7476ce06cd77a71c2743c5d60c5597295",
+      "raw_output_sha256": "1adca393efbabce84bc834b0a5730c4c0535ef7a14467a10b1f714f1c5472776",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 5,
+          "fp": 13,
+          "fn": 1,
+          "total": 7,
+          "correct": 5
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 1,
+          "total": 3,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 3,
+          "fp": 7,
+          "fn": 2,
+          "total": 5,
+          "correct": 3
+        },
+        "cargo_items": {
+          "tp": 6,
+          "fp": 4,
+          "fn": 0,
+          "total": 8,
+          "correct": 6
+        },
+        "document_info": {
+          "tp": 4,
+          "fp": 5,
+          "fn": 1,
+          "total": 5,
+          "correct": 4
+        }
+      },
+      "accuracy": 71.43,
+      "total_fields": 28,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[2].party_role_code",
+        "parties[2].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].shipping_marks",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit"
+      ],
+      "missing_fields": [
+        "transport_document_type",
+        "parties[2].party_id",
+        "transport_plans[0].place_of_delivery.location_name",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].seals[0].seal_number"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "parties[0].party_name",
+          "expected": "SHANGHAI INTERNATIONAL TRADING CO LTD",
+          "actual": "上海国际贸易有限公司"
+        },
+        {
+          "field_path": "cargo_items[0].description_of_goods",
+          "expected": "ELEKTRONİK KOMPONENTLER",
+          "actual": "电子产品 ELEKTRONİK KOMPONENTLER"
+        },
+        {
+          "field_path": "cargo_items[0].weight.weight_value",
+          "expected": 21300.0,
+          "actual": 22500.0
+        }
+      ]
+    },
+    {
+      "case_name": "Narrative_Unstructured_Email_Style",
+      "source_path": "tests/fixtures/qwen_benchmark/narrative_unstructured_benchmark.json",
+      "elapsed_seconds": 81.65,
+      "ocr_sha256": "5766fb8c0127b617e7ad0c03d2eaca83bd806cdaaf9004183ed3d19f2d503df1",
+      "actual_sha256": "40441f1d1a32de11628817c0f6a89f93b8c94516605766e7837ffe1a2bb45ad9",
+      "raw_output_sha256": "38d57d1e53b3599bba0cd11b095d30bc2fd368bc594423ac4b30c8d631b85752",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 5,
+          "fp": 10,
+          "fn": 0,
+          "total": 7,
+          "correct": 5
+        },
+        "transport_plans": {
+          "tp": 3,
+          "fp": 2,
+          "fn": 0,
+          "total": 5,
+          "correct": 3
+        },
+        "equipment_list": {
+          "tp": 10,
+          "fp": 0,
+          "fn": 0,
+          "total": 10,
+          "correct": 10
+        },
+        "cargo_items": {
+          "tp": 17,
+          "fp": 0,
+          "fn": 0,
+          "total": 17,
+          "correct": 17
+        },
+        "document_info": {
+          "tp": 7,
+          "fp": 3,
+          "fn": 0,
+          "total": 8,
+          "correct": 7
+        }
+      },
+      "accuracy": 89.36,
+      "total_fields": 47,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "transport_document_type",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[2].party_role_code",
+        "parties[2].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].place_of_receipt.location_name",
+        "transport_plans[0].carrier_voyage_number",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[0].seals[0].seal_number",
+        "equipment_list[1].equipment_reference",
+        "equipment_list[1].iso_equipment_code",
+        "equipment_list[1].cargo_gross_weight.weight",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "equipment_list[1].seals[0].seal_number",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].shipping_marks",
+        "cargo_items[0].commodity_code",
+        "cargo_items[0].weight.weight_value",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[1].package_quantity",
+        "cargo_items[1].package_kind_code",
+        "cargo_items[1].description_of_goods",
+        "cargo_items[1].commodity_code",
+        "cargo_items[1].weight.weight_value",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit",
+        "document_references[0].type_code",
+        "document_references[0].reference_number"
+      ],
+      "missing_fields": [],
+      "mismatched_fields": [
+        {
+          "field_path": "parties[0].party_name",
+          "expected": "EXPORTRA DEL TRADING LTD",
+          "actual": "EXPROTRA DEL TRADING LTD"
+        },
+        {
+          "field_path": "parties[0].party_id",
+          "expected": "BE0892123456",
+          "actual": "0892123456"
+        },
+        {
+          "field_path": "transport_plans[0].port_of_discharge.location_name",
+          "expected": "NHAVA SHEVA",
+          "actual": "Nhava Sheva (Jawaharlal Nehru Port), Mumbai"
+        },
+        {
+          "field_path": "transport_plans[0].place_of_delivery.location_name",
+          "expected": "ICD TUGHLAKABAD",
+          "actual": "ICD Tughlakabad, New Delhi"
+        },
+        {
+          "field_path": "customs_information.fta_declaration",
+          "expected": "EU-India FTA",
+          "actual": "Yes"
+        }
+      ]
+    },
+    {
+      "case_name": "Nested_Packaging_Mixed_Types",
+      "source_path": "tests/fixtures/qwen_benchmark/nested_packaging_benchmark.json",
+      "elapsed_seconds": 88.85,
+      "ocr_sha256": "74b3052ff57634602bc2e084db67fbe77e46bafb88d3457cb23c6754ceacac47",
+      "actual_sha256": "65ffd599b140bed92f8166446be2fa59c439aa2da7a4e6a4959ae273866f13b7",
+      "raw_output_sha256": "8cfa0c11da40bf4cc03127611e8e7e5b2753318fdac5b7ca2cc84a6587fe9773",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 4,
+          "fp": 4,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 5,
+          "fp": 5,
+          "fn": 2,
+          "total": 15,
+          "correct": 5
+        },
+        "cargo_items": {
+          "tp": 12,
+          "fp": 4,
+          "fn": 4,
+          "total": 31,
+          "correct": 12
+        },
+        "document_info": {
+          "tp": 5,
+          "fp": 5,
+          "fn": 0,
+          "total": 5,
+          "correct": 5
+        }
+      },
+      "accuracy": 49.12,
+      "total_fields": 57,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "transport_document_type",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "equipment_list[2].cargo_gross_weight.unit",
+        "cargo_items[0].shipping_marks",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[1].shipping_marks",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit",
+        "cargo_items[2].weight.unit",
+        "cargo_items[2].volume.unit",
+        "cargo_items[3].weight.unit",
+        "cargo_items[3].volume.unit"
+      ],
+      "missing_fields": [
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].seals[0].seal_number",
+        "cargo_items[2].shipping_marks",
+        "cargo_items[3].package_quantity",
+        "cargo_items[3].package_kind_code",
+        "cargo_items[3].description_of_goods"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "equipment_list[1].equipment_reference",
+          "expected": "OOLU5544332",
+          "actual": "MSCU6677889"
+        },
+        {
+          "field_path": "equipment_list[1].iso_equipment_code",
+          "expected": "42G1",
+          "actual": "45G1"
+        },
+        {
+          "field_path": "equipment_list[1].cargo_gross_weight.weight",
+          "expected": 16800.0,
+          "actual": 22500.0
+        },
+        {
+          "field_path": "equipment_list[1].seals[0].seal_number",
+          "expected": "BE-SL-554433",
+          "actual": "BE-SL-778899"
+        },
+        {
+          "field_path": "equipment_list[2].equipment_reference",
+          "expected": "TGHU9988776",
+          "actual": "OOLU5544332"
+        },
+        {
+          "field_path": "equipment_list[2].iso_equipment_code",
+          "expected": "22G1",
+          "actual": "42G1"
+        },
+        {
+          "field_path": "equipment_list[2].cargo_gross_weight.weight",
+          "expected": 14300.0,
+          "actual": 16800.0
+        },
+        {
+          "field_path": "equipment_list[2].seals[0].seal_number",
+          "expected": "BE-SL-990011",
+          "actual": "BE-SL-554433"
+        },
+        {
+          "field_path": "cargo_items[0].package_quantity",
+          "expected": 400,
+          "actual": 10
+        },
+        {
+          "field_path": "cargo_items[0].package_kind_code",
+          "expected": "CT",
+          "actual": "PL"
+        },
+        {
+          "field_path": "cargo_items[0].description_of_goods",
+          "expected": "SPARE PARTS FOR AGRICULTURAL MACHINERY",
+          "actual": "CONTAINING 400 CARTONS OF SPARE PARTS FOR AGRICULTURAL MACHINERY"
+        },
+        {
+          "field_path": "cargo_items[0].weight.weight_value",
+          "expected": 21100.0,
+          "actual": 22500.0
+        },
+        {
+          "field_path": "cargo_items[1].package_quantity",
+          "expected": 96,
+          "actual": 8
+        },
+        {
+          "field_path": "cargo_items[1].package_kind_code",
+          "expected": "DR",
+          "actual": "PL"
+        },
+        {
+          "field_path": "cargo_items[1].description_of_goods",
+          "expected": "INDUSTRIAL LUBRICANT OIL",
+          "actual": "CONTAINING 96 DRUMS OF INDUSTRIAL LUBRICANT OIL"
+        },
+        {
+          "field_path": "cargo_items[1].weight.weight_value",
+          "expected": 13400.0,
+          "actual": 14300.0
+        },
+        {
+          "field_path": "cargo_items[2].package_quantity",
+          "expected": 12,
+          "actual": 20
+        },
+        {
+          "field_path": "cargo_items[2].package_kind_code",
+          "expected": "DR",
+          "actual": "CR"
+        },
+        {
+          "field_path": "cargo_items[2].description_of_goods",
+          "expected": "HYDRAULIC FLUID",
+          "actual": "OF STEEL CONSTRUCTION BEAMS"
+        },
+        {
+          "field_path": "cargo_items[2].weight.weight_value",
+          "expected": 13400.0,
+          "actual": 16800.0
+        },
+        {
+          "field_path": "cargo_items[2].volume.volume_value",
+          "expected": 13.8,
+          "actual": 14.2
+        },
+        {
+          "field_path": "cargo_items[3].weight.weight_value",
+          "expected": 15600.0,
+          "actual": 21100.0
+        },
+        {
+          "field_path": "cargo_items[3].volume.volume_value",
+          "expected": 14.2,
+          "actual": 22.5
+        }
+      ]
+    },
+    {
+      "case_name": "Overstamped_Handwritten_Noisy_OCR",
+      "source_path": "tests/fixtures/qwen_benchmark/overstamped_noisy_benchmark.json",
+      "elapsed_seconds": 87.64,
+      "ocr_sha256": "d750db4aa20a6e457d823859df1a8eebe6ea3e3289e186206af522b4a048008e",
+      "actual_sha256": "51109cdc834f3b2ab4910b9bf1878469fb2d21cddeb0e28daff1f9c667f4a240",
+      "raw_output_sha256": "09dc7594b52ee5e7a7fa04667200398438d82b6a1f9ffc46b5b920fac4818dd5",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 5,
+          "fp": 11,
+          "fn": 0,
+          "total": 6,
+          "correct": 5
+        },
+        "transport_plans": {
+          "tp": 3,
+          "fp": 7,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        },
+        "equipment_list": {
+          "tp": 4,
+          "fp": 9,
+          "fn": 2,
+          "total": 10,
+          "correct": 4
+        },
+        "cargo_items": {
+          "tp": 13,
+          "fp": 6,
+          "fn": 0,
+          "total": 15,
+          "correct": 13
+        },
+        "document_info": {
+          "tp": 3,
+          "fp": 6,
+          "fn": 0,
+          "total": 5,
+          "correct": 3
+        }
+      },
+      "accuracy": 71.79,
+      "total_fields": 39,
+      "correct_fields": [
+        "carrier_booking_reference",
+        "transport_document_type",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[2].party_role_code",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "transport_plans[0].carrier_voyage_number",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[1].iso_equipment_code",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].shipping_marks",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[1].package_quantity",
+        "cargo_items[1].package_kind_code",
+        "cargo_items[1].description_of_goods",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit"
+      ],
+      "missing_fields": [
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].seals[0].seal_number"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "shipping_instruction_reference",
+          "expected": "SI-2026-STP-001",
+          "actual": "S1-2026-STP-001"
+        },
+        {
+          "field_path": "issue_date",
+          "expected": "2026-04-15",
+          "actual": "2026-04-17"
+        },
+        {
+          "field_path": "parties[2].party_name",
+          "expected": "MEDITERRANEAN AGENCIA MARITIMA SL",
+          "actual": "MEDITERRANEAN AGENCY MARITIMA SL"
+        },
+        {
+          "field_path": "equipment_list[0].cargo_gross_weight.weight",
+          "expected": 27500.0,
+          "actual": 18750.0
+        },
+        {
+          "field_path": "equipment_list[1].equipment_reference",
+          "expected": "TCLU8877665",
+          "actual": "MEDU4455667"
+        },
+        {
+          "field_path": "equipment_list[1].cargo_gross_weight.weight",
+          "expected": 18750.0,
+          "actual": 27500.0
+        },
+        {
+          "field_path": "equipment_list[1].seals[0].seal_number",
+          "expected": "ML-ES11223344",
+          "actual": "ML-ES99887766"
+        },
+        {
+          "field_path": "cargo_items[0].weight.weight_value",
+          "expected": 26150.0,
+          "actual": 26080.0
+        },
+        {
+          "field_path": "cargo_items[1].weight.weight_value",
+          "expected": 17200.0,
+          "actual": 18750.0
+        }
+      ]
+    },
+    {
+      "case_name": "Reefer_Mixed_Temperature_Goods",
+      "source_path": "tests/fixtures/qwen_benchmark/reefer_benchmark.json",
+      "elapsed_seconds": 83.49,
+      "ocr_sha256": "8eccd5cc388acd56af2fe5430821c30772d7cfd8907581fdd9a7741c8be0c631",
+      "actual_sha256": "1af349aa13fb9431f2861e6f7240d1f4e1106f2c1e06d5eab2be0dad4e5f3b4a",
+      "raw_output_sha256": "1e0b61e5885e77c10c492fed1392f724a688d244181c8c27001e22d2605b8d8a",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 4,
+          "fp": 4,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "transport_plans": {
+          "tp": 3,
+          "fp": 2,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        },
+        "equipment_list": {
+          "tp": 4,
+          "fp": 5,
+          "fn": 2,
+          "total": 15,
+          "correct": 4
+        },
+        "cargo_items": {
+          "tp": 20,
+          "fp": 10,
+          "fn": 0,
+          "total": 21,
+          "correct": 20
+        },
+        "document_info": {
+          "tp": 4,
+          "fp": 5,
+          "fn": 1,
+          "total": 5,
+          "correct": 4
+        }
+      },
+      "accuracy": 72.92,
+      "total_fields": 48,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "transport_plans[0].carrier_voyage_number",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "equipment_list[1].cargo_gross_weight.unit",
+        "equipment_list[2].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].weight.weight_value",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit",
+        "cargo_items[1].package_quantity",
+        "cargo_items[1].package_kind_code",
+        "cargo_items[1].description_of_goods",
+        "cargo_items[1].weight.weight_value",
+        "cargo_items[1].weight.unit",
+        "cargo_items[1].volume.volume_value",
+        "cargo_items[1].volume.unit",
+        "cargo_items[2].package_quantity",
+        "cargo_items[2].package_kind_code",
+        "cargo_items[2].description_of_goods",
+        "cargo_items[2].weight.weight_value",
+        "cargo_items[2].weight.unit",
+        "cargo_items[2].volume.volume_value",
+        "cargo_items[2].volume.unit"
+      ],
+      "missing_fields": [
+        "transport_document_type",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].seals[0].seal_number"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "equipment_list[0].cargo_gross_weight.weight",
+          "expected": 18750.0,
+          "actual": 26500.0
+        },
+        {
+          "field_path": "equipment_list[1].equipment_reference",
+          "expected": "CRLU8877665",
+          "actual": "CRLU5544332"
+        },
+        {
+          "field_path": "equipment_list[1].iso_equipment_code",
+          "expected": "42R1",
+          "actual": "45R1"
+        },
+        {
+          "field_path": "equipment_list[1].cargo_gross_weight.weight",
+          "expected": 26500.0,
+          "actual": 18750.0
+        },
+        {
+          "field_path": "equipment_list[1].seals[0].seal_number",
+          "expected": "SEAL-RF-8877",
+          "actual": "SEAL-RF-5544"
+        },
+        {
+          "field_path": "equipment_list[2].equipment_reference",
+          "expected": "MSKU1122334",
+          "actual": "CRLU8877665"
+        },
+        {
+          "field_path": "equipment_list[2].iso_equipment_code",
+          "expected": "22G1",
+          "actual": "45R1"
+        },
+        {
+          "field_path": "equipment_list[2].cargo_gross_weight.weight",
+          "expected": 12500.0,
+          "actual": 26500.0
+        },
+        {
+          "field_path": "equipment_list[2].seals[0].seal_number",
+          "expected": "SEAL-DR-1122",
+          "actual": "SEAL-RF-8877"
+        },
+        {
+          "field_path": "cargo_items[0].description_of_goods",
+          "expected": "FROZEN BONELESS BEEF",
+          "actual": "FROZEN BEEF QUARTERS"
+        }
+      ]
+    },
+    {
+      "case_name": "sample_shipping_instruction",
+      "source_path": "tests/fixtures/qwen_benchmark/sample_shipping_instruction.json",
+      "elapsed_seconds": 44.12,
+      "ocr_sha256": "da1789ec3f1c776e097fe5b5b79050b0613b6c19f358083f664113f1584f6f34",
+      "actual_sha256": "94599851783e8424c7788f039106100ae9cd71ece879b74c798dbbaa5829e630",
+      "raw_output_sha256": "38c94683d4daaa0fa128613c18c172aa6946baa528d320dd5ec16823b8504202",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 6,
+          "fp": 4,
+          "fn": 2,
+          "total": 6,
+          "correct": 6
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 1,
+          "fp": 4,
+          "fn": 1,
+          "total": 3,
+          "correct": 1
+        },
+        "cargo_items": {
+          "tp": 4,
+          "fp": 5,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "document_info": {
+          "tp": 3,
+          "fp": 2,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        }
+      },
+      "accuracy": 88.89,
+      "total_fields": 18,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "parties[0].party_role_code",
+        "parties[0].party_id",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_id",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit"
+      ],
+      "missing_fields": [
+        "equipment_list[0].equipment_reference"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "equipment_list[0].cargo_gross_weight.weight",
+          "expected": 26080.0,
+          "actual": 260.0
+        }
+      ]
+    },
+    {
+      "case_name": "Scanned_Low_Quality_PDF",
+      "source_path": "tests/fixtures/qwen_benchmark/scanned_low_quality.json",
+      "elapsed_seconds": 51.1,
+      "ocr_sha256": "718dd44c75170b70994282d4738ea1e558b59cbcdf0f68cabf629eb8b4be30cb",
+      "actual_sha256": "bf42c674eda8094824338a7fbd8639d8269b24c4a09a60575719f6bfdd55333d",
+      "raw_output_sha256": "9344ee02854fd9a4b4af01e737d9141205448707979fb3170ea405f4ef5204c0",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 4,
+          "fp": 4,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "transport_plans": {
+          "tp": 1,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 1
+        },
+        "equipment_list": {
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "cargo_items": {
+          "tp": 7,
+          "fp": 4,
+          "fn": 0,
+          "total": 7,
+          "correct": 7
+        },
+        "document_info": {
+          "tp": 2,
+          "fp": 5,
+          "fn": 2,
+          "total": 5,
+          "correct": 2
+        }
+      },
+      "accuracy": 81.82,
+      "total_fields": 22,
+      "correct_fields": [
+        "carrier_booking_reference",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].iso_equipment_code",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].package_kind_code",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].weight.weight_value",
+        "cargo_items[0].weight.unit",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit"
+      ],
+      "missing_fields": [
+        "issue_date",
+        "transport_document_type"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "shipping_instruction_reference",
+          "expected": "SI-2026-SCN-001",
+          "actual": "S1-2026-SCN-001"
+        },
+        {
+          "field_path": "transport_plans[0].port_of_loading.location_name",
+          "expected": "ALIAGA",
+          "actual": "ALIAZA"
+        }
+      ]
+    },
+    {
+      "case_name": "TR_Konsimento_Talimati",
+      "source_path": "tests/fixtures/qwen_benchmark/tr_konsimento.json",
+      "elapsed_seconds": 70.89,
+      "ocr_sha256": "1485d2a39e80f3df80e92d35f3f9866db4bab52b3ed28cafbd51b9fb2f2af2cb",
+      "actual_sha256": "79f20cc4627501724f10c10abf03d268c2fcea5059a09a20017073b8090ec8f9",
+      "raw_output_sha256": "b84d3e01fe0a62abdc91361f97319a122c7e0b466f42298ded6ae33d4f965c5d",
+      "inference_error": null,
+      "xsd_valid": true,
+      "xsd_error_count": 0,
+      "xsd_errors": [],
+      "category_metrics": {
+        "parties": {
+          "tp": 7,
+          "fp": 5,
+          "fn": 0,
+          "total": 8,
+          "correct": 7
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "cargo_items": {
+          "tp": 0,
+          "fp": 6,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "document_info": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        }
+      },
+      "accuracy": 92.31,
+      "total_fields": 13,
+      "correct_fields": [
+        "document_status_code",
+        "transport_document_type",
+        "freight_payment_term_code",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[0].party_id",
+        "parties[0].address.country_code",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "parties[1].address.country_code",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name"
+      ],
+      "missing_fields": [],
+      "mismatched_fields": [
+        {
+          "field_path": "parties[0].address.street",
+          "expected": "YESILYURT MAH.4306 SOK. AYDIN APT. NO:3/5 KEPEZ/ANTALYA/TURKEY",
+          "actual": "YESILYURT MAH.4306 SOK. AYDIN APT. NO:3/5 KEPEZTURKEY"
+        }
+      ]
+    }
+  ]
+}

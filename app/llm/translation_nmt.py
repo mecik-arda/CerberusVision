@@ -8,7 +8,6 @@ Falls back to LLM when the NMT model is unavailable or fails.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.config import settings
 from app.models import ShippingInstruction
@@ -25,7 +24,7 @@ _MODEL_MAP = {
 
 def _get_nmt_pipelines(
     source_lang: str, target_lang: str
-) -> Optional[tuple[object, object]]:
+) -> tuple[object, object] | None:
     """Lazy-load cached MarianMT tokenizer + model for a language pair."""
     cache_key = f"{source_lang}-{target_lang}"
     if cache_key in _NMT_PIPELINE_CACHE:
@@ -48,7 +47,7 @@ def _get_nmt_pipelines(
         return None
 
 
-def translate_text(text: str, source_lang: str, target_lang: str) -> Optional[str]:
+def translate_text(text: str, source_lang: str, target_lang: str) -> str | None:
     """Translate a single text string using MarianMT.
 
     Returns None if NMT is unavailable or fails.

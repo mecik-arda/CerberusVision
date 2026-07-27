@@ -1,15 +1,18 @@
 from __future__ import annotations
-from pathlib import Path
+
 import importlib.util
 from functools import lru_cache
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 from app.config import settings
+from app.routes.erp import router as erp_router
 from app.routes.logs import router as logs_router
 from app.routes.processing import router as processing_router
 from app.utils.live_logs import install_live_log_handler, live_log_buffer
-
 
 app = FastAPI(
     title="CerberusVision",
@@ -17,11 +20,36 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+@app.middleware("http")
+async def add_browser_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "frame-src 'self' blob:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
 install_live_log_handler()
 live_log_buffer.publish("INFO", "cerberus", "CerberusVision log yayini hazir")
 
+app.include_router(erp_router)
 app.include_router(logs_router)
 app.include_router(processing_router)
 

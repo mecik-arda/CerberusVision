@@ -4,7 +4,6 @@ import asyncio
 import secrets
 import time
 from collections import defaultdict, deque
-from typing import Deque, Dict, Optional
 
 from fastapi import Header, HTTPException, Request
 
@@ -13,7 +12,7 @@ from app.config import settings
 
 class SlidingWindowRateLimiter:
     def __init__(self):
-        self._events: Dict[str, Deque[float]] = defaultdict(deque)
+        self._events: dict[str, deque[float]] = defaultdict(deque)
         self._lock = asyncio.Lock()
 
     async def check(
@@ -21,8 +20,8 @@ class SlidingWindowRateLimiter:
         key: str,
         limit: int,
         window_seconds: int,
-        now: Optional[float] = None,
-    ) -> Optional[int]:
+        now: float | None = None,
+    ) -> int | None:
         timestamp = time.monotonic() if now is None else now
         cutoff = timestamp - window_seconds
         async with self._lock:
@@ -51,8 +50,8 @@ upload_rate_limiter = SlidingWindowRateLimiter()
 
 
 async def require_api_key(
-    authorization: Optional[str] = Header(default=None),
-    x_cerberus_api_key: Optional[str] = Header(default=None),
+    authorization: str | None = Header(default=None),
+    x_cerberus_api_key: str | None = Header(default=None),
 ) -> None:
     expected = settings.server.api_key
     if not expected:

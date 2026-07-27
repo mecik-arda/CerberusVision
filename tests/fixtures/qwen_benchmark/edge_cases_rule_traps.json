@@ -82,7 +82,7 @@
     "cargo_items": [
       {
         "package_quantity": 28,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "FROZEN SEAFOOD MIX",
         "shipping_marks": "GES-DXB-2026",
         "weight": {
@@ -96,7 +96,7 @@
       },
       {
         "package_quantity": 22,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "TEXTILE PRODUCTS",
         "weight": {
           "weight_value": 17200.0,
@@ -109,7 +109,7 @@
       },
       {
         "package_quantity": 18,
-        "package_kind_code": "CARTON",
+        "package_kind_code": "CT",
         "description_of_goods": "ELECTRONIC COMPONENTS",
         "weight": {
           "weight_value": 13580.0,

@@ -1,0 +1,10 @@
+Benchmark veri seti: 13 vaka (1 PDF, 12 salt metin, 1 donmus OCR)
+
+  [control_field_labels] Isleniyor... 61.2s (dogruluk: %100.0)
+  [Dangerous_Goods_IMDG_Multi_Class] Isleniyor... 105.5s (dogruluk: %78.8)
+  [DE_Frachtbrief_SI] Isleniyor... 41.9s (dogruluk: %81.8)
+  [Edge_Cases_Rule_Engine_Traps] Isleniyor... 93.2s (dogruluk: %69.8)
+  [Multi_Container_5_Equipment] Isleniyor... Qwen adapter inference failed, retrying with base model: LLM ciktisi asiri tekrar iceriyor
+105.7s (hata: RuntimeError)
+  [Multilingual_CN_TR_AR_Unicode] Isleniyor... 74.6s (dogruluk: %67.9)
+  [Narrative_Unstructured_Email_Style] Isleniyor... 

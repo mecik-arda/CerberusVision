@@ -1,0 +1,259 @@
+{
+  "benchmark_date": "2026-07-20T17:18:41",
+  "total_time_seconds": 161.76,
+  "category_breakdown": {
+    "parties": {
+      "accuracy": 85.71,
+      "precision": 38.71,
+      "recall": 80.0,
+      "f1_score": 52.17,
+      "tp": 12,
+      "fp": 19,
+      "fn": 3,
+      "total_fields": 14,
+      "correct_fields": 12
+    },
+    "transport_plans": {
+      "accuracy": 100.0,
+      "precision": 28.57,
+      "recall": 100.0,
+      "f1_score": 44.44,
+      "tp": 4,
+      "fp": 10,
+      "fn": 0,
+      "total_fields": 4,
+      "correct_fields": 4
+    },
+    "equipment_list": {
+      "accuracy": 100.0,
+      "precision": 20.0,
+      "recall": 100.0,
+      "f1_score": 33.33,
+      "tp": 3,
+      "fp": 12,
+      "fn": 0,
+      "total_fields": 3,
+      "correct_fields": 3
+    },
+    "cargo_items": {
+      "accuracy": 100.0,
+      "precision": 20.0,
+      "recall": 100.0,
+      "f1_score": 33.33,
+      "tp": 4,
+      "fp": 16,
+      "fn": 0,
+      "total_fields": 4,
+      "correct_fields": 4
+    },
+    "document_info": {
+      "accuracy": 90.91,
+      "precision": 83.33,
+      "recall": 100.0,
+      "f1_score": 90.91,
+      "tp": 10,
+      "fp": 2,
+      "fn": 0,
+      "total_fields": 11,
+      "correct_fields": 10
+    }
+  },
+  "documents": 3,
+  "accuracy": 91.67,
+  "total_fields": 36,
+  "correct_fields": 33,
+  "missing_fields": 1,
+  "mismatched_fields": 2,
+  "results": [
+    {
+      "case_name": "control_field_labels",
+      "source_path": "tests/fixtures/qwen_benchmark/control_field_labels.json",
+      "elapsed_seconds": 51.34,
+      "category_metrics": {
+        "parties": {
+          "tp": 0,
+          "fp": 10,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "transport_plans": {
+          "tp": 0,
+          "fp": 4,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "equipment_list": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "cargo_items": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "document_info": {
+          "tp": 5,
+          "fp": 1,
+          "fn": 0,
+          "total": 5,
+          "correct": 5
+        }
+      },
+      "accuracy": 100.0,
+      "total_fields": 5,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "document_status_code",
+        "shipping_instruction_date_time",
+        "carrier_booking_reference",
+        "issue_date"
+      ],
+      "missing_fields": [],
+      "mismatched_fields": []
+    },
+    {
+      "case_name": "sample_shipping_instruction",
+      "source_path": "tests/fixtures/qwen_benchmark/sample_shipping_instruction.json",
+      "elapsed_seconds": 43.47,
+      "category_metrics": {
+        "parties": {
+          "tp": 6,
+          "fp": 5,
+          "fn": 2,
+          "total": 6,
+          "correct": 6
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 2,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 3,
+          "fp": 2,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        },
+        "cargo_items": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 0,
+          "total": 4,
+          "correct": 4
+        },
+        "document_info": {
+          "tp": 3,
+          "fp": 1,
+          "fn": 0,
+          "total": 3,
+          "correct": 3
+        }
+      },
+      "accuracy": 100.0,
+      "total_fields": 18,
+      "correct_fields": [
+        "shipping_instruction_reference",
+        "carrier_booking_reference",
+        "issue_date",
+        "parties[0].party_role_code",
+        "parties[0].party_id",
+        "parties[0].party_name",
+        "parties[1].party_role_code",
+        "parties[1].party_id",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name",
+        "equipment_list[0].equipment_reference",
+        "equipment_list[0].cargo_gross_weight.weight",
+        "equipment_list[0].cargo_gross_weight.unit",
+        "cargo_items[0].package_quantity",
+        "cargo_items[0].description_of_goods",
+        "cargo_items[0].volume.volume_value",
+        "cargo_items[0].volume.unit"
+      ],
+      "missing_fields": [],
+      "mismatched_fields": []
+    },
+    {
+      "case_name": "TR_Konsimento_Talimati",
+      "source_path": "tests/fixtures/qwen_benchmark/tr_konsimento.json",
+      "elapsed_seconds": 66.96,
+      "category_metrics": {
+        "parties": {
+          "tp": 6,
+          "fp": 4,
+          "fn": 1,
+          "total": 8,
+          "correct": 6
+        },
+        "transport_plans": {
+          "tp": 2,
+          "fp": 4,
+          "fn": 0,
+          "total": 2,
+          "correct": 2
+        },
+        "equipment_list": {
+          "tp": 0,
+          "fp": 5,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "cargo_items": {
+          "tp": 0,
+          "fp": 10,
+          "fn": 0,
+          "total": 0,
+          "correct": 0
+        },
+        "document_info": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "total": 3,
+          "correct": 2
+        }
+      },
+      "accuracy": 76.92,
+      "total_fields": 13,
+      "correct_fields": [
+        "document_status_code",
+        "transport_document_type",
+        "parties[0].party_role_code",
+        "parties[0].party_name",
+        "parties[0].address.street",
+        "parties[0].address.country_code",
+        "parties[1].party_role_code",
+        "parties[1].party_name",
+        "transport_plans[0].port_of_loading.location_name",
+        "transport_plans[0].port_of_discharge.location_name"
+      ],
+      "missing_fields": [
+        "parties[1].address.country_code"
+      ],
+      "mismatched_fields": [
+        {
+          "field_path": "freight_payment_term_code",
+          "expected": "COL",
+          "actual": "PPD"
+        },
+        {
+          "field_path": "parties[0].party_id",
+          "expected": "3881946820",
+          "actual": "V.NO: 3881946820"
+        }
+      ]
+    }
+  ]
+}

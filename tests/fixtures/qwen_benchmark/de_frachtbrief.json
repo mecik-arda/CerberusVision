@@ -42,7 +42,7 @@
     "cargo_items": [
       {
         "package_quantity": 28,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "SPERRHOLZPLATTEN",
         "weight": {
           "weight_value": 21100.0,

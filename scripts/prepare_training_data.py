@@ -7,8 +7,9 @@ import random
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOGS_DIR = PROJECT_ROOT / "logs"

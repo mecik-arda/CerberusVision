@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from app.config import settings
 from app.llm.inference import _extract_json
 from app.models import CloudAuditResponse, LocalAuditAssessment, ShippingInstruction
-
 
 REVIEW_SYSTEM_PROMPT = (
     "You are a conservative shipping-document auditor. Review only the supplied "
@@ -18,7 +17,7 @@ REVIEW_SYSTEM_PROMPT = (
 )
 
 
-def _get_path_value(data: Dict[str, Any], path: str) -> Any:
+def _get_path_value(data: dict[str, Any], path: str) -> Any:
     if path in {"xml", "ocr_text", "parties", "cargo_items"} or "role=" in path:
         return None
     parts = [
@@ -42,8 +41,8 @@ def _get_path_value(data: Dict[str, Any], path: str) -> Any:
 
 def _build_ocr_excerpt(
     ocr_text: str,
-    paths: List[str],
-    values: Dict[str, Any],
+    paths: list[str],
+    values: dict[str, Any],
 ) -> str:
     keyword_map = {
         "parties": ["shipper", "consignee", "notify"],
@@ -78,7 +77,7 @@ def build_review_payload(
     local_result: ShippingInstruction,
     assessment: LocalAuditAssessment,
     ocr_text: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     local_data = local_result.model_dump(mode="json", exclude_none=True)
     flagged_paths = list(
         dict.fromkeys(finding.field_path for finding in assessment.findings)
@@ -106,33 +105,35 @@ def build_review_payload(
     }
 
 
-def run_deepseek_review(
+async def run_deepseek_review(
     local_result: ShippingInstruction,
     assessment: LocalAuditAssessment,
     ocr_text: str,
-) -> Tuple[CloudAuditResponse, str, Dict[str, Any]]:
-    """Ask DeepSeek for a short audit only; it cannot modify the local result."""
-    from openai import OpenAI
+) -> tuple[CloudAuditResponse, str, dict[str, Any]]:
+    from openai import AsyncOpenAI
 
     if not settings.deepseek.api_key:
         raise ValueError("DEEPSEEK_API_KEY environment variable is not set.")
     payload = build_review_payload(local_result, assessment, ocr_text)
-    client = OpenAI(
+    client = AsyncOpenAI(
         api_key=settings.deepseek.api_key,
         base_url=settings.deepseek.base_url,
         timeout=45,
     )
-    response = client.chat.completions.create(
-        model=settings.deepseek.model_name,
-        messages=[
-            {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0,
-        max_tokens=256,
-        timeout=45,
-    )
+    try:
+        response = await client.chat.completions.create(
+            model=settings.deepseek.model_name,
+            messages=[
+                {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=256,
+            timeout=45,
+        )
+    finally:
+        await client.close()
     raw_output = response.choices[0].message.content or ""
     review = CloudAuditResponse.model_validate(
         json.loads(_extract_json(raw_output))

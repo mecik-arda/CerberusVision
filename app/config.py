@@ -1,9 +1,7 @@
 import json
 import os
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
-
+from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOGS_DIR = BASE_DIR / "logs"
@@ -43,7 +41,7 @@ class ModelConfig:
         "OPENVINO_CACHE_DIR", str(BASE_DIR / ".openvino_cache")
     )
     kv_cache_precision: str = os.environ.get("OPENVINO_KV_CACHE_PRECISION", "u8")
-    max_new_tokens: int = _env_int("QWEN_MAX_NEW_TOKENS", 2048)
+    max_new_tokens: int = _env_int("QWEN_MAX_NEW_TOKENS", 3072)
     refinement_enabled: bool = os.environ.get("QWEN_REFINEMENT_ENABLED", "1") == "1"
     refinement_risk_threshold: int = _env_int("QWEN_REFINEMENT_RISK_THRESHOLD", 30)
 
@@ -56,7 +54,7 @@ class ModelConfig:
 
 @dataclass
 class DeepSeekConfig:
-    api_key: Optional[str] = os.environ.get("DEEPSEEK_API_KEY")
+    api_key: str | None = os.environ.get("DEEPSEEK_API_KEY")
     base_url: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     model_name: str = "deepseek-chat"
     review_mode: str = os.environ.get("DEEPSEEK_REVIEW_MODE", "risk").lower()
@@ -75,9 +73,9 @@ class DeepSeekConfig:
 @dataclass
 class DocumentSearchConfig:
     provider: str = os.environ.get("DOCUMENT_SEARCH_PROVIDER", "auto").lower()
-    brave_api_key: Optional[str] = os.environ.get("BRAVE_SEARCH_API_KEY")
-    google_api_key: Optional[str] = os.environ.get("GOOGLE_SEARCH_API_KEY")
-    google_engine_id: Optional[str] = os.environ.get("GOOGLE_SEARCH_ENGINE_ID")
+    brave_api_key: str | None = os.environ.get("BRAVE_SEARCH_API_KEY")
+    google_api_key: str | None = os.environ.get("GOOGLE_SEARCH_API_KEY")
+    google_engine_id: str | None = os.environ.get("GOOGLE_SEARCH_ENGINE_ID")
     output_dir: str = os.environ.get(
         "DOCUMENT_SEARCH_OUTPUT_DIR", str(DATA_DIR / "discovered")
     )
@@ -99,7 +97,7 @@ class DocumentSearchConfig:
 
 @dataclass
 class ServerConfig:
-    api_key: Optional[str] = os.environ.get("CERBERUS_API_KEY")
+    api_key: str | None = os.environ.get("CERBERUS_API_KEY")
     upload_rate_limit: int = _env_int("UPLOAD_RATE_LIMIT", 5)
     upload_rate_window_seconds: int = _env_int("UPLOAD_RATE_WINDOW_SECONDS", 60)
     max_active_pipelines: int = _env_int("MAX_ACTIVE_PIPELINES", 2)
@@ -173,6 +171,16 @@ class Settings:
     repetition_penalty: float = _env_float("REPETITION_PENALTY", 1.0)
     temperature: float = _env_float("TEMPERATURE", 0.2)
 
+    def __post_init__(self) -> None:
+        self.apply_layout_engine(self.layout_engine)
+
+    def apply_layout_engine(self, layout_engine: str) -> None:
+        if layout_engine not in {"hybrid", "y_ratio", "off"}:
+            layout_engine = "y_ratio"
+        self.layout_engine = layout_engine
+        self.region_segmentation_enabled = layout_engine != "off"
+        self.florence_enabled = layout_engine == "hybrid"
+
 
 settings = Settings()
 
@@ -219,7 +227,13 @@ def load_persistent_settings() -> None:
         if inference_payload.get("mode") in {"multi_stage", "single_pass"}:
             settings.inference_mode = inference_payload["mode"]
         if inference_payload.get("layout_engine") in {"hybrid", "y_ratio", "off"}:
-            settings.layout_engine = inference_payload["layout_engine"]
+            settings.apply_layout_engine(inference_payload["layout_engine"])
+        if isinstance(inference_payload.get("nmt_enabled"), bool):
+            settings.nmt_enabled = inference_payload["nmt_enabled"]
+        if isinstance(inference_payload.get("nmt_fallback_to_llm"), bool):
+            settings.nmt_fallback_to_llm = inference_payload[
+                "nmt_fallback_to_llm"
+            ]
         if isinstance(inference_payload.get("lora_enabled"), bool):
             settings.lora_enabled = inference_payload["lora_enabled"]
         if isinstance(inference_payload.get("lora_adapter_path"), str):
@@ -256,6 +270,8 @@ def save_persistent_settings() -> None:
         "inference": {
             "mode": settings.inference_mode,
             "layout_engine": settings.layout_engine,
+            "nmt_enabled": settings.nmt_enabled,
+            "nmt_fallback_to_llm": settings.nmt_fallback_to_llm,
             "lora_enabled": settings.lora_enabled,
             "lora_adapter_path": settings.lora_adapter_path,
             "region_upper_ratio": settings.region_upper_ratio,

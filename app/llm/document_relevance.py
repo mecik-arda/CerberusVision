@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.llm.inference import _extract_json
-
 
 DOCUMENT_RELEVANCE_SYSTEM_PROMPT = (
     "You are a narrow topic and language filter. Decide only whether the supplied "
@@ -36,7 +35,7 @@ def build_document_relevance_payload(
     source_snippet: str,
     source_url: str,
     text_excerpt: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "task": "topic_and_english_filter_only_no_quality_scoring",
         "source": {
@@ -51,8 +50,8 @@ def build_document_relevance_payload(
 
 
 def run_document_relevance_review(
-    payload: Dict[str, Any],
-) -> Tuple[DocumentRelevanceReview, str]:
+    payload: dict[str, Any],
+) -> tuple[DocumentRelevanceReview, str]:
     from openai import OpenAI
 
     if not settings.deepseek.api_key:

@@ -1,19 +1,42 @@
 from __future__ import annotations
+
 import asyncio
-from datetime import datetime, timezone
 import io
+import inspect
 import json
 import logging
-from dataclasses import asdict
-from pathlib import Path
+import secrets
 import tempfile
-from time import monotonic
-from typing import AsyncGenerator
 import zipfile
+from collections.abc import AsyncGenerator
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from time import monotonic, time
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+
 from app.config import save_persistent_settings, settings
-from app.security import enforce_upload_rate_limit, require_api_key
+from app.document_ingestion import (
+    IMAGE_EXTENSIONS,
+    SUPPORTED_DOCUMENT_EXTENSIONS,
+    TEXT_DOCUMENT_EXTENSIONS,
+    DocumentValidationError,
+    UploadSizeLimitError,
+    copy_and_validate_upload,
+    extract_text_document,
+    validate_supported_filename,
+)
+from app.llm.cloud_inference import run_deepseek_review
+from app.llm.inference import (
+    reset_llm_pipeline,
+    run_inference_with_fallback,
+    run_refinement_with_fallback,
+)
+from app.llm.local_audit import assess_local_result, should_run_automatic_cloud_review
+from app.llm.lora_adapter import classify_adapter
+from app.llm.translation import translate_instruction_content
 from app.models import (
     BatchEvent,
     BatchItemResult,
@@ -21,48 +44,30 @@ from app.models import (
     BatchStatusResponse,
     BatchUploadResponse,
     DocumentStatusCode,
-    ProcessingStatus,
     ProcessingResult,
+    ProcessingStatus,
     RuntimeSettingsUpdate,
     SaveInstructionRequest,
     ShippingInstruction,
 )
-from app.document_ingestion import (
-    DocumentValidationError,
-    IMAGE_EXTENSIONS,
-    SUPPORTED_DOCUMENT_EXTENSIONS,
-    TEXT_DOCUMENT_EXTENSIONS,
-    UploadSizeLimitError,
-    copy_and_validate_upload,
-    extract_text_document,
-    validate_supported_filename,
-)
-from app.utils.audit_logger import (
-    create_session_id,
-    log_ocr_result,
-    log_llm_result,
-    log_xml_result,
-    log_validation_report,
-    log_processing_summary,
-    log_cloud_review_report,
-    log_user_revision,
-)
-from app.utils.model_discovery import discover_local_models
-
 from app.ocr.spatial_ocr import (
     process_image_with_spatial_ocr,
-    process_pdf_with_spatial_ocr,
     process_pdf_with_region_ocr,
+    process_pdf_with_spatial_ocr,
 )
-from app.llm.inference import (
-    reset_llm_pipeline,
-    run_inference_with_fallback,
-    run_refinement_with_fallback,
+from app.security import enforce_upload_rate_limit, require_api_key
+from app.utils.audit_logger import (
+    SESSION_ID_PATTERN,
+    create_session_id,
+    log_cloud_review_report,
+    log_llm_result,
+    log_ocr_result,
+    log_processing_summary,
+    log_user_revision,
+    log_validation_report,
+    log_xml_result,
 )
-from app.llm.lora_adapter import classify_adapter
-from app.llm.translation import translate_instruction_content
-from app.llm.cloud_inference import run_deepseek_review
-from app.llm.local_audit import assess_local_result, should_run_automatic_cloud_review
+from app.utils.model_discovery import discover_local_models
 from app.xml.converter import shipping_instruction_to_xml
 from app.xml.validator import check_mandatory_fields, validate_xml_against_xsd
 
@@ -96,6 +101,10 @@ _MAX_BATCH_STORE = 50
 _MAX_BATCH_FILES = 50
 _BATCH_RATE_LIMIT = 3
 _BATCH_RATE_WINDOW = 60
+_BATCH_ARTIFACT_TTL_SECONDS = 3600
+_BATCH_CLEANUP_INTERVAL_SECONDS = 60
+_batch_cleanup_last_run = -_BATCH_CLEANUP_INTERVAL_SECONDS
+_batch_cleanup_lock = asyncio.Lock()
 
 
 _PROCESSING_STORE_MAX_SIZE = 100
@@ -106,6 +115,34 @@ _OCR_LANGUAGE_MAP = {"auto": "latin", "tr": "tr", "en": "en"}
 
 
 UploadTooLargeError = UploadSizeLimitError
+
+
+@dataclass(frozen=True)
+class ProcessingRuntimeSnapshot:
+    inference_mode: str
+    layout_engine: str
+    region_upper_ratio: float
+    region_middle_ratio: float
+
+
+def _capture_processing_runtime_snapshot() -> ProcessingRuntimeSnapshot:
+    return ProcessingRuntimeSnapshot(
+        inference_mode=settings.inference_mode,
+        layout_engine=settings.layout_engine,
+        region_upper_ratio=settings.region_upper_ratio,
+        region_middle_ratio=settings.region_middle_ratio,
+    )
+
+
+def _effective_layout_label(layout_engine: str) -> str:
+    labels = {
+        "hybrid": "Florence-2 VLM",
+        "hybrid_partial_fallback": "Florence-2 VLM + bazı sayfalarda Y-Oranı Fallback",
+        "y_ratio_fallback": "Florence-2 başarısız → Y-Oranı Fallback",
+        "y_ratio": "Y-Orani Ayrıştırması",
+        "off": "Duz OCR",
+    }
+    return labels.get(layout_engine, layout_engine)
 
 
 def _validate_processing_languages(
@@ -167,6 +204,9 @@ def _runtime_settings_payload() -> dict:
         "inference": {
             "mode": settings.inference_mode,
             "layout_engine": settings.layout_engine,
+            "region_segmentation_enabled": settings.region_segmentation_enabled,
+            "florence_enabled": settings.florence_enabled,
+            "nmt_enabled": settings.nmt_enabled,
             "lora_enabled": settings.lora_enabled,
             "lora_adapter_path": settings.lora_adapter_path,
             "lora_adapters": _discover_lora_adapters(),
@@ -218,8 +258,18 @@ def _discover_lora_adapters() -> list[dict]:
             display_name = "[Qwen] Phase 4 - Temiz Veri"
             profile = "phase4_clean"
         elif adapter_target == "qwen":
-            display_name = "[Qwen] Önceki Eğitim"
-            profile = "legacy"
+            if "Phase5_3" in adapter_name:
+                display_name = "[Qwen] Phase 5.3 - Kusursuz JSON"
+                profile = "phase5_3"
+            elif "Phase5_2" in adapter_name:
+                display_name = "[Qwen] Phase 5.2 - OOM Fix"
+                profile = "phase5_2"
+            elif "Legacy" in adapter_name:
+                display_name = "[Qwen] Phase 3 - Eski Eğitim"
+                profile = "legacy"
+            else:
+                display_name = f"[Qwen] {adapter_name.replace('Qwen-2.5-7B-Instruct-', '').replace('-LoRA', '').replace('_', '.')}"
+                profile = adapter_name
         elif adapter_target == "florence":
             display_name = "[Florence] Mizanpaj"
             profile = "layout"
@@ -289,10 +339,7 @@ async def _release_pipeline_slot(session_id: str) -> None:
 
 
 def _is_valid_session_id(session_id: str) -> bool:
-    """Reject session IDs that contain path traversal characters."""
-    import re
-
-    return bool(re.fullmatch(r"[0-9_]+", session_id))
+    return bool(SESSION_ID_PATTERN.fullmatch(session_id))
 
 
 async def _trigger_webhook_delivery(
@@ -361,9 +408,11 @@ async def _execute_cloud_review(
     ocr_text: str,
     label: str,
 ):
-    review, raw_output, sent_payload = await _run_blocking(
-        run_deepseek_review, instruction, assessment, ocr_text
-    )
+    review_result = run_deepseek_review(instruction, assessment, ocr_text)
+    if inspect.isawaitable(review_result):
+        review, raw_output, sent_payload = await review_result
+    else:
+        review, raw_output, sent_payload = review_result
     report_path = log_cloud_review_report(
         session_id,
         local_assessment=assessment.model_dump(mode="json"),
@@ -396,6 +445,7 @@ async def process_pdf_pipeline(
     document_language: str = "en",
     output_language: str = "en",
     translation_enabled: bool = True,
+    runtime_snapshot: ProcessingRuntimeSnapshot | None = None,
 ):
     await process_document_pipeline(
         pdf_path,
@@ -405,6 +455,7 @@ async def process_pdf_pipeline(
         document_language,
         output_language,
         translation_enabled,
+        runtime_snapshot,
     )
 
 
@@ -416,6 +467,7 @@ async def process_document_pipeline(
     document_language: str = "en",
     output_language: str = "en",
     translation_enabled: bool = True,
+    runtime_snapshot: ProcessingRuntimeSnapshot | None = None,
 ):
     async with _get_session_lock(session_id):
         await _process_document_pipeline_locked(
@@ -426,6 +478,7 @@ async def process_document_pipeline(
             document_language,
             output_language,
             translation_enabled,
+            runtime_snapshot,
         )
 
 
@@ -437,7 +490,11 @@ async def _process_document_pipeline_locked(
     document_language: str,
     output_language: str,
     translation_enabled: bool,
+    runtime_snapshot: ProcessingRuntimeSnapshot | None = None,
 ):
+    active_runtime = (
+        runtime_snapshot or _capture_processing_runtime_snapshot()
+    )
     try:
         status_queue.put_nowait(_emit_status(
             session_id, ProcessingStatus.OCR_PROCESSING, "Belge icerigi isleniyor...",
@@ -447,13 +504,15 @@ async def _process_document_pipeline_locked(
             extension = validate_supported_filename(filename)
             use_multi_stage = (
                 extension == ".pdf"
-                and settings.region_segmentation_enabled
-                and settings.inference_mode == "multi_stage"
+                and active_runtime.layout_engine != "off"
+                and active_runtime.inference_mode == "multi_stage"
             )
             use_florence = (
                 use_multi_stage
-                and settings.florence_enabled
-                and settings.layout_engine == "hybrid"
+                and active_runtime.layout_engine == "hybrid"
+            )
+            effective_layout_engine = (
+                active_runtime.layout_engine if use_multi_stage else "off"
             )
             if use_florence:
                 from app.ocr.spatial_ocr import process_pdf_with_florence_regions
@@ -466,16 +525,30 @@ async def _process_document_pipeline_locked(
                         document_path,
                         _OCR_LANGUAGE_MAP[document_language],
                         use_florence=True,
+                        upper_ratio=active_runtime.region_upper_ratio,
+                        middle_ratio=active_runtime.region_middle_ratio,
                     )
+                    page_results = (_florence_meta or {}).get("pages", [])
+                    fallback_page_count = sum(
+                        1 for page in page_results if page.get("error")
+                    )
+                    if page_results and fallback_page_count == len(page_results):
+                        effective_layout_engine = "y_ratio_fallback"
+                    elif fallback_page_count:
+                        effective_layout_engine = "hybrid_partial_fallback"
                 except Exception:
                     logger.warning(
-                        "Florence-2 basarisiz, Y-orani yontemine dusuluyor"
+                        "Florence-2 basarisiz, Y-orani yontemine dusuluyor",
+                        exc_info=True,
                     )
                     upper_text, middle_text, lower_text, boxes = await _run_blocking(
                         process_pdf_with_region_ocr,
                         document_path,
                         _OCR_LANGUAGE_MAP[document_language],
+                        upper_ratio=active_runtime.region_upper_ratio,
+                        middle_ratio=active_runtime.region_middle_ratio,
                     )
+                    effective_layout_engine = "y_ratio_fallback"
                 ocr_text = (
                     f"{upper_text}\n\n--- ORTA BOLGE ---\n\n{middle_text}"
                     f"\n\n--- ALT BOLGE ---\n\n{lower_text}"
@@ -485,7 +558,10 @@ async def _process_document_pipeline_locked(
                     process_pdf_with_region_ocr,
                     document_path,
                     _OCR_LANGUAGE_MAP[document_language],
+                    upper_ratio=active_runtime.region_upper_ratio,
+                    middle_ratio=active_runtime.region_middle_ratio,
                 )
+                effective_layout_engine = "y_ratio"
                 ocr_text = (
                     f"{upper_text}\n\n--- ORTA BOLGE ---\n\n{middle_text}"
                     f"\n\n--- ALT BOLGE ---\n\n{lower_text}"
@@ -515,13 +591,15 @@ async def _process_document_pipeline_locked(
         ocr_path = log_ocr_result(session_id, ocr_text, boxes_data)
 
         if use_multi_stage:
-            engine_label = (
-                "Florence-2 VLM" if use_florence else "Y-Orani Ayrıştırması"
-            )
+            engine_label = _effective_layout_label(effective_layout_engine)
             status_queue.put_nowait(_emit_status(
                 session_id, ProcessingStatus.LLM_ANALYZING,
                 f"Taraflar ve belge bilgileri cikariliyor (Asama 1/3, {engine_label})...",
-                data={"raw_ocr_text": ocr_text},
+                data={
+                    "raw_ocr_text": ocr_text,
+                    "requested_layout_engine": active_runtime.layout_engine,
+                    "effective_layout_engine": effective_layout_engine,
+                },
             ))
         else:
             status_queue.put_nowait(_emit_status(
@@ -878,20 +956,7 @@ async def get_runtime_settings():
 
 @router.put("/runtime-settings")
 async def update_runtime_settings(request: RuntimeSettingsUpdate):
-    if request.clear_deepseek_api_key:
-        settings.deepseek.api_key = None
-    elif request.deepseek_api_key is not None:
-        api_key = request.deepseek_api_key.get_secret_value().strip()
-        if not api_key:
-            return JSONResponse(
-                status_code=422,
-                content={"error": "DeepSeek API key cannot be empty."},
-            )
-        settings.deepseek.api_key = api_key
-    if request.deepseek_review_mode is not None:
-        settings.deepseek.review_mode = request.deepseek_review_mode
-    if request.deepseek_risk_threshold is not None:
-        settings.deepseek.risk_threshold = request.deepseek_risk_threshold
+    requested_model_path = None
     if request.local_model_path is not None:
         requested_model_path = str(Path(request.local_model_path).resolve())
         installed_models = discover_local_models(
@@ -908,6 +973,74 @@ async def update_runtime_settings(request: RuntimeSettingsUpdate):
                 status_code=422,
                 content={"error": "Selected model is not a usable OpenVINO model."},
             )
+    requested_adapter_path = None
+    if request.lora_adapter_path is not None:
+        requested_adapter_path = request.lora_adapter_path.strip()
+        if requested_adapter_path:
+            requested_adapter_path = str(Path(requested_adapter_path).resolve())
+            selectable_adapter_paths = {
+                adapter["path"] for adapter in _discover_lora_adapters()
+            }
+            if requested_adapter_path not in selectable_adapter_paths:
+                return JSONResponse(
+                    status_code=422,
+                    content={"error": "Selected LoRA adapter is not installed."},
+                )
+    requested_api_key = None
+    if request.deepseek_api_key is not None:
+        requested_api_key = request.deepseek_api_key.get_secret_value().strip()
+        if not requested_api_key:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "DeepSeek API key cannot be empty."},
+            )
+    inference_change_requested = any(
+        (
+            requested_model_path is not None
+            and requested_model_path
+            != str(Path(settings.model.model_path).resolve()),
+            request.nmt_enabled is not None
+            and request.nmt_enabled != settings.nmt_enabled,
+            request.inference_mode is not None
+            and request.inference_mode != settings.inference_mode,
+            request.layout_engine is not None
+            and request.layout_engine != settings.layout_engine,
+            request.lora_enabled is not None
+            and request.lora_enabled != settings.lora_enabled,
+            requested_adapter_path is not None
+            and requested_adapter_path != settings.lora_adapter_path,
+            request.region_upper_ratio is not None
+            and request.region_upper_ratio != settings.region_upper_ratio,
+            request.region_middle_ratio is not None
+            and request.region_middle_ratio != settings.region_middle_ratio,
+            request.stage_timeout_seconds is not None
+            and request.stage_timeout_seconds != settings.stage_timeout_seconds,
+        )
+    )
+    active_batch_exists = any(
+        not task.done() for task in _batch_tasks.values()
+    )
+    if inference_change_requested and (
+        _active_pipeline_sessions or active_batch_exists
+    ):
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": (
+                    "Inference settings cannot change while document "
+                    "processing is active."
+                )
+            },
+        )
+    if request.clear_deepseek_api_key:
+        settings.deepseek.api_key = None
+    elif requested_api_key is not None:
+        settings.deepseek.api_key = requested_api_key
+    if request.deepseek_review_mode is not None:
+        settings.deepseek.review_mode = request.deepseek_review_mode
+    if request.deepseek_risk_threshold is not None:
+        settings.deepseek.risk_threshold = request.deepseek_risk_threshold
+    if requested_model_path is not None:
         if requested_model_path != str(Path(settings.model.model_path).resolve()):
             settings.model.model_path = requested_model_path
             reset_llm_pipeline()
@@ -923,38 +1056,15 @@ async def update_runtime_settings(request: RuntimeSettingsUpdate):
         settings.interface.translation_enabled = request.translation_enabled
     if request.nmt_enabled is not None:
         settings.nmt_enabled = request.nmt_enabled
-        if not request.nmt_enabled:
-            settings.nmt_fallback_to_llm = False
+        settings.nmt_fallback_to_llm = request.nmt_enabled
     if request.inference_mode is not None:
         settings.inference_mode = request.inference_mode
     if request.layout_engine is not None:
-        settings.layout_engine = request.layout_engine
-        if request.layout_engine == "off":
-            settings.region_segmentation_enabled = False
-            settings.florence_enabled = False
-        elif request.layout_engine == "y_ratio":
-            settings.region_segmentation_enabled = True
-            settings.florence_enabled = False
-        elif request.layout_engine == "hybrid":
-            settings.region_segmentation_enabled = True
-            settings.florence_enabled = True
+        settings.apply_layout_engine(request.layout_engine)
     previous_lora_configuration = (
         settings.lora_enabled,
         settings.lora_adapter_path,
     )
-    requested_adapter_path = None
-    if request.lora_adapter_path is not None:
-        requested_adapter_path = request.lora_adapter_path.strip()
-        if requested_adapter_path:
-            requested_adapter_path = str(Path(requested_adapter_path).resolve())
-            selectable_adapter_paths = {
-                adapter["path"] for adapter in _discover_lora_adapters()
-            }
-            if requested_adapter_path not in selectable_adapter_paths:
-                return JSONResponse(
-                    status_code=422,
-                    content={"error": "Selected LoRA adapter is not installed."},
-                )
     if request.lora_enabled is not None:
         settings.lora_enabled = request.lora_enabled
     if requested_adapter_path is not None:
@@ -1060,6 +1170,7 @@ async def upload_pdf(
             document_language,
             output_language,
             translation_enabled,
+            _capture_processing_runtime_snapshot(),
         )
     )
 
@@ -1111,7 +1222,110 @@ def _check_batch_rate_limit(client_ip: str) -> int | None:
 
 def _create_batch_id() -> str:
     now = datetime.now(timezone.utc)
-    return f"batch_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond:06d}"
+    token = secrets.token_urlsafe(6)
+    return f"batch_{now.strftime('%Y%m%d_%H%M%S')}_{now.microsecond:06d}_{token}"
+
+
+def _safe_archive_stem(filename: str) -> str:
+    leaf_name = Path(str(filename).replace("\\", "/")).name
+    stem = leaf_name.rsplit(".", 1)[0]
+    sanitized = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in stem
+    )
+    return sanitized.strip("_")[:120] or "document"
+
+
+def _remove_batch_zip(batch: dict, reason: str | None = None) -> None:
+    zip_path_value = batch.get("zip_path")
+    if zip_path_value:
+        zip_path = Path(zip_path_value)
+        uploads_root = settings.uploads_dir.resolve()
+        resolved_path = zip_path.resolve()
+        if resolved_path.is_relative_to(uploads_root):
+            resolved_path.unlink(missing_ok=True)
+    batch["zip_path"] = None
+    batch["zip_size_bytes"] = None
+    batch["zip_ready"] = False
+    if reason:
+        batch["zip_error"] = reason
+
+
+def _cleanup_expired_batch_archives() -> int:
+    uploads_root = settings.uploads_dir.resolve()
+    expiration_threshold = time() - _BATCH_ARTIFACT_TTL_SECONDS
+    removed_paths: set[Path] = set()
+    for archive_path in uploads_root.glob("batch_*.zip"):
+        try:
+            resolved_path = archive_path.resolve()
+            if not resolved_path.is_relative_to(uploads_root):
+                continue
+            if resolved_path.stat().st_mtime >= expiration_threshold:
+                continue
+            resolved_path.unlink(missing_ok=True)
+            removed_paths.add(resolved_path)
+        except OSError:
+            continue
+    if removed_paths:
+        for batch in _batch_store.values():
+            zip_path_value = batch.get("zip_path")
+            if zip_path_value and Path(zip_path_value).resolve() in removed_paths:
+                _remove_batch_zip(batch, "ZIP paketi saklama suresi doldu.")
+    return len(removed_paths)
+
+
+async def _maybe_cleanup_expired_batch_archives() -> int:
+    global _batch_cleanup_last_run
+    timestamp = monotonic()
+    if timestamp - _batch_cleanup_last_run < _BATCH_CLEANUP_INTERVAL_SECONDS:
+        return 0
+    async with _batch_cleanup_lock:
+        timestamp = monotonic()
+        if timestamp - _batch_cleanup_last_run < _BATCH_CLEANUP_INTERVAL_SECONDS:
+            return 0
+        removed = await _run_blocking(_cleanup_expired_batch_archives)
+        _batch_cleanup_last_run = timestamp
+        return removed
+
+
+async def _remove_batch_state(batch_id: str) -> bool:
+    batch = _batch_store.get(batch_id)
+    if batch is None:
+        _batch_queues.pop(batch_id, None)
+        _batch_tasks.pop(batch_id, None)
+        return True
+    if not batch.get("terminal"):
+        return False
+    batch_task = _batch_tasks.get(batch_id)
+    if batch_task is not None and not batch_task.done():
+        await asyncio.shield(batch_task)
+    _batch_store.pop(batch_id, None)
+    _remove_batch_zip(batch)
+    _batch_queues.pop(batch_id, None)
+    _batch_tasks.pop(batch_id, None)
+    temp_dir = batch.get("_temp_dir")
+    if temp_dir:
+        try:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+    return True
+
+
+async def _ensure_batch_capacity() -> bool:
+    if len(_batch_store) < _MAX_BATCH_STORE:
+        return True
+    terminal_batch_ids = sorted(
+        batch_id
+        for batch_id, batch in _batch_store.items()
+        if batch.get("terminal")
+    )
+    for batch_id in terminal_batch_ids:
+        await _remove_batch_state(batch_id)
+        if len(_batch_store) < _MAX_BATCH_STORE:
+            return True
+    return False
 
 
 def _get_or_create_batch_queue(batch_id: str) -> asyncio.Queue:
@@ -1124,6 +1338,39 @@ def _get_or_create_batch_queue(batch_id: str) -> asyncio.Queue:
         for bid in stale[:10]:
             _batch_queues.pop(bid, None)
     return queue
+
+
+def _batch_completion_payload(batch_id: str) -> dict:
+    batch = _batch_store.get(batch_id, {})
+    return {
+        "batch_id": batch_id,
+        "status": "COMPLETE",
+        "message": "Batch isleme tamamlandi",
+        "completed_count": sum(
+            1
+            for item in batch.get("items", [])
+            if item.get("status")
+            in {
+                BatchItemStatus.COMPLETED.value,
+                BatchItemStatus.DRAFT.value,
+                BatchItemStatus.ERROR.value,
+                BatchItemStatus.REJECTED.value,
+            }
+        ),
+        "total_count": batch.get("total_count", 0),
+        "zip_ready": batch.get("zip_ready", False),
+        "zip_error": batch.get("zip_error"),
+    }
+
+
+def _compute_error_count(batch: dict) -> int:
+    return sum(
+        1 for item in batch.get("items", [])
+        if item.get("status") in (
+            BatchItemStatus.ERROR.value,
+            BatchItemStatus.REJECTED.value,
+        )
+    )
 
 
 def _emit_batch_event(batch: dict, item: dict | None = None) -> BatchEvent:
@@ -1153,9 +1400,10 @@ def _emit_batch_event(batch: dict, item: dict | None = None) -> BatchEvent:
         percent=percent,
         current_file=current,
         current_status=current_status,
-        error_count=batch.get("error_count", 0),
+        error_count=_compute_error_count(batch),
         item=BatchItemResult(**item) if item else None,
         zip_ready=batch.get("zip_ready", False),
+        zip_error=batch.get("zip_error"),
     )
     batch_queue = _batch_queues.get(batch["batch_id"])
     if batch_queue is not None:
@@ -1172,6 +1420,7 @@ async def _process_single_in_batch(
     document_language: str,
     output_language: str,
     translation_enabled: bool,
+    runtime_snapshot: ProcessingRuntimeSnapshot,
 ) -> None:
     """Batch icinde tek bir dosyayi isler. Mevcut pipeline'i kullanir."""
     session_id = item["session_id"]
@@ -1185,6 +1434,7 @@ async def _process_single_in_batch(
         document_language,
         output_language,
         translation_enabled,
+        runtime_snapshot,
     )
 
 
@@ -1193,82 +1443,94 @@ async def _process_batch(batch_id: str) -> None:
     batch = _batch_store.get(batch_id)
     if batch is None:
         return
-    doc_lang = batch["document_language"]
-    out_lang = batch["output_language"]
-    trans_enabled = batch["translation_enabled"]
-    temp_dir = batch["_temp_dir"]
+    temp_dir = batch.get("_temp_dir", "")
+    try:
+        doc_lang = batch["document_language"]
+        out_lang = batch["output_language"]
+        trans_enabled = batch["translation_enabled"]
+        runtime_snapshot = batch["runtime_snapshot"]
 
-    for item in batch["items"]:
-        if item["status"] != BatchItemStatus.QUEUED.value:
-            continue
+        for item in batch["items"]:
+            if item["status"] != BatchItemStatus.QUEUED.value:
+                continue
 
-        while not await _reserve_pipeline_slot(item["session_id"]):
-            await asyncio.sleep(3)
+            while not await _reserve_pipeline_slot(item["session_id"]):
+                await asyncio.sleep(3)
 
-        item["status"] = BatchItemStatus.PROCESSING.value
-        _emit_batch_event(batch, item)
-
-        try:
-            doc_path = Path(temp_dir) / item["filename"]
-            await _process_single_in_batch(
-                doc_path, item, doc_lang, out_lang, trans_enabled,
-            )
-            # Basariyla tamamlandi — session model'den skoru al
-            si_model = _session_models.get(item["session_id"])
-            if si_model is not None:
-                stored = _processing_store.get(item["session_id"])
-                if stored:
-                    if stored.status == ProcessingStatus.COMPLETED:
-                        item["status"] = BatchItemStatus.COMPLETED.value
-                    elif stored.status == ProcessingStatus.DRAFT:
-                        item["status"] = BatchItemStatus.DRAFT.value
-                    elif stored.status == ProcessingStatus.ERROR:
-                        item["status"] = BatchItemStatus.ERROR.value
-                        item["error_message"] = item.get("error_message") or "Pipeline hatasi"
-                        batch["error_count"] = batch.get("error_count", 0) + 1
-                    item["risk_score"] = stored.local_risk_score
-                    item["confidence_score"] = stored.audit_confidence_score
-                else:
-                    item["status"] = BatchItemStatus.ERROR.value
-                    item["error_message"] = "Islem sonucu bulunamadi"
-                    batch["error_count"] = batch.get("error_count", 0) + 1
-            else:
-                stored = _processing_store.get(item["session_id"])
-                if stored and stored.status == ProcessingStatus.ERROR:
-                    item["status"] = BatchItemStatus.ERROR.value
-                    item["error_message"] = stored.message or "Pipeline hatasi"
-                else:
-                    item["status"] = BatchItemStatus.ERROR.value
-                    item["error_message"] = "Model ciktisi uretilemedi (OCR/LMM hatasi)"
-                batch["error_count"] = batch.get("error_count", 0) + 1
-        except Exception as exc:
-            item["status"] = BatchItemStatus.ERROR.value
-            item["error_message"] = f"{type(exc).__name__}: {exc}"
-            batch["error_count"] = batch.get("error_count", 0) + 1
-        finally:
-            await _release_pipeline_slot(item["session_id"])
+            item["status"] = BatchItemStatus.PROCESSING.value
             _emit_batch_event(batch, item)
 
-    try:
-        zip_path = await _build_batch_zip(batch_id)
-        batch["zip_path"] = str(zip_path)
-        batch["zip_size_bytes"] = zip_path.stat().st_size
-    except Exception as exc:
-        logger.error("Batch ZIP olusturulamadi: %s", exc)
-    batch["zip_ready"] = True
-    _emit_batch_event(batch, item=None)
-    batch_queue = _batch_queues.get(batch_id)
-    if batch_queue is not None:
-        try:
-            batch_queue.put_nowait("__BATCH_COMPLETE__")
-        except asyncio.QueueFull:
-            pass
+            try:
+                doc_path = Path(temp_dir) / item["filename"]
+                await _process_single_in_batch(
+                    doc_path,
+                    item,
+                    doc_lang,
+                    out_lang,
+                    trans_enabled,
+                    runtime_snapshot,
+                )
+                si_model = _session_models.get(item["session_id"])
+                if si_model is not None:
+                    stored = _processing_store.get(item["session_id"])
+                    if stored:
+                        if stored.status == ProcessingStatus.COMPLETED:
+                            item["status"] = BatchItemStatus.COMPLETED.value
+                        elif stored.status == ProcessingStatus.DRAFT:
+                            item["status"] = BatchItemStatus.DRAFT.value
+                        elif stored.status == ProcessingStatus.ERROR:
+                            item["status"] = BatchItemStatus.ERROR.value
+                            item["error_message"] = item.get("error_message") or "Pipeline hatasi"
+                        item["risk_score"] = stored.local_risk_score
+                        item["confidence_score"] = stored.audit_confidence_score
+                    else:
+                        item["status"] = BatchItemStatus.ERROR.value
+                        item["error_message"] = "Islem sonucu bulunamadi"
+                else:
+                    stored = _processing_store.get(item["session_id"])
+                    if stored and stored.status == ProcessingStatus.ERROR:
+                        item["status"] = BatchItemStatus.ERROR.value
+                        item["error_message"] = stored.message or "Pipeline hatasi"
+                    else:
+                        item["status"] = BatchItemStatus.ERROR.value
+                        item["error_message"] = "Model ciktisi uretilemedi (OCR/LMM hatasi)"
+            except asyncio.CancelledError:
+                item["status"] = BatchItemStatus.ERROR.value
+                item["error_message"] = "Batch islemi iptal edildi."
+                raise
+            except Exception as exc:
+                item["status"] = BatchItemStatus.ERROR.value
+                item["error_message"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                await _release_pipeline_slot(item["session_id"])
+                _emit_batch_event(batch, item)
 
-    try:
-        import shutil
-        shutil.rmtree(temp_dir, ignore_errors=True)
-    except Exception:
-        pass
+        try:
+            zip_path = await _build_batch_zip(batch_id)
+            batch["zip_path"] = str(zip_path)
+            batch["zip_size_bytes"] = zip_path.stat().st_size
+            batch["zip_error"] = None
+            batch["zip_ready"] = True
+        except Exception as exc:
+            logger.error("Batch ZIP olusturulamadi: %s", exc)
+            batch["zip_ready"] = False
+            batch["zip_error"] = "ZIP paketi olusturulamadi."
+    finally:
+        batch["terminal"] = True
+        batch["completed_at"] = datetime.now(timezone.utc).isoformat()
+        _emit_batch_event(batch, item=None)
+        batch_queue = _batch_queues.get(batch_id)
+        if batch_queue is not None:
+            try:
+                batch_queue.put_nowait("__BATCH_COMPLETE__")
+            except asyncio.QueueFull:
+                pass
+        if temp_dir:
+            try:
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 async def _build_batch_zip(batch_id: str) -> Path:
@@ -1285,6 +1547,11 @@ async def _build_batch_zip(batch_id: str) -> Path:
             i for i in batch["items"]
             if i["status"] == BatchItemStatus.ERROR.value
         ]
+        rejected_items = [
+            i for i in batch["items"]
+            if i["status"] == BatchItemStatus.REJECTED.value
+        ]
+        failed_items = error_items + rejected_items
         with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
             # xml/ dizini
             for item in completed_items:
@@ -1296,8 +1563,9 @@ async def _build_batch_zip(batch_id: str) -> Path:
                 output_xml = log_dir / "shipping_instruction_output.xml"
                 xml_file = approved_xml if approved_xml.exists() else output_xml
                 if xml_file.exists():
-                    safe_name = item["original_filename"].rsplit(".", 1)[0]
-                    zf.write(str(xml_file), f"xml/SI_{safe_name}.xml")
+                    safe_name = _safe_archive_stem(item["original_filename"])
+                    item_id = item.get("item_id") or sid
+                    zf.write(str(xml_file), f"xml/SI_{item_id}_{safe_name}.xml")
 
             # audit_reports/ dizini
             for item in completed_items:
@@ -1307,8 +1575,9 @@ async def _build_batch_zip(batch_id: str) -> Path:
                 log_dir = settings.logs_dir / sid
                 audit_files = sorted(log_dir.glob("*audit*.json")) + sorted(log_dir.glob("*review*.json"))
                 for af in audit_files:
-                    safe_name = item["original_filename"].rsplit(".", 1)[0]
-                    zf.write(str(af), f"audit_reports/{safe_name}_{af.name}")
+                    safe_name = _safe_archive_stem(item["original_filename"])
+                    item_id = item.get("item_id") or sid
+                    zf.write(str(af), f"audit_reports/{item_id}_{safe_name}_{af.name}")
 
             # BATCH_SUMMARY.json
             summary = {
@@ -1317,11 +1586,14 @@ async def _build_batch_zip(batch_id: str) -> Path:
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "total_files": batch["total_count"],
                 "successful": len(completed_items),
-                "errors": len(error_items),
+                "errors": len(failed_items),
+                "processing_errors": len(error_items),
+                "rejected": len(rejected_items),
                 "document_language": batch["document_language"],
                 "output_language": batch["output_language"],
                 "items": [
                     {
+                        "item_id": i.get("item_id"),
                         "filename": i["original_filename"],
                         "status": i["status"],
                         "session_id": i.get("session_id"),
@@ -1335,18 +1607,19 @@ async def _build_batch_zip(batch_id: str) -> Path:
             zf.writestr("BATCH_SUMMARY.json", json.dumps(summary, ensure_ascii=False, indent=2))
 
             # HATALI_DOSYALAR_RAPORU.json
-            if error_items:
+            if failed_items:
                 error_report = {
                     "title": "Hatali Dosyalar Raporu",
                     "batch_id": batch_id,
-                    "error_count": len(error_items),
+                    "error_count": len(failed_items),
                     "errors": [
                         {
                             "filename": i["original_filename"],
+                            "status": i["status"],
                             "error_message": i.get("error_message", "Bilinmeyen hata"),
                             "session_id": i.get("session_id"),
                         }
-                        for i in error_items
+                        for i in failed_items
                     ],
                 }
                 zf.writestr("HATALI_DOSYALAR_RAPORU.json",
@@ -1358,6 +1631,10 @@ async def _build_batch_zip(batch_id: str) -> Path:
 
 async def _batch_event_generator(batch_id: str) -> AsyncGenerator[str, None]:
     """Batch SSE event ureteci."""
+    batch = _batch_store.get(batch_id)
+    if batch is not None and batch.get("terminal"):
+        yield f"data: {json.dumps(_batch_completion_payload(batch_id))}\n\n"
+        return
     batch_queue = _get_or_create_batch_queue(batch_id)
     timeout = float(settings.sse_timeout_seconds)
     try:
@@ -1365,16 +1642,22 @@ async def _batch_event_generator(batch_id: str) -> AsyncGenerator[str, None]:
             try:
                 data = await asyncio.wait_for(batch_queue.get(), timeout=timeout)
             except asyncio.TimeoutError:
+                batch = _batch_store.get(batch_id)
+                if batch is not None and batch.get("terminal"):
+                    yield f"data: {json.dumps(_batch_completion_payload(batch_id))}\n\n"
+                    break
                 yield f"data: {json.dumps({'batch_id': batch_id, 'timeout': True})}\n\n"
                 break
             if data == "__BATCH_COMPLETE__":
-                yield f"data: {json.dumps({'batch_id': batch_id, 'status': 'COMPLETE', 'message': 'Batch isleme tamamlandi'})}\n\n"
+                yield f"data: {json.dumps(_batch_completion_payload(batch_id))}\n\n"
                 break
             yield f"data: {data}\n\n"
     except asyncio.CancelledError:
         pass
     finally:
-        _batch_queues.pop(batch_id, None)
+        batch = _batch_store.get(batch_id)
+        if batch is None or batch.get("terminal"):
+            _batch_queues.pop(batch_id, None)
 
 
 
@@ -1387,6 +1670,7 @@ async def batch_upload(
     translation_enabled: bool = Form(True),
 ):
     """Toplu belge yukleme: 50'ye kadar PDF/DOCX/XML/PNG/JPEG."""
+    await _maybe_cleanup_expired_batch_archives()
     client_ip = request.client.host if request.client else "unknown"
     retry_after = _check_batch_rate_limit(client_ip)
     if retry_after is not None:
@@ -1405,15 +1689,23 @@ async def batch_upload(
         )
     if not files:
         return JSONResponse(status_code=422, content={"detail": "En az bir dosya gerekli."})
+    if not await _ensure_batch_capacity():
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Batch kapasitesi dolu. Devam eden islemlerin tamamlanmasini bekleyin."},
+            headers={"Retry-After": "30"},
+        )
 
     temp_dir = tempfile.mkdtemp(prefix="cerberus_batch_")
     batch_id = _create_batch_id()
     items: list[dict] = []
     rejected: list[dict] = []
 
-    for f in files:
-        safe_name = f"{batch_id}_{Path(f.filename or 'unknown').name}"
+    for file_index, f in enumerate(files):
+        item_id = f"item-{file_index + 1}"
+        safe_name = f"{batch_id}_{file_index + 1:03d}_{Path(f.filename or 'unknown').name}"
         item = {
+            "item_id": item_id,
             "filename": safe_name,
             "original_filename": f.filename or "unknown",
             "status": BatchItemStatus.VALIDATING.value,
@@ -1447,23 +1739,22 @@ async def batch_upload(
         "batch_id": batch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "total_count": total_count,
-        "error_count": 0,
+        "error_count": len(rejected),
         "items": all_items,
         "document_language": doc_lang,
         "output_language": out_lang,
         "translation_enabled": translation_enabled,
+        "runtime_snapshot": _capture_processing_runtime_snapshot(),
         "zip_ready": False,
         "zip_path": None,
         "zip_size_bytes": None,
+        "zip_error": None,
+        "terminal": False,
+        "completed_at": None,
         "_temp_dir": temp_dir,
     }
     _batch_store[batch_id] = batch
-    if len(_batch_store) > _MAX_BATCH_STORE:
-        oldest = sorted(_batch_store.keys())[:max(1, len(_batch_store) - _MAX_BATCH_STORE)]
-        for old_id in oldest:
-            _batch_store.pop(old_id, None)
-            _batch_queues.pop(old_id, None)
-            _batch_tasks.pop(old_id, None)
+    _get_or_create_batch_queue(batch_id)
 
     task = asyncio.create_task(_process_batch(batch_id))
     _batch_tasks[batch_id] = task
@@ -1483,6 +1774,7 @@ async def batch_upload(
 @router.get("/batch/{batch_id}/status")
 async def batch_status(batch_id: str):
     """Batch durumunu dondurur."""
+    await _maybe_cleanup_expired_batch_archives()
     batch = _batch_store.get(batch_id)
     if batch is None:
         return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
@@ -1511,13 +1803,15 @@ async def batch_status(batch_id: str):
         created_at=batch["created_at"],
         total_count=total,
         completed_count=completed,
-        error_count=batch.get("error_count", 0),
+        error_count=_compute_error_count(batch),
         percent=percent,
         current_file=current,
         current_status=current_status,
         items=[BatchItemResult(**i) for i in batch["items"]],
         zip_ready=batch.get("zip_ready", False),
+        zip_error=batch.get("zip_error"),
         zip_size_bytes=batch.get("zip_size_bytes"),
+        terminal=batch.get("terminal", False),
     )
 
 
@@ -1542,6 +1836,7 @@ async def batch_stream(batch_id: str):
 @router.get("/batch/{batch_id}/download")
 async def batch_download(batch_id: str):
     """Batch ZIP paketini indirir."""
+    await _maybe_cleanup_expired_batch_archives()
     batch = _batch_store.get(batch_id)
     if batch is None:
         return JSONResponse(status_code=404, content={"detail": "Batch bulunamadi."})
@@ -1553,13 +1848,10 @@ async def batch_download(batch_id: str):
         return JSONResponse(status_code=500, content={"detail": "ZIP dosyasi bulunamadi."})
 
     zip_path_obj = Path(zip_path)
-    return Response(
-        content=zip_path_obj.read_bytes(),
+    return FileResponse(
+        path=zip_path_obj,
         media_type="application/zip",
-        headers={
-            "Content-Disposition": f"attachment; filename=\"batch_results_{batch_id}.zip\"",
-            "Content-Length": str(zip_path_obj.stat().st_size),
-        },
+        filename=f"batch_results_{batch_id}.zip",
     )
 
 
@@ -1573,14 +1865,23 @@ async def batch_cancel(batch_id: str):
     batch_task = _batch_tasks.pop(batch_id, None)
     if batch_task is not None and not batch_task.done():
         batch_task.cancel()
+        try:
+            await batch_task
+        except asyncio.CancelledError:
+            pass
 
     for item in batch["items"]:
         if item["status"] in (BatchItemStatus.QUEUED.value, BatchItemStatus.PROCESSING.value):
             item["status"] = BatchItemStatus.ERROR.value
             item["error_message"] = "Batch kullanici tarafindan iptal edildi."
 
-    batch["zip_ready"] = True
+    _remove_batch_zip(batch, "Batch kullanici tarafindan iptal edildi.")
+    batch["terminal"] = True
+    batch["completed_at"] = datetime.now(timezone.utc).isoformat()
     _emit_batch_event(batch, item=None)
+    queue = _batch_queues.get(batch_id)
+    if queue is not None:
+        await queue.put("__BATCH_COMPLETE__")
 
     temp_dir = batch.pop("_temp_dir", None)
     if temp_dir:
@@ -1626,7 +1927,6 @@ async def get_ocr_boxes(session_id: str):
 @router.post("/sessions/export")
 async def export_sessions(request: dict):
     """Export approved/completed session XMLs as a ZIP archive."""
-    import io
     import zipfile
 
     session_ids = request.get("session_ids", [])
@@ -1691,6 +1991,7 @@ async def _save_instruction(
     session_id: str,
     request: SaveInstructionRequest,
     approve: bool,
+    http_request: Request | None = None,
 ):
     if session_id not in _session_models:
         return JSONResponse(
@@ -1698,13 +1999,19 @@ async def _save_instruction(
             content={"error": f"No processing found for session {session_id}"},
         )
     async with _get_session_lock(session_id):
-        return await _save_instruction_locked(session_id, request, approve)
+        return await _save_instruction_locked(
+            session_id,
+            request,
+            approve,
+            http_request=http_request,
+        )
 
 
 async def _save_instruction_locked(
     session_id: str,
     request: SaveInstructionRequest,
     approve: bool,
+    http_request: Request | None = None,
 ):
     if session_id not in _session_models:
         return JSONResponse(
@@ -1745,6 +2052,18 @@ async def _save_instruction_locked(
                 "missing_fields": [field.model_dump(mode="json") for field in missing_fields],
                 **review_data,
             },
+        )
+    elif approve:
+        instruction.document_status_code = DocumentStatusCode.FINAL
+        xml_content = await _run_blocking(shipping_instruction_to_xml, instruction)
+    else:
+        instruction.document_status_code = DocumentStatusCode.DRAFT
+        xml_content = await _run_blocking(shipping_instruction_to_xml, instruction)
+
+    if http_request is not None and await http_request.is_disconnected():
+        return JSONResponse(
+            status_code=499,
+            content={"error": "Client disconnected before mutation was committed."},
         )
 
     status = ProcessingStatus.COMPLETED if approve else ProcessingStatus.DRAFT
@@ -1791,23 +2110,36 @@ async def _save_instruction_locked(
 async def save_draft(
     session_id: str,
     request: SaveInstructionRequest,
+    http_request: Request,
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
-    return await _save_instruction(session_id, request, approve=False)
+    return await _save_instruction(
+        session_id,
+        request,
+        approve=False,
+        http_request=http_request,
+    )
 
 
 @router.post("/sessions/{session_id}/approve")
 async def approve_instruction(
     session_id: str,
     request: SaveInstructionRequest,
+    http_request: Request,
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
-    return await _save_instruction(session_id, request, approve=True)
+    return await _save_instruction(
+        session_id,
+        request,
+        approve=True,
+        http_request=http_request,
+    )
 
 
 @router.post("/sessions/{session_id}/cloud-review")
 async def run_manual_cloud_review(
     session_id: str,
+    request: Request,
     _rate_limit: None = Depends(enforce_upload_rate_limit),
 ):
     if session_id not in _session_models or session_id not in _processing_store:
@@ -1816,10 +2148,20 @@ async def run_manual_cloud_review(
             content={"error": f"No processing found for session {session_id}"},
         )
     async with _get_session_lock(session_id):
-        return await _run_manual_cloud_review_locked(session_id)
+        if await request.is_disconnected():
+            return JSONResponse(
+                status_code=499,
+                content={"error": "Client disconnected before cloud review."},
+            )
+        return await _run_manual_cloud_review_locked(session_id, request)
 
 
-async def _run_manual_cloud_review_locked(session_id: str):
+async def _wait_for_request_disconnect(request: Request) -> None:
+    while not await request.is_disconnected():
+        await asyncio.sleep(0.1)
+
+
+async def _run_manual_cloud_review_locked(session_id: str, request: Request):
     instruction = _session_models.get(session_id)
     stored_result = _processing_store.get(session_id)
     if instruction is None or stored_result is None:
@@ -1852,16 +2194,46 @@ async def _run_manual_cloud_review_locked(session_id: str):
     )
     try:
         async with cloud_review_semaphore:
+            if await request.is_disconnected():
+                return JSONResponse(
+                    status_code=499,
+                    content={"error": "Client disconnected before cloud review."},
+                )
             latest_result = _processing_store.get(session_id)
             if latest_result and latest_result.cloud_review_used:
                 return JSONResponse(content=latest_result.model_dump(mode="json"))
-            review_data, _ = await _execute_cloud_review(
-                session_id,
-                instruction,
-                assessment,
-                stored_result.raw_ocr_text or "",
-                "manual",
+            review_task = asyncio.create_task(
+                _execute_cloud_review(
+                    session_id,
+                    instruction,
+                    assessment,
+                    stored_result.raw_ocr_text or "",
+                    "manual",
+                )
             )
+            disconnect_task = asyncio.create_task(
+                _wait_for_request_disconnect(request)
+            )
+            try:
+                completed_tasks, _ = await asyncio.wait(
+                    {review_task, disconnect_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                for pending_task in (review_task, disconnect_task):
+                    if not pending_task.done():
+                        pending_task.cancel()
+                await asyncio.gather(
+                    review_task,
+                    disconnect_task,
+                    return_exceptions=True,
+                )
+            if disconnect_task in completed_tasks:
+                return JSONResponse(
+                    status_code=499,
+                    content={"error": "Client disconnected during cloud review."},
+                )
+            review_data, _ = review_task.result()
     except Exception as error:
         log_cloud_review_report(
             session_id,
@@ -1946,6 +2318,7 @@ async def upload_and_stream(
             document_language,
             output_language,
             translation_enabled,
+            _capture_processing_runtime_snapshot(),
         )
     )
 

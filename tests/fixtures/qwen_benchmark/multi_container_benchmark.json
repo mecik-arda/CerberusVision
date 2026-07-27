@@ -74,7 +74,7 @@
     "cargo_items": [
       {
         "package_quantity": 32,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "MDF LAMINATE FLOOR",
         "weight": {
           "weight_value": 24776.0,
@@ -87,7 +87,7 @@
       },
       {
         "package_quantity": 18,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "CERAMIC TILES",
         "weight": {
           "weight_value": 11800.0,
@@ -100,7 +100,7 @@
       },
       {
         "package_quantity": 28,
-        "package_kind_code": "CRATE",
+        "package_kind_code": "CR",
         "description_of_goods": "STEEL PIPES",
         "weight": {
           "weight_value": 22900.0,
@@ -113,7 +113,7 @@
       },
       {
         "package_quantity": 10,
-        "package_kind_code": "PALLET",
+        "package_kind_code": "PL",
         "description_of_goods": "FROZEN VEGETABLES",
         "weight": {
           "weight_value": 7600.0,
@@ -126,7 +126,7 @@
       },
       {
         "package_quantity": 22,
-        "package_kind_code": "BOX",
+        "package_kind_code": "BX",
         "description_of_goods": "TEXTILE FABRICS",
         "weight": {
           "weight_value": 17200.0,

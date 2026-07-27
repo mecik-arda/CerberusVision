@@ -1,0 +1,215 @@
+{
+  "shipping_instruction_reference": "SI-MULTI-001",
+  "document_status_code": null,
+  "shipping_instruction_date_time": "2026-03-10T00:00:00",
+  "carrier_booking_reference": "BKG-998877",
+  "transport_document_type": null,
+  "freight_payment_term_code": "PPD",
+  "issue_date": null,
+  "place_of_issue": null,
+  "export_declaration_number": null,
+  "service_contract_reference": null,
+  "parties": [
+    {
+      "party_role_code": "SHI",
+      "party_id": null,
+      "party_name": "GLOBAL TRADE LTD",
+      "address": {
+        "street": null,
+        "city": "HAMBURG",
+        "postal_code": null,
+        "country_code": "DE"
+      },
+      "contact_details": null,
+      "same_as_consignee": null
+    },
+    {
+      "party_role_code": "CON",
+      "party_id": null,
+      "party_name": "EASTERN IMPORTS",
+      "address": {
+        "street": null,
+        "city": "DUBAI",
+        "postal_code": null,
+        "country_code": "AE"
+      },
+      "contact_details": null,
+      "same_as_consignee": null
+    }
+  ],
+  "transport_plans": [
+    {
+      "leg_sequence_number": 1,
+      "transport_mode": "SEA",
+      "port_of_loading": {
+        "un_location_code": null,
+        "location_name": "HAMBURG"
+      },
+      "port_of_discharge": {
+        "un_location_code": null,
+        "location_name": "JEBEL ALI"
+      },
+      "place_of_receipt": null,
+      "place_of_delivery": null,
+      "carrier_voyage_number": null,
+      "vessel_imo_number": null
+    }
+  ],
+  "equipment_list": [
+    {
+      "equipment_reference": "MSKU1234567",
+      "iso_equipment_code": "45G1",
+      "is_shipper_owned": null,
+      "cargo_gross_weight": {
+        "weight": 26080.0,
+        "unit": "KGM"
+      },
+      "verified_gross_mass": null,
+      "seals": null,
+      "tare_weight": null
+    },
+    {
+      "equipment_reference": "TGHU7654321",
+      "iso_equipment_code": "22G1",
+      "is_shipper_owned": null,
+      "cargo_gross_weight": {
+        "weight": 12500.0,
+        "unit": "KGM"
+      },
+      "verified_gross_mass": null,
+      "seals": null,
+      "tare_weight": null
+    },
+    {
+      "equipment_reference": "MSCU9988776",
+      "iso_equipment_code": "45G1",
+      "is_shipper_owned": null,
+      "cargo_gross_weight": {
+        "weight": 24300.0,
+        "unit": "KGM"
+      },
+      "verified_gross_mass": null,
+      "seals": null,
+      "tare_weight": null
+    },
+    {
+      "equipment_reference": "CMAU5566778",
+      "iso_equipment_code": "22R1",
+      "is_shipper_owned": null,
+      "cargo_gross_weight": {
+        "weight": 8200.0,
+        "unit": "KGM"
+      },
+      "verified_gross_mass": null,
+      "seals": null,
+      "tare_weight": null
+    },
+    {
+      "equipment_reference": "OOLU1122334",
+      "iso_equipment_code": "42G1",
+      "is_shipper_owned": null,
+      "cargo_gross_weight": {
+        "weight": 18750.0,
+        "unit": "KGM"
+      },
+      "verified_gross_mass": null,
+      "seals": null,
+      "tare_weight": null
+    }
+  ],
+  "cargo_items": [
+    {
+      "package_quantity": 32,
+      "package_kind_code": "PALLET",
+      "description_of_goods": "MDF LAMINATE FLOOR",
+      "shipping_marks": null,
+      "commodity_code": null,
+      "weight": {
+        "weight_value": 24776.0,
+        "unit": "KGM"
+      },
+      "volume": {
+        "volume_value": 28.16,
+        "unit": "CBM"
+      },
+      "equipment_references": null,
+      "dangerous_goods_list": null
+    },
+    {
+      "package_quantity": 18,
+      "package_kind_code": "PALLET",
+      "description_of_goods": "CERAMIC TILES",
+      "shipping_marks": null,
+      "commodity_code": null,
+      "weight": {
+        "weight_value": 11800.0,
+        "unit": "KGM"
+      },
+      "volume": {
+        "volume_value": 15.4,
+        "unit": "CBM"
+      },
+      "equipment_references": null,
+      "dangerous_goods_list": null
+    },
+    {
+      "package_quantity": 28,
+      "package_kind_code": "CRATE",
+      "description_of_goods": "STEEL PIPES",
+      "shipping_marks": null,
+      "commodity_code": null,
+      "weight": {
+        "weight_value": 22900.0,
+        "unit": "KGM"
+      },
+      "volume": {
+        "volume_value": 22.8,
+        "unit": "CBM"
+      },
+      "equipment_references": null,
+      "dangerous_goods_list": null
+    },
+    {
+      "package_quantity": 10,
+      "package_kind_code": "PALLET",
+      "description_of_goods": "FROZEN VEGETABLES",
+      "shipping_marks": null,
+      "commodity_code": null,
+      "weight": {
+        "weight_value": 7600.0,
+        "unit": "KGM"
+      },
+      "volume": {
+        "volume_value": 9.5,
+        "unit": "CBM"
+      },
+      "equipment_references": null,
+      "dangerous_goods_list": null
+    },
+    {
+      "package_quantity": 22,
+      "package_kind_code": "BOX",
+      "description_of_goods": "TEXTILE FABRICS",
+      "shipping_marks": null,
+      "commodity_code": null,
+      "weight": {
+        "weight_value": 17200.0,
+        "unit": "KGM"
+      },
+      "volume": {
+        "volume_value": 19.3,
+        "unit": "CBM"
+      },
+      "equipment_references": null,
+      "dangerous_goods_list": null
+    }
+  ],
+  "document_references": [
+    {
+      "type_code": "BL",
+      "reference_number": "BKG-998877"
+    }
+  ],
+  "customs_information": null,
+  "remarks": null
+}

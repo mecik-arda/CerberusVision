@@ -220,6 +220,8 @@ Her iki dizindeki `training_origin.json`, kaynak ZIP adını ve ZIP SHA-256
 değerini taşır. Model ağırlıkları `models/` altında tutulduğu için Git'e
 eklenmez.
 
+> **Not:** Phase 5 ve sonraki model eğitim paketlerine ait büyük boyutlu dosyalar (`.safetensors`, `.pt`, `.pth`, `tokenizer.json`, `checkpoint-*/`, `adapter_best/`) Github zaman aşımı ve dosya boyutu sınırları sebebiyle Git geçmişinden dışlanmıştır (`.gitignore`). Bu dosyalar yerel makinede saklanmalı veya ayrı bir bulut depolama üzerinden paylaşılmalıdır.
+
 ### Qwen-2.5 LoRA Eğitimi ve Benchmark Değerlendirmesi
 
 Modelin konşimento talimatı belgelerindeki JSON ayrıştırma başarısını artırmak
@@ -684,9 +686,78 @@ JSON raporu (`--output`) ve HTML raporu (`--html`).
 
 Tüm 13 belge **XSD doğrulamasından geçti** (%100).
 
+### Phase 5 Benchmark Sonuçları (Sızıntı Önlemli & Rec 21 Kural Motoru Güçlendirmeli)
+
+Colab eğitim sürecindeki veri sızıntısının (data leakage) engellendiği **Phase 5** model profili ve arka uç (backend) kural motoruna eklenen **çift kademeli Rec 21 ambalaj normalizasyonu** sayesinde elde edilen nihai skor tablosu:
+
+| Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
+|---|---|---|---|---|
+| Belge Bilgileri | %84.6 | %54.5 | %88.7 | %67.5 |
+| Taraflar | %82.1 | %41.4 | %82.1 | %55.0 |
+| Lojistik & Taşıma | %84.4 | %48.2 | %96.4 | %64.3 |
+| Konteyner & Ekipman | %41.4 | %35.3 | %77.4 | %48.5 |
+| Yük Kalemleri | %82.3 | %67.2 | %96.5 | %79.2 |
+| **Genel** | **%72.9** | **%52.2** | **%89.8** | **%66.0** |
+
+- **XSD Doğrulaması:** %100 başarılı (Sıfır kırık JSON).
+- **İyileşme:** Kural motorundaki akıllı ambalaj kodu dönüştürmesi (örn. `"CARTON"` → `"CT"`) sayesinde *Yük Kalemleri* doğruluk oranı **%82.3**'e fırlamış ve genel doğrulukta şu ana kadarki en yüksek istikrarlı skor olan **%72.9**'a ulaşılmıştır. Phase 5, Phase 4'e kıyasla hem JSON kararlılığında hem de yapısal doğrulukta projenin yeni standardı olmuştur.
+
+### Phase 5.1 Benchmark Sonuçları (OOM Fix & Ondalık Basamak Düzeltmeli)
+
+Sıfırdan LoRA eğitimi ile Türkçe belgelerde büyük bir kazanım (TR_Konsimento: %92.30) hedeflenirken sentetik verilerin Avrupa tarzı ondalık ayırıcıları öğrenmesiyle 1000x değer kaymaları yaşandı. Ayrıca `inference.py` içindeki bir parçalama (chunking) hatası nedeniyle 5 konteynerli devasa belgelerde model (OOM) bellek taşkını verdi. Bu hatalar, `_split_text_by_container_refs`'in aktifleştirilmesi ve `_normalize_cargo_measurements` filtremizle aşılarak **Phase 5.1** ile CerberusVision tarihinin **en yüksek** doğruluk oranı elde edildi:
+
+| Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
+|---|---|---|---|---|
+| Belge Bilgileri | %83.1 | %51.4 | %87.1 | %64.7 |
+| Taraflar | %91.0 | %41.2 | %93.8 | %57.3 |
+| Lojistik & Taşıma | %84.4 | %46.5 | %96.4 | %62.8 |
+| Konteyner & Ekipman | %42.2 | %40.5 | %77.8 | %53.3 |
+| Yük Kalemleri | %80.4 | %67.8 | %96.5 | %79.6 |
+| **Genel** | **%73.3** | **%52.7** | **%91.5** | **%66.8** |
+
+- **XSD Doğrulaması:** %100 başarılı (Sıfır kırık JSON).
+- **İyileşme:** Genel doğruluk %73.3 ile Phase 5'i geride bırakarak rekor kırdı. OOM hatası tamamen ortadan kalktı ve `TR_Konsimento_Talimati` belgesinde %92.30 gibi mükemmel bir skora ulaşıldı. Artık Phase 5.1, CerberusVision'ın amiral gemisidir.
+
+### Phase 5.3 Benchmark Sonuçları (Sıfırdan Eğitim & Hata Giderimi)
+
+**Phase 5.3**, Phase 5.1/5.2 denemelerindeki veri kalitesi sorunlarını (örneğin aşırı konteyner sayısının yol açtığı metin kırpılmaları ve tokenizasyon sorunlarını) tamamen temizlenmiş, yepyeni bir "from-scratch" QLoRA eğitimiyle değiştirdi. Ayrıca `inference.py` içindeki aşırı katı `_has_excessive_output_repetition` algoritmasından kaynaklanan "kusursuz JSON'ı sonsuz döngü sanma" hatası düzeltildi (window_size 24 → 64).
+
+| Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
+|---|---|---|---|---|
+| Belge Bilgileri | %80.0 | %50.0 | %85.2 | %63.0 |
+| Taraflar | %80.6 | %41.2 | %83.1 | %55.1 |
+| Lojistik & Taşıma | %87.5 | %47.5 | %96.5 | %63.6 |
+| Konteyner & Ekipman | %41.4 | %45.3 | %77.4 | %57.1 |
+| Yük Kalemleri | %80.4 | %68.3 | %96.5 | %80.0 |
+| **Genel** | **%71.5** | **%54.1** | **%89.4** | **%67.4** |
+
+- **XSD Doğrulaması:** %100 başarılı (13/13 belge yapısal olarak hatasızdır).
+- **Konteyner ve Çoklu Kalem Başarısı:** `Multi_Container_5_Equipment` testi önceki sürümlerde çökerken, Phase 5.3'te kusursuz çalıştı ve **%69.7** doğruluk oranı yakaladı.
+- **F1 Skor Rekoru:** Modelin Karar Tutarlılığı (F1-Skoru) %67.4 ile proje tarihinin en yüksek seviyesine ulaştı. Kesinlik oranında (%54.1) ciddi bir sıçrama yaşandı.
+- **Yük Kalemleri:** Yük kalemleri kategorisindeki F1 Skoru %80.0 gibi çok yüksek bir değere çıktı.
+
 Bu 13 vaka önceki eğitim akışında kullanılmış olabileceğinden yalnızca kod
 regresyonlarını karşılaştırmak için kullanılır. Model genellemesi, eğitim ve prompt
 geliştirme süreçlerinde hiç kullanılmamış ayrı bir holdout veri setiyle ölçülmelidir.
+
+### Phase 6.1 Benchmark Sonuçları (ERP Entegrasyonu & Regresyon Testi)
+
+**Phase 6.1**, Phase 5.3'ün kusursuz çalışan ML motoruna dokunmadan, üretilen XML/JSON çıktısını simüle edilmiş bir ERP API'sine (Soft İş Çözümleri) aktaran otonom "Tool Calling" yapısını eklemiştir. `app/integrations/erp_actions.py` modülü ile "Loose Coupling" prensibi kurularak model hiçbir şekilde yeni bir veriye veya prompt'a zorlanmamış, arka uçta pydantic dönüşümü yapılmıştır.
+
+ML modeli değişmediği için Phase 6.1 regresyon testi skorları Phase 5.3 ile neredeyse tamamen aynıdır (ufak tefek ML varyasyonlarıyla %1-2 oranında yukarı yönlü bir fark gözlenmiştir):
+
+| Kategori | Doğruluk | Kesinlik | Geri Çağırma | F1 |
+|---|---|---|---|---|
+| Belge Bilgileri | %80.0 | %50.5 | %85.2 | %63.4 |
+| Taraflar | %91.0 | %42.4 | %95.3 | %58.6 |
+| Lojistik & Taşıma | %87.5 | %44.4 | %96.5 | %60.9 |
+| Konteyner & Ekipman | %41.4 | %45.3 | %77.4 | %57.1 |
+| Yük Kalemleri | %82.3 | %69.4 | %96.5 | %80.8 |
+| **Genel** | **%73.8** | **%54.3** | **%91.5** | **%68.1** |
+
+- **XSD Doğrulaması:** %100 başarılı (13/13 belge yapısal olarak hatasızdır).
+- **Regresyon Olmadığı Kanıtlandı:** Yapılan otonom sistem ve arayüz geliştirmeleri (ERP butonu, mock endpoint) ML çıkarım sürecini bozmamıştır. Hatta genel doğruluk %71.5'ten %73.8'e çıkmış ve F1 Skoru %68.1 ile yeni bir rekor kırmıştır.
+
 
 ### Precision safeguard doğrulaması (v4, 2026-07-23)
 
@@ -744,9 +815,10 @@ modelin sayısal ve format hatalarını düzeltir, eksik verileri OCR'dan tamaml
 - **Konteyner Tipi Motoru (`_normalize_equipment_types`):** 70+ insan yazımı kod eşlemesi
   (`40HC` ➔ `45G1`, `20GP` ➔ `22G1`, `40 REEFER` ➔ `42R1`, `45 HC REEFER` ➔ `45R1`)
   ile ISO equipment tiplerini standartlaştırır.
-- **Rec 21 Ambalaj Kodu Eşleme (Faz 2):** UN/ECE Rec 21 standardı ile 30+ insan
-  yazımı ambalaj kodu (`PALLET`➔`PL`, `CARTON`➔`CT`, `DRUM`➔`DR`) ISO kodlarına
-  dönüştürülür. "10 PALLETS CONTAINING 400 CARTONS" gibi iç içe ambalaj kalıpları
+- **Rec 21 Ambalaj Kodu Eşleme (Çift Kademeli):** UN/ECE Rec 21 standardı ile 30+ insan
+  yazımı ambalaj kodu (`PALLET`➔`PL`, `CARTON`➔`CT`, `DRUM`➔`DR`) çift kademeli 
+  filtreyle ISO kodlarına dönüştürülür. Çıkarılan ham metin önce enum kontrolüne
+  girmeden normalize edilir, böylece pydantic şema ihlalleri engellenir. "10 PALLETS CONTAINING 400 CARTONS" gibi iç içe ambalaj kalıpları
   `_NESTED_PACKAGING_PATTERN` ile iki kademeli ayrıştırılır.
 - **Tehlikeli Madde Motoru (Faz 3):** `UN\s*(\d{4})`, `CLASS\s*(\d)`,
   `PACKING\s*GROUP\s*(I{1,3})` regex kalıplarıyla UN No, IMDG Class ve Packing Group

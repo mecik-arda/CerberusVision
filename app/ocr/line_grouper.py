@@ -1,7 +1,8 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import re
-from typing import List, Tuple
+from dataclasses import dataclass
+
 from app.config import settings
 
 
@@ -30,8 +31,8 @@ class TextBox:
         return self.y_max - self.y_min
 
 
-def parse_ocr_boxes(raw_results: List) -> List[TextBox]:
-    boxes: List[TextBox] = []
+def parse_ocr_boxes(raw_results: list) -> list[TextBox]:
+    boxes: list[TextBox] = []
     if not raw_results:
         return boxes
     for entry in raw_results:
@@ -57,16 +58,16 @@ def parse_ocr_boxes(raw_results: List) -> List[TextBox]:
 
 
 def group_boxes_into_lines(
-    boxes: List[TextBox],
+    boxes: list[TextBox],
     y_threshold: float = None,
-) -> List[List[TextBox]]:
+) -> list[list[TextBox]]:
     if not boxes:
         return []
     if y_threshold is None:
         y_threshold = settings.line_grouping_y_threshold
     sorted_by_y = sorted(boxes, key=lambda b: b.center_y)
-    lines: List[List[TextBox]] = []
-    current_line: List[TextBox] = [sorted_by_y[0]]
+    lines: list[list[TextBox]] = []
+    current_line: list[TextBox] = [sorted_by_y[0]]
     line_anchor_y = sorted_by_y[0].center_y
     for box in sorted_by_y[1:]:
         if abs(box.center_y - line_anchor_y) <= y_threshold:
@@ -81,7 +82,7 @@ def group_boxes_into_lines(
 
 
 def build_line_text(
-    line_boxes: List[TextBox],
+    line_boxes: list[TextBox],
     space_factor: float = None,
 ) -> str:
     if not line_boxes:
@@ -89,7 +90,7 @@ def build_line_text(
     if space_factor is None:
         space_factor = settings.horizontal_space_factor
     sorted_boxes = sorted(line_boxes, key=lambda b: b.x_min)
-    parts: List[str] = []
+    parts: list[str] = []
     for i, box in enumerate(sorted_boxes):
         if i == 0:
             parts.append(box.text)
@@ -103,33 +104,33 @@ def build_line_text(
 
 
 def reconstruct_layout_text(
-    boxes: List[TextBox],
+    boxes: list[TextBox],
     y_threshold: float = None,
     space_factor: float = None,
 ) -> str:
     lines = group_boxes_into_lines(boxes, y_threshold)
-    page_texts: List[str] = []
+    page_texts: list[str] = []
     for line in lines:
         page_texts.append(build_line_text(line, space_factor))
     return "\n".join(page_texts)
 
 
 def process_ocr_results_to_layout_text(
-    raw_results: List,
+    raw_results: list,
     y_threshold: float = None,
     space_factor: float = None,
-) -> Tuple[str, List[TextBox]]:
+) -> tuple[str, list[TextBox]]:
     boxes = parse_ocr_boxes(raw_results)
     layout_text = reconstruct_layout_text(boxes, y_threshold, space_factor)
     return layout_text, boxes
 
 
 def segment_boxes_by_region(
-    boxes: List[TextBox],
+    boxes: list[TextBox],
     page_height: float,
     upper_ratio: float = None,
     middle_ratio: float = None,
-) -> Tuple[List[TextBox], List[TextBox], List[TextBox]]:
+) -> tuple[list[TextBox], list[TextBox], list[TextBox]]:
     if not boxes or page_height <= 0:
         return [], [], []
     if upper_ratio is None:
@@ -138,9 +139,9 @@ def segment_boxes_by_region(
         middle_ratio = settings.region_middle_ratio
     upper_boundary = page_height * upper_ratio
     middle_boundary = page_height * middle_ratio
-    upper_boxes: List[TextBox] = []
-    middle_boxes: List[TextBox] = []
-    lower_boxes: List[TextBox] = []
+    upper_boxes: list[TextBox] = []
+    middle_boxes: list[TextBox] = []
+    lower_boxes: list[TextBox] = []
     for box in boxes:
         if box.y_min < upper_boundary:
             upper_boxes.append(box)
@@ -156,11 +157,11 @@ def segment_boxes_by_region(
 
 
 def chunk_boxes_by_container(
-    boxes: List[TextBox],
+    boxes: list[TextBox],
     page_height: float,
     upper_ratio: float = None,
     middle_ratio: float = None,
-) -> List[List[TextBox]]:
+) -> list[list[TextBox]]:
     if not boxes:
         return []
     if upper_ratio is None:
@@ -188,14 +189,21 @@ def chunk_boxes_by_container(
 
 
 def reconstruct_region_texts(
-    boxes: List[TextBox],
+    boxes: list[TextBox],
     page_height: float,
     y_threshold: float = None,
     space_factor: float = None,
-) -> Tuple[str, str, str]:
+    upper_ratio: float = None,
+    middle_ratio: float = None,
+) -> tuple[str, str, str]:
     if not boxes or page_height <= 0:
         return "", "", ""
-    upper_boxes, middle_boxes, lower_boxes = segment_boxes_by_region(boxes, page_height)
+    upper_boxes, middle_boxes, lower_boxes = segment_boxes_by_region(
+        boxes,
+        page_height,
+        upper_ratio,
+        middle_ratio,
+    )
     upper_text = reconstruct_layout_text(upper_boxes, y_threshold, space_factor)
     middle_text = reconstruct_layout_text(middle_boxes, y_threshold, space_factor)
     lower_text = reconstruct_layout_text(lower_boxes, y_threshold, space_factor)
@@ -209,7 +217,7 @@ def reconstruct_region_texts(
             region_words.add(word.casefold())
     missing = all_words - region_words
     assert not missing, (
-        f"Bolge metinleri %d kelime kaybetti: ornek=%s"
+        "Bolge metinleri %d kelime kaybetti: ornek=%s"
         % (len(missing), list(missing)[:5])
     )
     return upper_text, middle_text, lower_text

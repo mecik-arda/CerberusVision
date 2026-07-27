@@ -139,22 +139,27 @@ def format_for_chat(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def git_run_metadata() -> dict[str, Any]:
+    import shutil
+    git_bin = shutil.which("git")
+    if not git_bin:
+        return {"commit_sha": None, "working_tree_dirty": False, "git_diff": None}
+
     commit_result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        [git_bin, "rev-parse", "HEAD"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
     status_result = subprocess.run(
-        ["git", "status", "--porcelain=v1"],
+        [git_bin, "status", "--porcelain=v1"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
     diff_result = subprocess.run(
-        ["git", "diff", "--binary", "HEAD"],
+        [git_bin, "diff", "--binary", "HEAD"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         check=False,
@@ -207,6 +212,7 @@ def load_model_with_quantization(
 
     tokenizer = AutoTokenizer.from_pretrained(
         base_model,
+        revision="a09a35458c702b33eeacc393d103063234e8bc28",
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -216,12 +222,14 @@ def load_model_with_quantization(
         quantization_config = BitsAndBytesConfig(**QLORA_CONFIG)
         model = AutoModelForCausalLM.from_pretrained(
             base_model,
+            revision="a09a35458c702b33eeacc393d103063234e8bc28",
             quantization_config=quantization_config,
             device_map="auto",
         )
     else:
         model = AutoModelForCausalLM.from_pretrained(
             base_model,
+            revision="a09a35458c702b33eeacc393d103063234e8bc28",
             torch_dtype=torch.float16,
             device_map="auto",
         )
@@ -250,6 +258,7 @@ def export_to_openvino(
     output_path.mkdir(parents=True, exist_ok=True)
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_id,
+        revision="a09a35458c702b33eeacc393d103063234e8bc28",
         torch_dtype=torch.float16,
         device_map="auto",
     )
@@ -260,6 +269,7 @@ def export_to_openvino(
         merged_model.save_pretrained(str(merged_path))
         tokenizer = AutoTokenizer.from_pretrained(
             str(adapter_path),
+            revision="a09a35458c702b33eeacc393d103063234e8bc28",
         )
         tokenizer.save_pretrained(str(merged_path))
         export_result = subprocess.run(
