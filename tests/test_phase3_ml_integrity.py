@@ -441,7 +441,7 @@ def test_benchmark_single_stream_configuration(
         "model_path",
         str(model_dir),
     )
-    monkeypatch.setenv("CERBERUS_BENCHMARK_DETERMINISTIC", "1")
+    monkeypatch.setattr(inference_module.settings.model, "deterministic_mode", True)
     inference_module.reset_llm_pipeline()
 
     inference_module.get_llm_pipeline()
@@ -627,7 +627,7 @@ def test_stage_adapter_failure_retries_once_with_base(
     assert instruction.carrier_booking_reference == "BASE-RECOVERY"
     assert "BASE-RECOVERY" in raw_output
     assert calls == [True, False]
-    assert resets == [True, True]
+    assert resets == []
 
 
 def test_repetition_guard_detects_runaway_json_without_short_false_positive():

@@ -24,10 +24,14 @@ _TIMEOUT_SECONDS = 30
 
 
 def webhook_log_path(session_id: str) -> Path:
-    return settings.logs_dir / session_id / "webhook_delivery.json"
+    base = settings.logs_dir.resolve()
+    target = (base / session_id / "webhook_delivery.json").resolve()
+    if not str(target).startswith(str(base)):
+        raise ValueError("Invalid session_id: path traversal detected.")
+    return target
 
 
-def log_webhook_attempt(session_id: str, attempt: int, status: str, detail: str) -> None:
+async def log_webhook_attempt(session_id: str, attempt: int, status: str, detail: str) -> None:
     record = {
         "session_id": session_id,
         "attempt": attempt,
@@ -36,8 +40,13 @@ def log_webhook_attempt(session_id: str, attempt: int, status: str, detail: str)
     }
     log_path = webhook_log_path(session_id)
     tmp_path = log_path.with_suffix(".tmp")
-    tmp_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp_path, log_path)
+
+    def _write():
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp_path, log_path)
+
+    await asyncio.to_thread(_write)
 
 
 async def deliver_approved_xml(
@@ -92,7 +101,7 @@ async def deliver_approved_xml(
             async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
                 response = await client.post(webhook_url, json=payload, headers=headers)
                 if 200 <= response.status_code < 300:
-                    log_webhook_attempt(
+                    await log_webhook_attempt(
                         session_id, attempt, "success",
                         f"HTTP {response.status_code}",
                     )
@@ -105,7 +114,7 @@ async def deliver_approved_xml(
         except Exception as exc:
             detail = str(exc)[:200]
 
-        log_webhook_attempt(session_id, attempt, "failed", detail)
+        await log_webhook_attempt(session_id, attempt, "failed", detail)
         logger.warning(
             "Webhook attempt %d/%d failed for session %s: %s",
             attempt, _MAX_RETRIES, session_id, detail,

@@ -4640,3 +4640,57 @@ tarayıcı regresyon senaryosu eklendi.
 - Tam Python regresyon paketi 270/270 başarılı.
 - Tarayıcı regresyon dosyasının JavaScript sözdizimi doğrulaması başarılı.
 - Kritik Ruff `E9,F` ve whitespace denetimleri hatasız tamamlandı.
+
+### 274. OpenVINO Kütüphanesinin Her API Çağrısında İçe Aktarılması (PERFORMANS - DÜŞÜK)
+
+**Dosyalar:** `app/routes/diagnostics.py`
+
+**Problem:**
+`health_check` ve `gpu_info` API endpoint'leri içerisinde `from openvino import Core` çağrısı yerel scope'ta yapılıyordu. Python'un modül önbelleği (sys.modules) import'u hızlandırsa da, OpenVINO gibi devasa kütüphanelerin her HTTP isteğinde tekrar import bloklarına girmesi lüzumsuz bir micro-overhead (gecikme) yaratıyordu.
+
+**Çözüm:**
+OpenVINO import işlemi dosyanın en tepesine (Global scope) alındı. Sistemin OpenVINO kurulu olmayan ortamlarda (örneğin salt CPU veya CI/CD boru hatlarında) çökmesini engellemek için defansif bir `try-except ImportError` bloğu ile sarmalandı ve `_openvino_core` Singleton benzeri bir değişkende tutuldu.
+
+### 275. Taşınan Dosyaların Çakışması (HATA - ORTA)
+
+**Dosyalar:** `app/routes/discovery.py`
+
+**Problem:**
+Lojistik belgeleri keşfedilip "Kabul Et" butonuna basıldığında dosya `accepted/` klasörüne `shutil.move` ile olduğu gibi taşınıyordu. Kullanıcı, farklı klasörlerden veya zamanlardan gelen aynı isimdeki (örn: "invoice.pdf") ikinci bir dosyayı kabul ettiğinde işletim sisteminin dosya iznine bağlı olarak `PermissionError` dönüyor ya da önceki dosyanın üzerine yazıyordu.
+
+**Çözüm:**
+Hedef dosya ismine çalışma zamanını garanti eden `time.time()` eklendi (`{dosya_adi}_{timestamp}.{uzanti}`). Bu benzersiz isimlendirme stratejisi (conflict resolution) ile aynı isme sahip dosyaların güvenle klasörde barınması sağlandı.
+
+### 276. Cloud Review (Bulut Denetimi) Butonu Orijinal Mantığının Ezilmesi (HATA - DÜŞÜK)
+
+**Dosyalar:** `static/app.js`
+
+**Problem:**
+Derin DeepSeek bulut denetimini model ile kıyaslamak (CLI diff) için `runCloudReviewBtn` üzerine yeni bir `click` olay dinleyicisi eklenmişti. Eski event fonksiyonunu korumak için `const originalRunCloudReview = runCloudReviewBtn?.onclick` yazılmış ancak bu orijinal fonksiyon yeni dinleyici içinde çalıştırılmamıştı, bu da önceki yeteneklerin kaybolması riskini doğuruyordu.
+
+**Çözüm:**
+Yeni `addEventListener` olayının en üstüne `if (originalRunCloudReview) originalRunCloudReview.apply(runCloudReviewBtn, [e]);` kontrolü eklendi. Böylece tuşun hem orijinal analizi hem de yeni kıyaslama isteğini paralel olarak başarıyla yönetmesi sağlandı.
+
+### 277. Arama Sağlayıcılarının (Brave/Google) API Anahtarlarının Silinememesi (HATA - DÜŞÜK/ORTA)
+
+**Dosyalar:** `app/routes/processing.py`
+
+**Problem:**
+Kullanıcı "Ayarlar" menüsünden `Brave` veya `Google` API anahtarlarını temizleyip boş bıraktığında (`""`), arka uçtaki `if brave_key_value:` (dolu mu) kontrolü nedeniyle bu silme isteği tamamen yok sayılıyordu. DeepSeek anahtarı özel bir bayrak (`clear_deepseek_api_key`) ile silinebilirken, arama sağlayıcılarının API anahtarlarını sıfırlamanın veya iptal etmenin hiçbir yolu bulunmuyordu. Yanlış girilen bir anahtar kalıcı hale geliyordu.
+
+**Çözüm:**
+API anahtarı kontrolleri güncellenerek değerin boş olması durumunda değeri korumak yerine yapılandırmada `None` ataması sağlandı. `settings.document_search.brave_api_key = brave_key_value if brave_key_value else None` yapısı kullanılarak boş stringlerin (kullanıcının silme talebi) sistemden ilgili API anahtarını tamamen temizlemesine izin verildi.
+
+### 278. Yeni Arayüz Butonlarının Frontend Testlerini (Pytest) Bozması (HATA - DÜŞÜK)
+
+**Dosyalar:** `tests/test_frontend_ui.py`
+
+**Problem:**
+Sisteme eklenen yeni Diagnostik, Benchmark ve Keşif (Discovery) modüllerinin arayüz butonları (`discoveryBtn`, `benchmarkBtn`, `diagnosticsBtn`, `discoveryStartBtn`, vb.), arayüzdeki her statik butonun tanımlı bir dinleyicisi olmasını zorunlu kılan `test_every_static_button_has_an_explicit_behavior_contract` testine takıldı. Testin beyaz listesinde bu yeni butonlar yer almadığı için uçtan uca testler `AssertionError` fırlatarak başarısız oldu. Ayrıca test bloğu yalnızca `.addEventListener` sözdizimini kontrol ediyor, opsiyonel zincirlemeye (`?.addEventListener`) izin vermiyordu.
+
+**Çözüm:**
+1. Eklenen 8 yeni buton (`discoveryBtn`, `benchmarkBtn`, `diagnosticsBtn`, `discoveryStartBtn`, `benchmarkStartBtn`, `benchmarkDownloadHtml`, `benchmarkDownloadJson`, `diagnosticsRunBtn`) testin `interactive_button_ids` beyaz listesine eklendi.
+2. Testin denetim mantığı güncellenerek opsiyonel zincirleme (`?.addEventListener`) kullanımına izin verildi. Testler 270/270 başarı oranıyla düzeltildi.
+
+
+

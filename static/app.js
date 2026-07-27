@@ -110,6 +110,46 @@ const correctionSaveBtn = document.getElementById('correctionSaveBtn');
 const appNavigation = document.querySelector('nav');
 const appMain = document.querySelector('main');
 
+// New Panel Bindings
+const discoveryBtn = document.getElementById('discoveryBtn');
+const discoveryPanel = document.getElementById('discoveryPanel');
+const discoveryStatusBadge = document.getElementById('discoveryStatusBadge');
+const discoveryQuery = document.getElementById('discoveryQuery');
+const discoveryProvider = document.getElementById('discoveryProvider');
+const discoveryMaxResults = document.getElementById('discoveryMaxResults');
+const discoveryStartBtn = document.getElementById('discoveryStartBtn');
+const discoveryProgressContainer = document.getElementById('discoveryProgressContainer');
+const discoveryProgressFill = document.getElementById('discoveryProgressFill');
+const discoveryProgressText = document.getElementById('discoveryProgressText');
+const discoveryResultsContainer = document.getElementById('discoveryResultsContainer');
+const discoveryResultsBody = document.getElementById('discoveryResultsBody');
+
+const benchmarkBtn = document.getElementById('benchmarkBtn');
+const benchmarkPanel = document.getElementById('benchmarkPanel');
+const benchmarkStatusBadge = document.getElementById('benchmarkStatusBadge');
+const benchmarkStartBtn = document.getElementById('benchmarkStartBtn');
+const benchmarkProgressContainer = document.getElementById('benchmarkProgressContainer');
+const benchmarkProgressFill = document.getElementById('benchmarkProgressFill');
+const benchmarkProgressText = document.getElementById('benchmarkProgressText');
+const benchmarkResultsContainer = document.getElementById('benchmarkResultsContainer');
+const benchmarkCategoryCards = document.getElementById('benchmarkCategoryCards');
+const benchmarkOverallCard = document.getElementById('benchmarkOverallCard');
+const benchmarkDownloadHtml = document.getElementById('benchmarkDownloadHtml');
+const benchmarkDownloadJson = document.getElementById('benchmarkDownloadJson');
+
+const diagnosticsBtn = document.getElementById('diagnosticsBtn');
+const diagnosticsPanel = document.getElementById('diagnosticsPanel');
+const diagnosticsRunBtn = document.getElementById('diagnosticsRunBtn');
+const diagnosticsResultContainer = document.getElementById('diagnosticsResultContainer');
+const diagnosticsBadges = document.getElementById('diagnosticsBadges');
+const gpuInfoDetails = document.getElementById('gpuInfoDetails');
+const diagnosticsLastRun = document.getElementById('diagnosticsLastRun');
+
+const searchProvider = document.getElementById('searchProvider');
+const braveApiKeyInput = document.getElementById('braveApiKeyInput');
+const googleApiKeyInput = document.getElementById('googleApiKeyInput');
+const googleEngineIdInput = document.getElementById('googleEngineIdInput');
+
 const TRANSLATIONS = {
     tr: {
         'settings.unsavedChanges': 'İstek sırasında yeni değişiklik yapıldı. Yeni seçimleriniz korunuyor; yeniden kaydedin.',
@@ -701,6 +741,9 @@ function renderRuntimeSettings(data) {
     stageTimeoutValue.textContent = (inferenceConfig.stage_timeout_seconds || 300) + ' sn';
     deepSeekReviewMode.value = data.deepseek?.review_mode || 'risk';
     deepSeekRiskThreshold.value = data.deepseek?.risk_threshold ?? 30;
+    const searchConfig = data.document_search || {};
+    searchProvider.value = searchConfig.provider || 'auto';
+    googleEngineIdInput.value = searchConfig.google_engine_id || '';
     renderDetectedModels(data.installed_models || []);
     settingsStatus.textContent = `DeepSeek: ${t(data.deepseek?.configured ? 'settings.configured' : 'settings.notConfigured')}`;
     if (!runtimePreferencesHydrated) {
@@ -768,10 +811,16 @@ async function saveRuntimeSettings() {
         region_upper_ratio: Number(regionUpperRatio.value) / 100,
         region_middle_ratio: Number(regionMiddleRatio.value) / 100,
         stage_timeout_seconds: Number(stageTimeout.value),
+        search_provider: searchProvider.value,
+        google_search_engine_id: googleEngineIdInput.value.trim() || undefined,
     };
     if (selectedModelPath.value) payload.local_model_path = selectedModelPath.value;
     const deepSeekKey = deepSeekApiKeyInput.value.trim();
     if (deepSeekKey && !clearDeepSeekKey.checked) payload.deepseek_api_key = deepSeekKey;
+    const braveKey = braveApiKeyInput.value.trim();
+    if (braveKey) payload.brave_search_api_key = braveKey;
+    const googleKey = googleApiKeyInput.value.trim();
+    if (googleKey) payload.google_search_api_key = googleKey;
     try {
         const response = await apiFetch('/api/runtime-settings', {
             method: 'PUT',
@@ -2997,3 +3046,286 @@ applyLanguage(currentLanguage, false);
 updateThemeControl();
 updatePdfControls();
 loadRuntimeSettings(false);
+
+// Panel toggles for new features
+discoveryBtn?.addEventListener('click', (e) => { e.stopPropagation(); toggleTopPanel(discoveryPanel, discoveryBtn); });
+benchmarkBtn?.addEventListener('click', (e) => { e.stopPropagation(); toggleTopPanel(benchmarkPanel, benchmarkBtn); });
+diagnosticsBtn?.addEventListener('click', (e) => { e.stopPropagation(); toggleTopPanel(diagnosticsPanel, diagnosticsBtn); });
+
+// DISCOVERY LOGIC
+let discoveryActive = false;
+discoveryStartBtn?.addEventListener('click', async () => {
+    if (discoveryActive) return;
+    const query = discoveryQuery.value.trim() || discoveryQuery.placeholder;
+    const provider = discoveryProvider.value;
+    const maxResults = parseInt(discoveryMaxResults.value) || 10;
+    try {
+        discoveryActive = true;
+        discoveryStartBtn.disabled = true;
+        discoveryResultsContainer.classList.add('hidden');
+        discoveryProgressContainer.classList.remove('hidden');
+        discoveryProgressFill.style.width = '0%';
+        discoveryProgressText.textContent = 'Arama baslatiliyor...';
+        discoveryStatusBadge.textContent = 'Araniyor';
+        discoveryStatusBadge.className = 'rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700';
+
+        const res = await apiFetch('/api/discovery/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, provider, max_results: maxResults })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Arama baslatilamadi');
+        }
+        
+        const streamSrc = new EventSource('/api/discovery/search/stream');
+        streamSrc.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.status === 'error' || data.status === 'timeout') {
+                discoveryProgressText.textContent = data.message || 'Bir hata olustu';
+                discoveryProgressFill.style.backgroundColor = '#dc2626';
+                streamSrc.close();
+                discoveryActive = false;
+                discoveryStartBtn.disabled = false;
+                discoveryStatusBadge.textContent = 'Hata';
+                discoveryStatusBadge.className = 'rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700';
+            } else if (data.status === 'done') {
+                discoveryProgressText.textContent = 'Arama tamamlandi.';
+                discoveryProgressFill.style.width = '100%';
+                streamSrc.close();
+                discoveryActive = false;
+                discoveryStartBtn.disabled = false;
+                discoveryStatusBadge.textContent = 'Tamamlandi';
+                discoveryStatusBadge.className = 'rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700';
+                loadDiscoveryResults();
+            } else {
+                discoveryProgressText.textContent = data.message || 'Araniyor...';
+                discoveryProgressFill.style.width = (data.progress || 50) + '%';
+            }
+        };
+        streamSrc.onerror = () => {
+            streamSrc.close();
+            discoveryActive = false;
+            discoveryStartBtn.disabled = false;
+        };
+    } catch (e) {
+        discoveryActive = false;
+        discoveryStartBtn.disabled = false;
+        alert(e.message);
+    }
+});
+
+async function loadDiscoveryResults() {
+    try {
+        const res = await apiFetch('/api/discovery/results');
+        const data = await res.json();
+        discoveryResultsBody.innerHTML = '';
+        if (data.results && data.results.length > 0) {
+            data.results.forEach((r, idx) => {
+                const tr = document.createElement('tr');
+                const fileHtml = `<div class="truncate w-32" title="${escapeHtml(r.filename || r.path)}">${escapeHtml(r.filename || r.path)}</div>`;
+                const sizeHtml = r.size_bytes ? Math.round(r.size_bytes/1024) + ' KB' : '-';
+                const scoreHtml = r.score ? (r.score * 100).toFixed(0) + '%' : '-';
+                const statusHtml = r.status === 'accepted' ? '<span class="text-green-600">Kabul Edildi</span>' : '<span class="text-slate-500">Bekliyor</span>';
+                
+                const btnHtml = r.status === 'accepted' 
+                    ? `<button disabled class="text-xs text-slate-400">Onaylandi</button>` 
+                    : `<button onclick="acceptDiscoveryFile(${idx})" class="text-xs text-teal-600 hover:text-teal-800">Kabul Et</button>`;
+                
+                tr.innerHTML = `<td>${fileHtml}</td><td>${sizeHtml}</td><td>${scoreHtml}</td><td id="disc-status-${idx}">${statusHtml}</td><td>${btnHtml}</td>`;
+                discoveryResultsBody.appendChild(tr);
+            });
+            discoveryResultsContainer.classList.remove('hidden');
+        } else {
+            discoveryProgressText.textContent = 'Sonuc bulunamadi.';
+        }
+    } catch (e) {
+        console.error('Discovery results error', e);
+    }
+}
+
+window.acceptDiscoveryFile = async function(idx) {
+    try {
+        const res = await apiFetch(`/api/discovery/accept/${idx}`, { method: 'POST' });
+        if (res.ok) {
+            loadDiscoveryResults();
+        }
+    } catch(e) {
+        alert('Kabul edilemedi');
+    }
+};
+
+// BENCHMARK LOGIC
+let benchmarkActive = false;
+benchmarkStartBtn?.addEventListener('click', async () => {
+    if (benchmarkActive) return;
+    try {
+        benchmarkActive = true;
+        benchmarkStartBtn.disabled = true;
+        benchmarkResultsContainer.classList.add('hidden');
+        benchmarkProgressContainer.classList.remove('hidden');
+        benchmarkProgressFill.style.width = '0%';
+        benchmarkProgressText.textContent = 'Benchmark baslatiliyor...';
+        benchmarkStatusBadge.textContent = 'Calisiyor';
+        benchmarkStatusBadge.className = 'rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700';
+
+        const res = await apiFetch('/api/diagnostics/benchmark', { method: 'POST' });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Baslatilamadi');
+        }
+        
+        const streamSrc = new EventSource('/api/diagnostics/benchmark/stream');
+        streamSrc.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.status === 'error' || data.status === 'timeout') {
+                benchmarkProgressText.textContent = data.message || 'Hata olustu';
+                streamSrc.close();
+                benchmarkActive = false;
+                benchmarkStartBtn.disabled = false;
+                benchmarkStatusBadge.textContent = 'Hata';
+                benchmarkStatusBadge.className = 'rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700';
+            } else if (data.status === 'done') {
+                benchmarkProgressText.textContent = 'Tamamlandi.';
+                benchmarkProgressFill.style.width = '100%';
+                streamSrc.close();
+                benchmarkActive = false;
+                benchmarkStartBtn.disabled = false;
+                benchmarkStatusBadge.textContent = 'Tamamlandi';
+                benchmarkStatusBadge.className = 'rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700';
+                loadBenchmarkResults();
+            } else {
+                benchmarkProgressText.textContent = data.current_case || 'Calisiyor...';
+                benchmarkProgressFill.style.width = (data.progress || 10) + '%';
+            }
+        };
+        streamSrc.onerror = () => {
+            streamSrc.close();
+            benchmarkActive = false;
+            benchmarkStartBtn.disabled = false;
+        };
+    } catch (e) {
+        benchmarkActive = false;
+        benchmarkStartBtn.disabled = false;
+        alert(e.message);
+    }
+});
+
+async function loadBenchmarkResults() {
+    try {
+        const res = await apiFetch('/api/diagnostics/benchmark/result');
+        if (res.ok) {
+            const data = await res.json();
+            benchmarkCategoryCards.innerHTML = '';
+            const metrics = {
+                'Genel': data.metrics?.total_accuracy,
+                'Zorunlu': data.metrics?.required_fields_accuracy,
+                'Adresler': data.metrics?.category_accuracy?.address,
+                'Tarihler': data.metrics?.category_accuracy?.date,
+                'Kalemler': data.metrics?.category_accuracy?.cargo_item
+            };
+            
+            for (const [name, val] of Object.entries(metrics)) {
+                if (val === undefined) continue;
+                const pct = (val * 100).toFixed(1);
+                let colorClass = 'metric-good';
+                if (val < 0.8) colorClass = 'metric-warn';
+                if (val < 0.6) colorClass = 'metric-bad';
+                
+                if (name === 'Genel') {
+                    benchmarkOverallCard.innerHTML = `<div class="metric-label">Genel Basari (Strict)</div><div class="metric-value ${colorClass}">%${pct}</div>`;
+                } else {
+                    benchmarkCategoryCards.innerHTML += `<div class="benchmark-card"><div class="metric-label">${escapeHtml(name)}</div><div class="metric-value ${colorClass}">%${pct}</div></div>`;
+                }
+            }
+            benchmarkResultsContainer.classList.remove('hidden');
+        }
+    } catch (e) { console.error('Bench load error', e); }
+}
+
+benchmarkDownloadHtml?.addEventListener('click', () => {
+    window.open('/api/diagnostics/benchmark/download-html', '_blank');
+});
+benchmarkDownloadJson?.addEventListener('click', () => {
+    window.open('/api/diagnostics/benchmark/download-json', '_blank');
+});
+
+// DIAGNOSTICS LOGIC
+let diagnosticsActive = false;
+diagnosticsRunBtn?.addEventListener('click', async () => {
+    if (diagnosticsActive) return;
+    diagnosticsActive = true;
+    diagnosticsRunBtn.disabled = true;
+    diagnosticsRunBtn.textContent = 'Analiz Ediliyor...';
+    diagnosticsBadges.innerHTML = '';
+    diagnosticsResultContainer.classList.remove('hidden');
+    gpuInfoDetails.innerHTML = '';
+    
+    try {
+        const [healthRes, gpuRes] = await Promise.all([
+            apiFetch('/api/diagnostics/health-check'),
+            apiFetch('/api/diagnostics/gpu-info')
+        ]);
+        
+        const health = await healthRes.json();
+        const gpu = await gpuRes.json();
+        
+        let badgesHtml = '';
+        const addBadge = (label, val, ok) => {
+            const css = ok === true ? 'badge-ok' : (ok === false ? 'badge-fail' : 'badge-info');
+            const icon = ok === true ? '✓' : (ok === false ? '✗' : 'i');
+            badgesHtml += `<div class="diagnostic-badge ${css}"><div class="badge-icon">${icon}</div><div class="badge-label">${escapeHtml(label)}</div><div class="badge-value">${escapeHtml(val)}</div></div>`;
+        };
+        
+        addBadge('Python', health.python_version?.split(' ')[0], true);
+        addBadge('Model Disk', health.model_path?.exists ? 'Mevcut' : 'Yok', health.model_path?.exists);
+        addBadge('OpenVINO', health.modules?.openvino ? 'Yüklü' : 'Hata', health.modules?.openvino);
+        addBadge('GPU Destek', health.gpu_device?.available ? 'Evet' : 'Hayir', health.gpu_device?.available);
+        addBadge('Sistem', health.status === 'healthy' ? 'Saglikli' : 'Bozuk', health.status === 'healthy');
+        
+        diagnosticsBadges.innerHTML = badgesHtml;
+        
+        if (gpu.devices && gpu.devices.length > 0) {
+            let gpuHtml = '';
+            gpu.devices.forEach(d => {
+                gpuHtml += `<dt class="font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(d.name)}</dt>`;
+                const vram = d.properties?.OPTIMIZATION_CAPABILITIES || '';
+                const fp16 = d.properties?.DEVICE_TYPE || '';
+                gpuHtml += `<dd class="text-slate-500 dark:text-slate-400 pl-2 mb-2 break-all">${escapeHtml(vram)} ${escapeHtml(fp16)}</dd>`;
+            });
+            gpuInfoDetails.innerHTML = gpuHtml;
+        } else {
+            gpuInfoDetails.innerHTML = '<p class="text-slate-400">Uygun hizlandirici bulunamadi (CPU modu)</p>';
+        }
+        
+        diagnosticsLastRun.textContent = 'Son Calistirma: ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        alert('Teshis hatasi: ' + e.message);
+    } finally {
+        diagnosticsActive = false;
+        diagnosticsRunBtn.disabled = false;
+        diagnosticsRunBtn.textContent = 'Teshis Testini Calistir';
+    }
+});
+
+// MODEL COMPARE (Cloud VS Local Diff)
+// This overrides the original cloud review button logic if you want it to show diffs.
+// Alternatively we can add a new button, but since the requirement is "Komut Satiri Karsilastirma CLI araci (Model vs DeepSeek diff viewer)", we will intercept the cloud review result.
+const originalRunCloudReview = runCloudReviewBtn?.onclick;
+runCloudReviewBtn.addEventListener('click', async (e) => {
+    if (originalRunCloudReview) originalRunCloudReview.apply(runCloudReviewBtn, [e]);
+    if (!currentSessionId) return;
+    try {
+        const res = await apiFetch(`/api/diagnostics/compare/${currentSessionId}`, { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.has_cloud_review) {
+                console.log("Cloud comparison diff:", data);
+                // The backend already saves the cloud review into the session data which updates the UI via event.
+            }
+        }
+    } catch (err) {
+        console.error('Compare failed', err);
+    }
+});

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'">
     <title>CerberusVision — Belge İşleme</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <script src="/static/theme-bootstrap.js?v=1"></script>
@@ -32,7 +33,22 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/>
                     </svg>
                 </button>
-                <button id="settingsBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Model ayarları" aria-label="Model ayarları" aria-expanded="false" aria-controls="settingsPanel" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings">
+                <button id="discoveryBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Belge Kesif" aria-label="Belge Kesif" aria-expanded="false" aria-controls="discoveryPanel" data-i18n-title="nav.discovery" data-i18n-aria-label="nav.discovery">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
+                    </svg>
+                </button>
+                <button id="benchmarkBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Benchmark" aria-label="Benchmark" aria-expanded="false" aria-controls="benchmarkPanel" data-i18n-title="nav.benchmark" data-i18n-aria-label="nav.benchmark">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </button>
+                <button id="diagnosticsBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Sistem Teshis" aria-label="Sistem Teshis" aria-expanded="false" aria-controls="diagnosticsPanel" data-i18n-title="nav.diagnostics" data-i18n-aria-label="nav.diagnostics">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                </button>
+                <button id="settingsBtn" type="button" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100" title="Model ayarlari" aria-label="Model ayarlari" aria-expanded="false" aria-controls="settingsPanel" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -207,6 +223,31 @@
                         <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"><input id="clearDeepSeekKey" type="checkbox" class="rounded border-slate-300 text-teal-600 focus:ring-teal-500"><span data-i18n="settings.clearKey">Kayıtlı DeepSeek anahtarını kaldır</span></label>
                         <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"><input id="nmtEnabled" type="checkbox" checked class="rounded border-slate-300 text-teal-600 focus:ring-teal-500"><span data-i18n="settings.nmt">NMT çeviri (MarianMT, daha hızlı)</span></label>
                         <div class="border-t border-slate-200 pt-3 dark:border-slate-700">
+                            <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2" data-i18n="settings.discoveryHeading">Belge Kesif API Ayarlari</h4>
+                            <div class="space-y-2">
+                                <div>
+                                    <label for="searchProvider" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="settings.searchProvider">Arama Saglayicisi</label>
+                                    <select id="searchProvider" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                                        <option value="auto">Otomatik</option>
+                                        <option value="brave">Brave Search</option>
+                                        <option value="google">Google Custom Search</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="braveApiKeyInput" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="settings.braveApiKey">Brave Search API Anahtari</label>
+                                    <input id="braveApiKeyInput" type="password" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100" data-i18n-placeholder="settings.braveApiKeyPlaceholder" placeholder="BSA-...">
+                                </div>
+                                <div>
+                                    <label for="googleApiKeyInput" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="settings.googleApiKey">Google Search API Anahtari</label>
+                                    <input id="googleApiKeyInput" type="password" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100" data-i18n-placeholder="settings.googleApiKeyPlaceholder" placeholder="AIza...">
+                                </div>
+                                <div>
+                                    <label for="googleEngineIdInput" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="settings.googleEngineId">Google Search Engine ID</label>
+                                    <input id="googleEngineIdInput" type="text" autocomplete="off" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100" placeholder="abc123...">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="border-t border-slate-200 pt-3 dark:border-slate-700">
                             <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2" data-i18n="settings.webhook">Webhook Entegrasyonu</h4>
                             <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1" data-i18n="settings.webhookUrl">Hedef URL</label>
                             <input id="webhookUrlInput" type="url" autocomplete="off" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100" data-i18n-placeholder="settings.webhookPlaceholder" placeholder="https://erp-sisteminiz.com/api/dcsa-webhook">
@@ -235,6 +276,79 @@
                         <div class="flex justify-between gap-3"><dt class="text-slate-500 dark:text-slate-400" data-i18n="profile.theme">Tema</dt><dd id="profileTheme" class="font-medium text-slate-700 dark:text-slate-200">Koyu</dd></div>
                         <div class="flex justify-between gap-3"><dt class="text-slate-500 dark:text-slate-400" data-i18n="profile.session">Oturum</dt><dd id="profileSession" class="max-w-32 truncate font-mono text-slate-700 dark:text-slate-200">--</dd></div>
                     </dl>
+                </div>
+
+                <div id="discoveryPanel" class="hidden tool-panel" role="dialog" aria-label="Belge Kesif" data-i18n-aria-label="nav.discovery">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h2 class="text-sm font-semibold text-slate-800 dark:text-slate-100" data-i18n="discovery.title">Belge Kesif Motoru</h2>
+                        <span id="discoveryStatusBadge" class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300" data-i18n="discovery.ready">Hazir</span>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="discoveryQuery" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="discovery.queryLabel">Arama Sorgusu</label>
+                            <input id="discoveryQuery" type="text" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100" data-i18n-placeholder="discovery.queryPlaceholder" placeholder='filetype:pdf "shipping instruction" "bill of lading"'>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label for="discoveryProvider" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="discovery.provider">Saglayici</label>
+                                <select id="discoveryProvider" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                                    <option value="auto">Otomatik</option>
+                                    <option value="brave">Brave</option>
+                                    <option value="google">Google</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="discoveryMaxResults" class="block text-xs font-medium text-slate-600 dark:text-slate-400" data-i18n="discovery.maxResults">Maks. Sonuc</label>
+                                <input id="discoveryMaxResults" type="number" min="1" max="50" value="10" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                            </div>
+                        </div>
+                        <button id="discoveryStartBtn" type="button" class="w-full rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-teal-700" data-i18n="discovery.start">Aramayi Baslat</button>
+                        <div id="discoveryProgressContainer" class="hidden">
+                            <div class="progress-bar-track"><div id="discoveryProgressFill" class="progress-bar-fill" style="width: 0%"></div></div>
+                            <p id="discoveryProgressText" class="mt-1 text-xs text-slate-500 dark:text-slate-400"></p>
+                        </div>
+                        <div id="discoveryResultsContainer" class="hidden">
+                            <table class="discovery-table">
+                                <thead><tr><th data-i18n="discovery.colFile">Dosya</th><th data-i18n="discovery.colSize">Boyut</th><th data-i18n="discovery.colScore">Skor</th><th data-i18n="discovery.colStatus">Durum</th><th></th></tr></thead>
+                                <tbody id="discoveryResultsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="benchmarkPanel" class="hidden tool-panel" role="dialog" aria-label="Benchmark" data-i18n-aria-label="nav.benchmark">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h2 class="text-sm font-semibold text-slate-800 dark:text-slate-100" data-i18n="benchmark.title">Model Benchmark ve Metrik Raporlama</h2>
+                        <span id="benchmarkStatusBadge" class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300" data-i18n="benchmark.ready">Hazir</span>
+                    </div>
+                    <button id="benchmarkStartBtn" type="button" class="w-full rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700" data-i18n="benchmark.start">Benchmark Testini Baslat</button>
+                    <div id="benchmarkProgressContainer" class="hidden mt-3">
+                        <div class="progress-bar-track"><div id="benchmarkProgressFill" class="progress-bar-fill" style="width: 0%"></div></div>
+                        <p id="benchmarkProgressText" class="mt-1 text-xs text-slate-500 dark:text-slate-400"></p>
+                    </div>
+                    <div id="benchmarkResultsContainer" class="hidden mt-3 space-y-3">
+                        <div class="benchmark-grid" id="benchmarkCategoryCards"></div>
+                        <div id="benchmarkOverallCard" class="rounded-lg border-2 border-teal-500 p-3 text-center"></div>
+                        <div class="flex gap-2">
+                            <button id="benchmarkDownloadHtml" type="button" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800" data-i18n="benchmark.downloadHtml">HTML Rapor Indir</button>
+                            <button id="benchmarkDownloadJson" type="button" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800" data-i18n="benchmark.downloadJson">JSON Rapor Indir</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="diagnosticsPanel" class="hidden tool-panel" role="dialog" aria-label="Sistem Teshis" data-i18n-aria-label="nav.diagnostics">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h2 class="text-sm font-semibold text-slate-800 dark:text-slate-100" data-i18n="diagnostics.title">Sistem Sagligi ve Donanim Teshis</h2>
+                    </div>
+                    <button id="diagnosticsRunBtn" type="button" class="w-full rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700" data-i18n="diagnostics.run">Teshis Testini Calistir</button>
+                    <div id="diagnosticsResultContainer" class="hidden mt-3 space-y-3">
+                        <div class="diagnostic-grid" id="diagnosticsBadges"></div>
+                        <div id="gpuInfoCard" class="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                            <h4 class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2" data-i18n="diagnostics.gpuDetails">GPU Detay</h4>
+                            <dl id="gpuInfoDetails" class="space-y-1 text-xs"></dl>
+                        </div>
+                        <p id="diagnosticsLastRun" class="text-[10px] text-slate-400"></p>
+                    </div>
                 </div>
             </div>
         </div>

@@ -97,8 +97,8 @@ def extract_tables_as_html(
 
     try:
         engine = _get_cached_table_engine()
-    except Exception:
-        logger.warning("PPStructure (SLANet) yuklenemedi, HTML tablo cikarimi atlaniyor")
+    except (ImportError, RuntimeError) as exc:
+        logger.exception("PPStructure (SLANet) yuklenemedi, HTML tablo cikarimi atlaniyor")
         return []
 
     image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
@@ -131,8 +131,8 @@ def extract_tables_as_html(
                             html_tables.append(
                                 f"<!-- TABLE {idx + 1} -->\n{res['html']}"
                             )
-        except Exception:
-            logger.debug(
+        except (ValueError, RuntimeError) as exc:
+            logger.exception(
                 "SLANet tablo isleme hatasi (bolge %d), atlaniyor", idx + 1,
             )
 
@@ -338,8 +338,8 @@ def process_pdf_with_florence_regions(
                             + "\n\n".join(html_tables)
                         )
                         florence_meta["pages"][-1]["html_tables"] = len(html_tables)
-                except Exception:
-                    logger.debug(
+                except (ValueError, RuntimeError) as exc:
+                    logger.exception(
                         "Sayfa %d: HTML tablo cikarimi basarisiz, ham metin korunuyor",
                         page_idx,
                     )

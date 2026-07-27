@@ -119,10 +119,21 @@ def test_every_static_button_has_an_explicit_behavior_contract():
         "sendToErpBtn",
         "correctionCancelBtn",
         "correctionSaveBtn",
+        "discoveryBtn",
+        "benchmarkBtn",
+        "diagnosticsBtn",
+        "discoveryStartBtn",
+        "benchmarkStartBtn",
+        "benchmarkDownloadHtml",
+        "benchmarkDownloadJson",
+        "diagnosticsRunBtn",
     }
     for button_id in interactive_button_ids:
         assert f'id="{button_id}"' in INDEX_HTML
-        assert f"{button_id}.addEventListener('click'" in APP_JS
+        assert (
+            f"{button_id}.addEventListener('click'" in APP_JS
+            or f"{button_id}?.addEventListener('click'" in APP_JS
+        )
 
     collector = _ButtonCollector()
     collector.feed(INDEX_HTML)

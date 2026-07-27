@@ -96,6 +96,178 @@ html:not(.dark) {
     50% { box-shadow: 0 0 0 6px rgba(13, 148, 136, 0); }
 }
 
+.tool-panel {
+    position: absolute;
+    right: 0;
+    top: 3rem;
+    width: min(42rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 4.5rem);
+    overflow-y: auto;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: white;
+    padding: 1rem;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1);
+}
+
+html.dark .tool-panel {
+    border-color: #334155;
+    background: #0f172a;
+}
+
+.benchmark-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.75rem;
+}
+
+.benchmark-card {
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    padding: 0.75rem;
+    text-align: center;
+}
+
+html.dark .benchmark-card {
+    border-color: #334155;
+}
+
+.benchmark-card .metric-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+}
+
+html.dark .benchmark-card .metric-label {
+    color: #94a3b8;
+}
+
+.benchmark-card .metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+    line-height: 1;
+}
+
+.metric-good { color: #059669; }
+.metric-warn { color: #d97706; }
+.metric-bad  { color: #dc2626; }
+
+html.dark .metric-good { color: #34d399; }
+html.dark .metric-warn { color: #fbbf24; }
+html.dark .metric-bad  { color: #f87171; }
+
+.diagnostic-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: 0.5rem;
+}
+
+.diagnostic-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    padding: 0.625rem;
+    text-align: center;
+}
+
+html.dark .diagnostic-badge {
+    border-color: #334155;
+}
+
+.diagnostic-badge .badge-icon {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.badge-ok .badge-icon { background: #d1fae5; color: #059669; }
+.badge-fail .badge-icon { background: #fee2e2; color: #dc2626; }
+.badge-info .badge-icon { background: #e0e7ff; color: #4f46e5; }
+
+html.dark .badge-ok .badge-icon { background: #064e3b; color: #34d399; }
+html.dark .badge-fail .badge-icon { background: #450a0a; color: #f87171; }
+html.dark .badge-info .badge-icon { background: #1e1b4b; color: #a5b4fc; }
+
+.diagnostic-badge .badge-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+
+html.dark .diagnostic-badge .badge-label {
+    color: #94a3b8;
+}
+
+.diagnostic-badge .badge-value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+html.dark .diagnostic-badge .badge-value {
+    color: #e2e8f0;
+}
+
+.discovery-table {
+    width: 100%;
+    font-size: 0.75rem;
+    border-collapse: collapse;
+}
+
+.discovery-table th,
+.discovery-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+html.dark .discovery-table th,
+html.dark .discovery-table td {
+    border-color: #334155;
+}
+
+.discovery-table th {
+    font-weight: 600;
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+}
+
+html.dark .discovery-table th {
+    color: #94a3b8;
+}
+
+.progress-bar-track {
+    width: 100%;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+
+html.dark .progress-bar-track {
+    background: #1e293b;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
+    transition: width 0.3s ease;
+}
+
 @media (max-width: 1100px) {
     body {
         min-height: 100%;

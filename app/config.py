@@ -42,11 +42,14 @@ class ModelConfig:
     )
     kv_cache_precision: str = os.environ.get("OPENVINO_KV_CACHE_PRECISION", "u8")
     max_new_tokens: int = _env_int("QWEN_MAX_NEW_TOKENS", 3072)
+    max_chunk_chars: int = _env_int("QWEN_MAX_CHUNK_CHARS", 4000)
+    deterministic_mode: bool = os.environ.get("CERBERUS_BENCHMARK_DETERMINISTIC", "0") == "1"
     refinement_enabled: bool = os.environ.get("QWEN_REFINEMENT_ENABLED", "1") == "1"
     refinement_risk_threshold: int = _env_int("QWEN_REFINEMENT_RISK_THRESHOLD", 30)
 
     def __post_init__(self):
         self.max_new_tokens = min(8192, max(512, self.max_new_tokens))
+        self.max_chunk_chars = min(8000, max(500, self.max_chunk_chars))
         self.refinement_risk_threshold = min(
             100, max(0, self.refinement_risk_threshold)
         )

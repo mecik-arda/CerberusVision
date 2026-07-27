@@ -219,6 +219,12 @@ def _runtime_settings_payload() -> dict:
             settings.base_dir,
             settings.model.model_path,
         ),
+        "document_search": {
+            "provider": settings.document_search.provider,
+            "brave_configured": bool(settings.document_search.brave_api_key),
+            "google_configured": bool(settings.document_search.google_api_key),
+            "google_engine_id": settings.document_search.google_engine_id or "",
+        },
     }
 
 
@@ -1081,6 +1087,16 @@ async def update_runtime_settings(request: RuntimeSettingsUpdate):
         settings.region_middle_ratio = request.region_middle_ratio
     if request.stage_timeout_seconds is not None:
         settings.stage_timeout_seconds = request.stage_timeout_seconds
+    if request.search_provider is not None:
+        settings.document_search.provider = request.search_provider
+    if request.brave_search_api_key is not None:
+        brave_key_value = request.brave_search_api_key.get_secret_value().strip()
+        settings.document_search.brave_api_key = brave_key_value if brave_key_value else None
+    if request.google_search_api_key is not None:
+        google_key_value = request.google_search_api_key.get_secret_value().strip()
+        settings.document_search.google_api_key = google_key_value if google_key_value else None
+    if request.google_search_engine_id is not None:
+        settings.document_search.google_engine_id = request.google_search_engine_id.strip() or None
     save_persistent_settings()
     return JSONResponse(content=_runtime_settings_payload())
 
@@ -2244,7 +2260,7 @@ async def _run_manual_cloud_review_locked(session_id: str, request: Request):
         )
         return JSONResponse(
             status_code=502,
-            content={"error": f"Cloud review failed: {error}"},
+            content={"error": "Cloud review failed due to an internal error."},
         )
 
     latest_result = _processing_store.get(session_id)
@@ -2290,15 +2306,18 @@ async def upload_and_stream(
     try:
         await _save_uploaded_document(file, document_path)
     except UploadTooLargeError:
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         return JSONResponse(
             status_code=413,
             content={"error": f"File size exceeds maximum allowed size ({_MAX_UPLOAD_SIZE // (1024*1024)} MB)."},
         )
     except ValueError as error:
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         return JSONResponse(status_code=400, content={"error": str(error)})
     except Exception:
+        document_path.unlink(missing_ok=True)
         await _release_pipeline_slot(session_id)
         raise
 

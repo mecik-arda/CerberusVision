@@ -317,6 +317,10 @@ class RuntimeSettingsUpdate(BaseModel):
     region_upper_ratio: float | None = Field(default=None, ge=0.10, le=0.45)
     region_middle_ratio: float | None = Field(default=None, ge=0.50, le=0.80)
     stage_timeout_seconds: int | None = Field(default=None, ge=60, le=1800)
+    search_provider: Literal["auto", "brave", "google"] | None = None
+    brave_search_api_key: SecretStr | None = Field(default=None, max_length=512)
+    google_search_api_key: SecretStr | None = Field(default=None, max_length=512)
+    google_search_engine_id: str | None = Field(default=None, max_length=256)
 
 
 
